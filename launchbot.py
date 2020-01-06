@@ -1,4 +1,4 @@
-import os, sys, time, ssl, datetime, logging, math, requests, inspect, textwrap
+import os, sys, time, ssl, datetime, logging, math, requests, inspect
 import telepot, sqlite3, cursor, difflib, schedule
 import ujson as json
 
@@ -675,7 +675,7 @@ def nextFlight(msg):
 		else:
 			msg_text = f'{header}\n\n{time_str}\n\n{spx_info_str}\n\n{notify_str}'
 
-	bot.sendMessage(chat, textwrap.dedent(msg_text), parse_mode='Markdown')
+	bot.sendMessage(chat, msg_text, parse_mode='Markdown')
 	return
 
 
