@@ -117,26 +117,34 @@ def handle(msg):
 	
 		*Commands*
 		`/notify` toggle notifications for various launch service providers.
-		`/statistics` displays various statistics about the bot
-
-		*In beta* (disabled for users)
 		`/next` shows the next launch.
+		`/shecdule` displays a simple schedule of upcoming flights.
+		`/statistics` displays various statistics about the bot.
 
 		*Example usage*
-		`/notify all`: enable notifications for all launches
+		`/notify all`: toggle notifications for all launches
 		`/notify SpaceX`: toggle notifications for all SpaceX launches
 
-		Soon™️ on Github!
+		*LaunchBot* version {version}.
 		'''
 		
 		bot.sendMessage(chat, inspect.cleandoc(reply_msg), parse_mode='Markdown')
 
 		if debugLog:
-			logging.info('🌟 Bot added to a new chat!')
+			logging.info(f'🌟 Bot added to a new chat! chat_id={chat}')
 	
+	try:
+		command_split = msg['text'].strip().split(" ")
+	except Exception as e:
+		if debugLog:
+			logging.info(f'🛑 Error generating command split, returning: {e}')
+		
+		return
+
 	# regular text, pass
-	command_split = msg['text'].strip().split(" ")
 	if content_type == 'text' and command_split[0][0] != '/':
+		if debugLog:
+			logging.info(f'❔ Received text, not a command, chat={chat}, text: "{msg["text"]}". Returning.')
 		return
 	
 	# sees a valid command
@@ -144,86 +152,83 @@ def handle(msg):
 		if command_split[0].lower() in valid_commands or command_split[0] in valid_commands_alt:
 			# command we saw
 			command = command_split[0].lower()
-			
-			# store statistics
-			updateStats({'commands':1})
 
 			# check timers
 			if not timerHandle(command, chat):
+				if debugLog:
+					logging.info(f'✋ Spam prevented from chat {chat}. Command: {command}, returning.')
 				return
 
-			'''
-			'/info' 				# 0
-			'/start','/help', 	 	# 1, 2
-			'/next', '/notify' 		# 3, 4
-			'''
-
-			# /start or /help
-			if command in [valid_commands[1], valid_commands_alt[1], valid_commands[2], valid_commands_alt[2]]:
-				if chatType != 'private' and sender['status'] != 'creator' and sender['status'] != 'administrator':
-					pass
-				else:
-					bot.sendChatAction(chat, action='typing')
-					# construct info message
-					reply_msg = f'''🚀 *LaunchBot version {version}*
-					*Commands*
-					`/notify` toggle notifications for various launch service providers
-					`/next` shows the next launch
-					`/schedule` displays a simple flight schedule
-					`/statistics` displays various statistics about the bot
-
-					*Example usage*
-					`/notify help`: display information about the notify-command.
-					`/notify SpaceX`: toggle notifications for all SpaceX launches.
-
-					*Changelog* for *version 0.2.X*
-					- implemented /next & /schedule
-					- added Falcon 9 & Heavy information
-					- fixed various issues with setting notifications
-					- fix issues with notification formatting
-					- other improvements
-					'''
-					
-					bot.sendMessage(chat, inspect.cleandoc(reply_msg), parse_mode='Markdown')
-
+			# check if sender is an admin/creator, and/or if we're in a public chat
+			if chatType != 'private' and sender['status'] != 'creator' and sender['status'] != 'administrator':
+				if debugLog:
+					logging.info(f'✋ {command} called by a non-admin in {chat}, returning.')
 				return
+			else:
+				bot.sendChatAction(chat, action='typing')
 
-			# /next
+			# store statistics here, so our stats database can't be spammed either
+			updateStats({'commands':1})
+
+			if debugLog:
+				if msg['from']['id'] != 421341996 and command != '/start':
+					logging.info(f'🕹 {command} called by {chat}')
+
+			# /start or /help (1, 2)
+			if command in [valid_commands[0], valid_commands_alt[0], valid_commands[1], valid_commands_alt[1]]:
+				# log new chats
+				if command in [valid_commands[0], valid_commands_alt[0]]:
+					if debugLog:
+						logging.info(f'🌟 Bot added to a new chat, chat_id={chat} (/start)')
+
+				# construct info message
+				reply_msg = f'''🚀 *LaunchBot version {version}*
+
+				*Hi there, I'm launchbot!*
+				*To get started*, you can enable notifications using /notify!
+				To check the next flight, use /next!
+
+				*Commands*
+				`/notify` toggle notifications for various launch service providers
+				`/next` shows the next launch
+				`/schedule` displays a simple flight schedule
+				`/statistics` displays various statistics about the bot
+
+				*Example usage*
+				`/notify help`: display information about the notify-command.
+				`/notify SpaceX`: toggle notifications for all SpaceX launches.
+
+				*Changelog for version 0.2*
+				- implemented /next & /schedule
+				- added Falcon 9 & Heavy information
+				- fixed various issues with setting notifications
+				- fix issues with notification formatting
+				- various improvements
+				'''
+				
+				bot.sendMessage(chat, inspect.cleandoc(reply_msg), parse_mode='Markdown')
+
+			# /next (3)
+			elif command in [valid_commands[2], valid_commands_alt[2]]:
+				nextFlight(msg)
+
+			# /notify (4)
 			elif command in [valid_commands[3], valid_commands_alt[3]]:
-				if chatType != 'private' and sender['status'] != 'creator' and sender['status'] != 'administrator':
-					pass
-				else:
-					bot.sendChatAction(chat, action='typing')
-					nextFlight(msg)
-				
-				return
-
-			# /notify
-			elif command in [valid_commands[4], valid_commands_alt[4]]:
 				notify(msg)
-				return
 
-			# /statistics
-			elif command in [valid_commands[5], valid_commands_alt[5]]:
-				if chatType != 'private' and sender['status'] != 'creator' and sender['status'] != 'administrator':
-					pass
-				else:
-					bot.sendChatAction(chat, action='typing')
-					statistics(msg)
-				
-				return
+			# /statistics (5)
+			elif command in [valid_commands[4], valid_commands_alt[4]]:
+				statistics(msg)
 
 			# /schedule (6)
-			elif command in [valid_commands[6], valid_commands_alt[6]]:
-				if chatType != 'private' and sender['status'] != 'creator' and sender['status'] != 'administrator':
-					pass
-				else:
-					bot.sendChatAction(chat, action='typing')
-					flightSchedule(msg)
-				
-				return
+			elif command in [valid_commands[5], valid_commands_alt[5]]:
+				flightSchedule(msg)
+
+			return
 
 		else:
+			if debugLog:
+				logging.info(f'❔ Unknown command received in chat {chat}: {command}. Returning.')
 			return
 
 
@@ -249,7 +254,7 @@ def timerHandle(command, chat):
 			settingMap['commandTimers'] = {}
 			for command in valid_commands:
 				command = command.replace('/','')
-				settingMap['commandTimers'][command] = '0.25'
+				settingMap['commandTimers'][command] = '0.35'
 			
 			json.dump(settingMap, jsonData, indent=4)
 
@@ -263,7 +268,7 @@ def timerHandle(command, chat):
 	
 	except KeyError:
 		with open('data/command-timers.json', 'w') as jsonData:
-			settingMap['commandTimers'][command] = '0.25'
+			settingMap['commandTimers'][command] = '0.35'
 			json.dump(settingMap, jsonData, indent=4)
 
 		timer = float(settingMap['commandTimers'][command])
@@ -280,7 +285,7 @@ def timerHandle(command, chat):
 			lastMap = {}
 			if chat not in lastMap:
 				if debugLog:
-					logging.info('🌟 New chat detected!')
+					logging.info(f'🌟 New chat detected! chat_id={chat}')
 				lastMap[chat] = {}
 
 			# never called, set to 0
@@ -436,6 +441,7 @@ def nextFlight(msg):
 	# chat has no enabled notifications; pull from all
 	if len(queryReturn) == 0:
 		cmd, user_notif_enabled = 'all', False
+		enabled, disabled = [], []
 
 	else:
 		notif_providers, user_notif_enabled = [], None
@@ -444,6 +450,7 @@ def nextFlight(msg):
 			# chat ID - keyword - UNIX timestamp - enabled true/false
 			if row[1].lower() == 'all' and row[3] == 1:
 				all_flag, user_notif_enabled = True, True
+				enabled.append(row[1])
 
 			else:
 				if row[3] == 1:
@@ -632,11 +639,8 @@ def nextFlight(msg):
 	123:	['Starsem SA', '🇪🇺🇷🇺']
 	}
 
-	if lsp_id in LSP_IDs:
-		lsp_name = LSP_IDs[lsp_id][0]
-
-	# if launch is by SpaceX, pull info from the spx-db as well
-	# TO DO
+	if int(lsp_id) in LSP_IDs:
+		lsp_name = LSP_IDs[int(lsp_id)][0]
 
 	# inform the user whether they'll be notified or not
 	if user_notif_enabled:
@@ -656,9 +660,25 @@ def nextFlight(msg):
 	pad_name = ' '.join("`{}`".format(word) for word in pad_name.split(' '))
 	eta_str = ' '.join("`{}`".format(word) for word in eta_str.split(' '))
 
+	# create a readable time string instead of the old YYYY-MM-DD format
+	month_map = {
+	1: 'January', 2: 'February', 3: 'March', 4: 'April',
+	5: 'May', 6: 'June', 7: 'July', 8: 'August',
+	9: 'Septemper', 10: 'October', 11: 'November', 12: 'December'
+	}
+
+	try:
+		suffix = {1: 'st', 2: 'nd', 3: 'rd'}[str(launch_unix.day)[-1]]
+	except:
+		suffix = 'th'
+
+	date_str = f'{month_map[launch_unix.month]} {launch_unix.day}{suffix}'
+	date_str = ' '.join("`{}`".format(word) for word in date_str.split(' '))
+
 	# construct the message
 	header = f'🚀 *Next launch* is by {lsp_name}\n*Mission* {mission_name}\n*Vehicle* {vehicle_name}\n*Pad* {pad_name}'
-	time_str = f'📅 `{launch_unix.year}-{launch_unix.month}-{launch_unix.day} {launch_time} UTC`\n⏱ {eta_str}'
+	#time_str = f'📅 `{launch_unix.year}-{launch_unix.month}-{launch_unix.day} {launch_time} UTC`\n⏱ {eta_str}'
+	time_str = f'📅 {date_str}`,` `{launch_time} UTC`\n⏱ {eta_str}'
 	
 	# not a spx launch, or no info available
 	if not spx_str:
@@ -683,15 +703,6 @@ def nextFlight(msg):
 def notify(msg):
 	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
 	launchDir = 'data/launch'
-
-	# check if the user is an admin
-	sender = bot.getChatMember(chat, msg['from']['id'])
-	chatType = bot.getChat(chat)['type']
-
-	# if the user isn't an admin or the creator of a group and we're not in a private chat, abort
-	if chatType != 'private' and sender['status'] != 'creator' and sender['status'] != 'administrator':
-		bot.sendMessage(chat, '⚠️ Notifications can only be edited by administrators', reply_to_message_id=msg['message_id'])
-		return
 
 	bot.sendChatAction(chat, action='typing')
 
@@ -838,7 +849,7 @@ def notify(msg):
 		# all_flag enabled, list disabled notifications only
 		elif all_flag:
 			if len(disabled_notifs) > 0:
-				info_message = '⏰ You have *enabled* notifications for *all flights* previously.\n'
+				info_message = '⏰ You have enabled notifications for *all flights* previously.\n'
 				info_message = info_message + 'The following notifications are *disabled* for this chat\n\n'
 				
 				for notif, i in zip(disabled_notifs, range(len(disabled_notifs))):
@@ -854,11 +865,10 @@ def notify(msg):
 				info_message = '''⏰ You have *enabled* notifications for *all flights* previously.
 				
 				You have not disabled any individual notifications manually.
-				To *disable* an individual notification, simply send `/notify` for that keyword.
+				To disable an individual notification, send `/notify` for that launch provider.
 
-				To *disable* notifications for *all flights* (except ones you have individually enabled): `/notify all`
-				
-				For a list of *supported notifications*: `/notify help`.
+				To *disable* notifications for all flights (except ones you have individually enabled): `/notify all`
+				For a list of supported notifications: `/notify help`.
 				'''
 
 			bot.sendMessage(chat, inspect.cleandoc(info_message), parse_mode='Markdown')
@@ -929,8 +939,8 @@ def notify(msg):
 			To re-enable notifications, send `/notify {raw_str}` again.
 			''',
 			1: f'''You will now be notified for all flights of {raw_str}.
+			
 			The first notification is sent 24 hours before a flight.
-
 			To disable notifications, send `/notify {raw_str}` again.
 			'''
 			}[new_status]
@@ -962,18 +972,37 @@ def notify(msg):
 			{extra_info_str}
 			'''
 
+		if debugLog:
+			logging.info(f'🔀 chat {chat} set keyword={raw_str} to {new_status}')
+
 		notifyCursor.execute("UPDATE notify SET enabled = ? WHERE chat = ? AND keyword = ?", (new_status, chat, raw_str))
 		bot.sendMessage(chat, inspect.cleandoc(info_string), parse_mode='Markdown')
 
 	# notification can't be found; insert as new
 	else:
-		if not all_flag:
+		if raw_str == 'All':
+			notifyCursor.execute("INSERT INTO notify (chat, keyword, lastnotified, enabled) VALUES (?, ?, 0, 1)", (chat, raw_str))
+
+			info_string = f'''🔔 Notifications *enabled* for all flights!
+			
+			Individual notifications can be disabled with /notify.
+			The first notification is sent 24 hours before a flight.
+			'''
+
+			if debugLog:
+				logging.info(f'🔀 chat {chat} enabled keyword={raw_str} for the first time. all_flag=False')
+
+		elif not all_flag:
 			notifyCursor.execute("INSERT INTO notify (chat, keyword, lastnotified, enabled) VALUES (?, ?, 0, 1)", (chat, raw_str))
 			info_string = f'''🔔 Notifications *enabled* for *{raw_str}*.
 
 			You will now be notified for all flights of {raw_str}. 
 			The first notification is sent 24 hours before a flight.
 			'''
+
+			if debugLog:
+				logging.info(f'🔀 chat {chat} enabled keyword={raw_str} for the first time. all_flag=False')
+
 		else:
 			notifyCursor.execute("INSERT INTO notify (chat, keyword, lastnotified, enabled) VALUES (?, ?, 0, 0)", (chat, raw_str))
 			info_string = f'''🔕 Notifications *disabled* for *{raw_str}*.
@@ -981,6 +1010,9 @@ def notify(msg):
 			You have enabled notifications for all flights previously; you will continue to receive notifications for all flights,
 			except for the ones you have disabled. To re-enable notifications for *{raw_str}*, simply send this same command again.
 			'''
+
+			if debugLog:
+				logging.info(f'🔀 chat {chat} disabled keyword={raw_str}. all_flag=True, defaulted to disable.')
 
 		bot.sendMessage(chat, inspect.cleandoc(info_string), parse_mode='Markdown')
 
@@ -1320,8 +1352,8 @@ def spxAPIHandler():
 	# parse all launches one-by-one in the returned json-file
 	multiParse(launch_json, len(launch_json))
 
-	if debugLog:
-		logging.info('🔀 SpaceX database updated')
+	#if debugLog:
+	#	logging.info('🔀 SpaceX database updated')
 
 	# update stats
 	updateStats({'API_requests':1, 'db_updates':1, 'data':len(API_RESPONSE.content)})
@@ -1464,7 +1496,7 @@ def spxInfoStrGen(launch_name, run_count):
 		try:
 			int(reuses[0])
 			if int(reuses[0]) > 0:
-				center_reuses = f"♻️x{int(reuses[0]) - 1}"
+				center_reuses = f"♻️x{int(reuses[0])}"
 			else:
 				center_reuses = f'✨ new'
 		except:
@@ -1473,7 +1505,7 @@ def spxInfoStrGen(launch_name, run_count):
 		try:
 			int(reuses[1])
 			if int(reuses[1]) > 0:
-				booster1_reuses = f"♻️x{int(reuses[1]) - 1}"
+				booster1_reuses = f"♻️x{int(reuses[1])}"
 			else:
 				booster1_reuses = f'✨ new'
 		except:
@@ -1482,7 +1514,7 @@ def spxInfoStrGen(launch_name, run_count):
 		try:
 			int(reuses[2])
 			if int(reuses[2]) > 0:
-				booster2_reuses = f"♻️x{int(reuses[2]) - 1}"
+				booster2_reuses = f"♻️x{int(reuses[2])}"
 			else:
 				booster2_reuses = f'✨ new'
 		except:
@@ -1545,9 +1577,9 @@ def spxInfoStrGen(launch_name, run_count):
 		try:
 			int(reuses)
 			if int(reuses) > 0:
-				reuses = f"♻️x{int(reuses) - 1}"
+				reuses = f"♻️x{int(reuses)}"
 			else:
-				reuses = f'✨ *new*'
+				reuses = f'✨ new'
 		except:
 			reuses = f'♻️ ?'
 
@@ -1567,7 +1599,7 @@ def spxInfoStrGen(launch_name, run_count):
 		if 'Dragon' in db_match[8]: # check if it's a Dragon flight
 			dragon_info = db_match[8].split('/')
 			dragon_serial = 'Unknown' if dragon_info[1] == 'None' else dragon_info[1]
-			dragon_reused = '♻️ *reused*' if dragon_info[2] == 'True' else '✨ *new*'
+			dragon_reused = '♻️ *reused*' if dragon_info[2] == 'True' else '✨ new'
 			dragon_crew = dragon_info[3]
 			
 			crew_str = ''
@@ -1755,6 +1787,14 @@ def getLaunchUpdates(launch_ID):
 	except Exception as e:
 		if debugLog:
 			logging.info(f'🛑 Error in API request: {e}')
+			logging.info(f'⚠️ Trying again after 3 seconds...')
+
+		time.sleep(3)
+		getLaunchUpdates(None)
+
+		if debugLog:
+			logging.info(f'✅ Success!')
+		
 		return
 
 	# pull json, dump for later inspection
@@ -1777,9 +1817,9 @@ def getLaunchUpdates(launch_ID):
 	elif len(launch_json['launches']) >= 1:
 		multiParse(launch_json, len(launch_json['launches']))
 
-	if debugLog:
-		elapsed = abs(datetime.datetime.today() - t_start).microseconds / 1000000
-		logging.info(f'🕐 Launch database updated. Took {elapsed:.2f} seconds.')
+	#if debugLog:
+		#elapsed = abs(datetime.datetime.today() - t_start).microseconds / 1000000
+		#logging.info(f'🕐 Launch database updated. Took {elapsed:.2f} seconds.')
 
 	updateStats({'API_requests':1, 'db_updates':1, 'data':len(API_RESPONSE.content)})
 	return
@@ -1938,7 +1978,7 @@ def notificationHandler(launch_row, notif_class):
 	message_header = f'🚀 *{launch_name}* is launching in *{t_minus} {time_format}*\n'
 	message_header += f'*Launch provider* {lsp_str} {lsp_flag}\n*Vehicle* {vehicle_name}\n*Pad* {pad_name}'
 	message_footer = f'*🕓 The launch is scheduled* for `{launch_time} UTC`\n'
-	message_footer += f'*🔕 To disable notifications* for {lsp}: `/notify {lsp_name}`'
+	message_footer += f'*🔕 To disable:* `/notify {lsp_name}`'
 	launch_str = message_header + '\n\n' + info_text + '\n\n' + message_footer
 
 	# if NOT a SpaceX launch and we're close to launch, add the video URL
@@ -1946,13 +1986,16 @@ def notificationHandler(launch_row, notif_class):
 		# a different kind of message for 60m and 5m messages, which contain the video url (if one is available)
 		if notif_class in ['1h', '5m'] and launch_row[-1] != '': # if we're close to launch, add the video URL
 			vid_str = f'🔴 *Watch the launch live!*\n{launch_row[-1]}'
+			launch_str = message_header + '\n\n' + vid_str + '\n\n' + info_text + '\n\n' + message_footer
 
 		# no video provided, probably a Chinese launch
 		elif notif_class in ['5m'] and launch_row[-1] == '':
 			vid_str = '🔇 *No live video* available for this launch.'
-		
-		launch_str = message_header + '\n\n' + vid_str + '\n\n' + info_text + '\n\n' + message_footer
+			launch_str = message_header + '\n\n' + vid_str + '\n\n' + info_text + '\n\n' + message_footer
 
+		else:
+			launch_str = message_header + '\n\n' + info_text + '\n\n' + message_footer			
+		
 	# if it's a SpaceX launch
 	else:
 		if notif_class in ['24h', '12h']:
@@ -2032,7 +2075,7 @@ def notificationHandler(launch_row, notif_class):
 				time.sleep(1)
 				bot.sendMessage(chat, launch_str, parse_mode='Markdown')
 				if debugLog:
-					logging.info(f'⚠️ Sent message!')
+					logging.info(f'✅ Sent message!')
 			except:
 				if debugLog:
 					logging.info(f'🛑 Failed sending message twice in a row. Not trying again.')
@@ -2185,9 +2228,8 @@ def statistics(msg):
 	API requests made: {api_reqs}
 
 	💾 *Database statistics*
-	Database sizes: {db_sizes:.2f} {db_size_class}
 	Database updates: {db_updates}
-	Database calls: {db_calls}
+	Storage used: {db_sizes:.2f} {db_size_class}
 
 	🎛 *Server information*
 	{up_str}
@@ -2473,8 +2515,9 @@ def main():
 	global valid_commands, valid_commands_alt
 	
 	valid_commands = [
-	'/info', '/start', '/help', 
-	'/next', '/notify', '/statistics', '/schedule'
+	'/start', '/help', 
+	'/next', '/notify',
+	'/statistics', '/schedule'
 	]
 
 	# generate the "alternate" commands we listen for, as in ones suffixed with the bot's username 
