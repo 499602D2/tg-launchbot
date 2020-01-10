@@ -34,14 +34,14 @@ def handle(msg):
 	try:
 		content_type, chat_type, chat = telepot.glance(msg, flavor="chat")
 	except KeyError:
-		if debugLog:
+		if debug_log:
 			logging.info(f'KeyError in handle(): {msg}')
 		return
 
 	# for admin/private chat checks; also might throw an error when kicked out of a group, so handle that here as well
 	try:
 		sender = bot.getChatMember(chat, msg['from']['id'])
-		chatType = bot.getChat(chat)['type']
+		chat_type = bot.getChat(chat)['type']
 	
 	except telepot.exception.BotWasKickedError:
 		# bot kicked; remove corresponding chat IDs from notification database
@@ -52,33 +52,33 @@ def handle(msg):
 		conn.commit()
 		conn.close()
 
-		if debugLog:
+		if debug_log:
 			logging.info(f'⚠️ Bot removed from chat {chat} – notifications database cleaned.')
 		return
 
 	# group upgraded to a supergroup; migrate data
 	if 'migrate_to_chat_id' in msg:
-		oldID = chat
-		newID = msg['migrate_to_chat_id']
+		old_ID = chat
+		new_ID = msg['migrate_to_chat_id']
 
-		if debugLog:
-			logging.info(f'⚠️ Group {oldID} migrated to {newID} - starting database migration...')
+		if debug_log:
+			logging.info(f'⚠️ Group {old_ID} migrated to {new_ID} - starting database migration...')
 
 		# Establish connection
 		conn = sqlite3.connect(os.path.join('data/launch', 'notifications.db'))
 		c = conn.cursor()
 
 		# replace old IDs with new IDs
-		c.execute("UPDATE notify SET chat = ? WHERE chat = ?", (newID, oldID))
+		c.execute("UPDATE notify SET chat = ? WHERE chat = ?", (new_ID, old_ID))
 		conn.commit()
 		conn.close()
 
-		if debugLog:
+		if debug_log:
 			logging.info('✅ Chat data migration complete!')
 
 	# bot removed from chat
-	if 'left_chat_member' in msg and msg['left_chat_member']['id'] == botID:
-		if debugLog:
+	if 'left_chat_member' in msg and msg['left_chat_member']['id'] == bot_ID:
+		if debug_log:
 			logging.info(f'⚠️ Bot removed from chat.')
 
 		# bot kicked; remove corresponding chat IDs from notification database
@@ -89,7 +89,7 @@ def handle(msg):
 		conn.commit()
 		conn.close()
 
-		if debugLog:
+		if debug_log:
 			logging.info(f'⚠️ Bot removed from chat {chat} – notifications database cleaned.')
 		return
 
@@ -97,13 +97,13 @@ def handle(msg):
 	if 'new_chat_members' in msg or 'group_chat_created' in msg:
 		if 'new_chat_member' in msg:
 			try:
-				if botID in msg['new_chat_member']['id']:
+				if bot_ID in msg['new_chat_member']['id']:
 					pass
 				else:
 					return
 			
 			except TypeError:
-				if msg['new_chat_member']['id'] == botID:
+				if msg['new_chat_member']['id'] == bot_ID:
 					pass
 				else:
 					return
@@ -130,20 +130,20 @@ def handle(msg):
 		
 		bot.sendMessage(chat, inspect.cleandoc(reply_msg), parse_mode='Markdown')
 
-		if debugLog:
+		if debug_log:
 			logging.info(f'🌟 Bot added to a new chat! chat_id={chat}')
 	
 	try:
 		command_split = msg['text'].strip().split(" ")
 	except Exception as e:
-		if debugLog:
+		if debug_log:
 			logging.info(f'🛑 Error generating command split, returning: {e}')
 		
 		return
 
 	# regular text, pass
 	if content_type == 'text' and command_split[0][0] != '/':
-		if debugLog:
+		if debug_log:
 			logging.info(f'❔ Received text, not a command, chat={chat}, text: "{msg["text"]}". Returning.')
 		return
 	
@@ -155,13 +155,13 @@ def handle(msg):
 
 			# check timers
 			if not timerHandle(command, chat):
-				if debugLog:
+				if debug_log:
 					logging.info(f'✋ Spam prevented from chat {chat}. Command: {command}, returning.')
 				return
 
 			# check if sender is an admin/creator, and/or if we're in a public chat
-			if chatType != 'private' and sender['status'] != 'creator' and sender['status'] != 'administrator':
-				if debugLog:
+			if chat_type != 'private' and sender['status'] != 'creator' and sender['status'] != 'administrator':
+				if debug_log:
 					logging.info(f'✋ {command} called by a non-admin in {chat}, returning.')
 				return
 			else:
@@ -170,7 +170,7 @@ def handle(msg):
 			# store statistics here, so our stats database can't be spammed either
 			updateStats({'commands':1})
 
-			if debugLog:
+			if debug_log:
 				if msg['from']['id'] != 421341996 and command != '/start':
 					logging.info(f'🕹 {command} called by {chat}')
 
@@ -178,7 +178,7 @@ def handle(msg):
 			if command in [valid_commands[0], valid_commands_alt[0], valid_commands[1], valid_commands_alt[1]]:
 				# log new chats
 				if command in [valid_commands[0], valid_commands_alt[0]]:
-					if debugLog:
+					if debug_log:
 						logging.info(f'🌟 Bot added to a new chat, chat_id={chat} (/start)')
 
 				# construct info message
@@ -227,7 +227,7 @@ def handle(msg):
 			return
 
 		else:
-			if debugLog:
+			if debug_log:
 				logging.info(f'❔ Unknown command received in chat {chat}: {command}. Returning.')
 			return
 
@@ -239,52 +239,50 @@ def timerHandle(command, chat):
 	chat = str(chat)
 
 	if '@' in command:
-		command = command.split('@')
-		command = command[0]
+		command = command.split('@')[0]
 
 	# get current time
 	now_called = datetime.datetime.today()
 
 	# check if settings.json exists; if not, generate it
 	if not os.path.isfile('data/command-timers.json'):
-		with open('data/command-timers.json', 'w') as jsonData:
-			settingMap = {} # empty .json file
+		with open('data/command-timers.json', 'w') as json_data:
+			setting_map = {} # empty .json file
 			
 			# generate fields
-			settingMap['commandTimers'] = {}
+			setting_map['commandTimers'] = {}
 			for command in valid_commands:
 				command = command.replace('/','')
-				settingMap['commandTimers'][command] = '0.35'
+				setting_map['commandTimers'][command] = '0.35'
 			
-			json.dump(settingMap, jsonData, indent=4)
+			json.dump(setting_map, json_data, indent=4)
 
 	# load settings
-	with open('data/command-timers.json', 'r') as jsonData:
-		settingMap = json.load(jsonData)
+	with open('data/command-timers.json', 'r') as json_data:
+		setting_map = json.load(json_data)
 
 	# load timer for command
 	try:
-		timer = float(settingMap['commandTimers'][command])
+		timer = float(setting_map['commandTimers'][command])
 	
 	except KeyError:
-		with open('data/command-timers.json', 'w') as jsonData:
-			settingMap['commandTimers'][command] = '0.35'
-			json.dump(settingMap, jsonData, indent=4)
+		with open('data/command-timers.json', 'w') as json_data:
+			setting_map['commandTimers'][command] = '0.35'
+			json.dump(setting_map, json_data, indent=4)
 
-		timer = float(settingMap['commandTimers'][command])
+		timer = float(setting_map['commandTimers'][command])
 
 	if timer <= -1:
 		return False
 
-	####################################################
-	# checking if the command has been called previously
 
+	# checking if the command has been called previously
 	# load time the command was previously called
 	if not os.path.isfile('data/last-called.json'):
-		with open('data/last-called.json', 'w') as jsonData:
+		with open('data/last-called.json', 'w') as json_data:
 			lastMap = {}
 			if chat not in lastMap:
-				if debugLog:
+				if debug_log:
 					logging.info(f'🌟 New chat detected! chat_id={chat}')
 				lastMap[chat] = {}
 
@@ -292,10 +290,10 @@ def timerHandle(command, chat):
 			if command not in lastMap[chat]:
 				lastMap[chat][command] = '0'
 
-			json.dump(lastMap, jsonData, indent=4)
+			json.dump(lastMap, json_data, indent=4)
 
-	with open('data/last-called.json') as jsonData:
-		lastMap = json.load(jsonData)
+	with open('data/last-called.json') as json_data:
+		lastMap = json.load(json_data)
 
 	try:
 		last_called = lastMap[chat][command]
@@ -310,8 +308,8 @@ def timerHandle(command, chat):
 
 	if last_called == '0': # never called; store now
 		lastMap[chat][command] = str(now_called) # stringify datetime object, store
-		with open('data/last-called.json', 'w') as jsonData:
-			json.dump(lastMap, jsonData, indent=4)
+		with open('data/last-called.json', 'w') as json_data:
+			json.dump(lastMap, json_data, indent=4)
 	
 	else:
 		last_called = datetime.datetime.strptime(last_called, "%Y-%m-%d %H:%M:%S.%f") # unstring datetime object
@@ -319,8 +317,8 @@ def timerHandle(command, chat):
 
 		if time_since.seconds > timer:
 			lastMap[chat][command] = str(now_called) # stringify datetime object, store
-			with open('data/last-called.json', 'w') as jsonData:
-				json.dump(lastMap, jsonData, indent=4)
+			with open('data/last-called.json', 'w') as json_data:
+				json.dump(lastMap, json_data, indent=4)
 		else:
 			return False
 
@@ -330,10 +328,10 @@ def timerHandle(command, chat):
 # display a very simple schedule for upcoming flights (all)
 def flightSchedule(msg):
 	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
-	launchDir = 'data/launch'
+	launch_dir = 'data/launch'
 
 	# open db connection
-	conn = sqlite3.connect(os.path.join(launchDir, 'launches.db'))
+	conn = sqlite3.connect(os.path.join(launch_dir, 'launches.db'))
 	c = conn.cursor()
 
 	# perform the select; if cmd == all, just pull the next launch
@@ -341,11 +339,11 @@ def flightSchedule(msg):
 	c.execute('SELECT * FROM launches WHERE NET >= ?',(today_unix,))
 	
 	# sort ascending by NET, pick smallest 5
-	queryReturn = c.fetchall()
+	query_return = c.fetchall()
 	conn.close()
 
 	# sort in place by NET
-	queryReturn.sort(key=lambda tup: tup[9])
+	query_return.sort(key=lambda tup: tup[9])
 
 	# map months numbers to strings
 	month_map = {
@@ -356,7 +354,7 @@ def flightSchedule(msg):
 
 	# pick 5 smallest, map into dict with dates
 	sched_dict = {}
-	for row, i in zip(queryReturn, range(len(queryReturn))):
+	for row, i in zip(query_return, range(len(query_return))):
 		if i > 5:
 			break
 
@@ -389,7 +387,6 @@ def flightSchedule(msg):
 			suffix = 'th'
 
 		schedule_msg += f'*{month_map[int(ymd_split[1])]} {ymd_split[2]}{suffix}*\n'
-		#schedule_msg += f'*{key}*\n'
 		for mission, j in zip(val, range(len(val))):
 			if j != 0:
 				schedule_msg += '\n'
@@ -405,7 +402,7 @@ def flightSchedule(msg):
 # handles /next by polling the launch database
 def nextFlight(msg):
 	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
-	launchDir = 'data/launch'
+	launch_dir = 'data/launch'
 
 	command_split = msg['text'].strip().split(" ")
 	cmd = ' '.join(command_split[1:])
@@ -420,33 +417,30 @@ def nextFlight(msg):
 		cmd = 'all'
 
 	else:
-		bot.sendMessage(chat, '⚠️ Not a valid query type – currently supported queries are `/notify` and `/notify all`.', parse_mode='Markdown')
+		bot.sendMessage(chat, '⚠️ Not a valid query type – currently supported queries are `/next` and `/next all`.', parse_mode='Markdown')
 		return
-
-	# check if input is valid; if input is none, show the next launch the user is interested in
-	# initially, only support all and none
 
 	# if command was "all", no need to perform a special select
 	# if no command, we'll need to figure out what LSPs the user has set notifs for
-	notifyConn = sqlite3.connect(os.path.join(launchDir,'notifications.db'))
-	notifyCursor = notifyConn.cursor()
-	notifyCursor.execute('''SELECT * FROM notify WHERE chat = ?''', (chat,))
+	notify_conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
+	notify_cursor = notify_conn.cursor()
+	notify_cursor.execute('''SELECT * FROM notify WHERE chat = ?''', (chat,))
 	
-	queryReturn = notifyCursor.fetchall()
-	notifyConn.close()
+	query_return = notify_cursor.fetchall()
+	notify_conn.close()
 
 	# flag for all notifications enabled
 	all_flag = False
 
 	# chat has no enabled notifications; pull from all
-	if len(queryReturn) == 0:
+	if len(query_return) == 0:
 		cmd, user_notif_enabled = 'all', False
 		enabled, disabled = [], []
 
 	else:
 		notif_providers, user_notif_enabled = [], None
 		enabled, disabled = [], []
-		for row in queryReturn:
+		for row in query_return:
 			# chat ID - keyword - UNIX timestamp - enabled true/false
 			if row[1].lower() == 'all' and row[3] == 1:
 				all_flag, user_notif_enabled = True, True
@@ -468,7 +462,7 @@ def nextFlight(msg):
 		cmd = 'all'
 
 	# open db connection
-	conn = sqlite3.connect(os.path.join(launchDir, 'launches.db'))
+	conn = sqlite3.connect(os.path.join(launch_dir, 'launches.db'))
 	c = conn.cursor()
 
 	# datetimes
@@ -491,10 +485,10 @@ def nextFlight(msg):
 			c.execute(query_str, notif_providers)
 
 	# sort ascending by NET, pick smallest
-	queryReturn = c.fetchall()
-	if len(queryReturn) > 0:
-		queryReturn.sort(key=lambda tup: tup[9])
-		queryReturn = queryReturn[0]
+	query_return = c.fetchall()
+	if len(query_return) > 0:
+		query_return.sort(key=lambda tup: tup[9])
+		query_return = query_return[0]
 	else:
 		provider_str = '\n\t\t- '.join(notif_providers)
 		msg_text = f'''⚠️ No upcoming launches with a NET-date specified found.
@@ -511,12 +505,12 @@ def nextFlight(msg):
 	conn.close()
 
 	# pull relevant info from query return
-	mission_name = queryReturn[0].strip()
-	lsp_id = queryReturn[2]
-	lsp_name = queryReturn[3]
-	vehicle_name = queryReturn[5]
-	pad_name = queryReturn[6]
-	info = queryReturn[7]
+	mission_name = query_return[0].strip()
+	lsp_id = query_return[2]
+	lsp_name = query_return[3]
+	vehicle_name = query_return[5]
+	pad_name = query_return[6]
+	info = query_return[7]
 
 	if lsp_name == 'SpaceX':
 		spx_info_str = spxInfoStrGen(mission_name, 0)
@@ -539,12 +533,12 @@ def nextFlight(msg):
 		elif lsp_name in disabled:
 			user_notif_enabled = False
 		else:
-			if debugLog:
+			if debug_log:
 				logging.info(f'⚠️ failed to set user_notif_enabled: lsp: {lsp_name}, diff: {difflib.get_close_matches(lsp_name, notif_providers)}\
 					, notif_providers: {notif_providers}')
 			user_notif_enabled = False
 
-	launch_unix = datetime.datetime.utcfromtimestamp(queryReturn[9])
+	launch_unix = datetime.datetime.utcfromtimestamp(query_return[9])
 	if launch_unix.second == 0:
 		if launch_unix.minute < 10:
 			min_time = f'0{launch_unix.minute}'
@@ -565,7 +559,7 @@ def nextFlight(msg):
 
 		launch_time = f'{launch_unix.hour}:{min_time}.{sec_time}'
 
-	net_stamp = datetime.datetime.fromtimestamp(queryReturn[9])
+	net_stamp = datetime.datetime.fromtimestamp(query_return[9])
 	eta = abs(datetime.datetime.today() - net_stamp)
 
 	if eta.days >= 365: # over 1 year
@@ -702,17 +696,17 @@ def nextFlight(msg):
 # handles the /notify command, i.e. toggles notifications
 def notify(msg):
 	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
-	launchDir = 'data/launch'
+	launch_dir = 'data/launch'
 
 	bot.sendChatAction(chat, action='typing')
 
 	# check if notification database exists
-	if not os.path.isfile(os.path.join(launchDir,'notifications.db')):
+	if not os.path.isfile(os.path.join(launch_dir,'notifications.db')):
 		createNotifyDatabase()
 
 	# connect to database
-	notifyConn = sqlite3.connect(os.path.join(launchDir,'notifications.db'))
-	notifyCursor = notifyConn.cursor()
+	notify_conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
+	notify_cursor = notify_conn.cursor()
 
 	# split input
 	command_split = msg['text'].strip().split(" ")
@@ -804,14 +798,14 @@ def notify(msg):
 	# if no input, simply list all enabled notifications; if all-flag is set, list the disabled notifications
 	if len(notify_text) == 0:
 		# pull all entries from the notification database that contain the chat ID and are enabled
-		notifyCursor.execute("SELECT * FROM notify WHERE chat = ?", (chat,))
+		notify_cursor.execute("SELECT * FROM notify WHERE chat = ?", (chat,))
 
 		# construct a list of enabled notification
 		info_message = ''
-		queryReturn = notifyCursor.fetchall()
+		query_return = notify_cursor.fetchall()
 
 		enabled_notifs, disabled_notifs = [], []
-		for row in queryReturn:
+		for row in query_return:
 			if row[3] == 1:
 				enabled_notifs.append(row[1])
 			else:
@@ -843,7 +837,7 @@ def notify(msg):
 			info_message = info_message + '\n*For a list of supported notifications:* `/notify help`.'
 
 			bot.sendMessage(chat, inspect.cleandoc(info_message), parse_mode='Markdown')
-			notifyConn.close()
+			notify_conn.close()
 			return
 
 		# all_flag enabled, list disabled notifications only
@@ -872,7 +866,7 @@ def notify(msg):
 				'''
 
 			bot.sendMessage(chat, inspect.cleandoc(info_message), parse_mode='Markdown')
-			notifyConn.close()
+			notify_conn.close()
 			return
 
 	# get close matches to our input
@@ -889,45 +883,45 @@ def notify(msg):
 
 	else: # found a close match, continue
 		if len(close_matches) == 1:
-			if debugLog:
+			if debug_log:
 				logging.info(f'ℹ️ User mistype corrected: {raw_str} -> {close_matches[0]}')
 			notify_text, raw_str = close_matches[0], close_matches[0]
 			pass
 		
 		else: # multiple close matches, ask user what they meant
 			meant_str = ' or '.join(close_matches)
-			if debugLog:
+			if debug_log:
 				logging.info(f'ℹ️ User mistype corrected: "{meant_str}"')
 			bot.sendMessage(chat, f'⚠️ Did you mean {meant_str}?')
 			return
 
 
 	# pull all entries from the notification database that contain the chat ID and notify_text
-	notifyCursor.execute("SELECT * FROM notify WHERE chat = ? AND keyword = ? OR chat = ? AND keyword = ?", (chat, raw_str, chat, 'All'))
+	notify_cursor.execute("SELECT * FROM notify WHERE chat = ? AND keyword = ? OR chat = ? AND keyword = ?", (chat, raw_str, chat, 'All'))
 
 	# n rows, in the form of chat ID - keyword - UNIX-timestamp - enabled
-	queryReturn = notifyCursor.fetchall()
+	query_return = notify_cursor.fetchall()
 
 	# check if the chat has the all-flag set to enabled
 	all_flag, parsed_query_return = False, []
-	for row, i in zip(queryReturn, range(len(queryReturn))):
+	for row, i in zip(query_return, range(len(query_return))):
 		if 'All' in row[1]:
 			if row[3] == 1:
 				all_flag = True
 			else:
 				all_flag = False
 			
-			if len(queryReturn) == 1 and raw_str == 'All':
+			if len(query_return) == 1 and raw_str == 'All':
 				parsed_query_return.append([row[0], row[1], row[2], row[3]])
 		else:
 			parsed_query_return.append([row[0], row[1], row[2], row[3]])
 
-	queryReturn = tuple(parsed_query_return)
+	query_return = tuple(parsed_query_return)
 
 	# check if the notification string can already be found; if it is, just do as we normally would
-	if len(queryReturn) > 0:
+	if len(query_return) > 0:
 		# if enabled, disable, and vice versa
-		new_status = 0 if queryReturn[0][3] == 1 else 1
+		new_status = 0 if query_return[0][3] == 1 else 1
 		notify_status = 'enabled' if new_status == 1 else 'disabled'
 		notify_icon = {0:'🔕', 1:'🔔'}[new_status]
 
@@ -972,16 +966,16 @@ def notify(msg):
 			{extra_info_str}
 			'''
 
-		if debugLog:
+		if debug_log:
 			logging.info(f'🔀 chat {chat} set keyword={raw_str} to {new_status}')
 
-		notifyCursor.execute("UPDATE notify SET enabled = ? WHERE chat = ? AND keyword = ?", (new_status, chat, raw_str))
+		notify_cursor.execute("UPDATE notify SET enabled = ? WHERE chat = ? AND keyword = ?", (new_status, chat, raw_str))
 		bot.sendMessage(chat, inspect.cleandoc(info_string), parse_mode='Markdown')
 
 	# notification can't be found; insert as new
 	else:
 		if raw_str == 'All':
-			notifyCursor.execute("INSERT INTO notify (chat, keyword, lastnotified, enabled) VALUES (?, ?, 0, 1)", (chat, raw_str))
+			notify_cursor.execute("INSERT INTO notify (chat, keyword, lastnotified, enabled) VALUES (?, ?, 0, 1)", (chat, raw_str))
 
 			info_string = f'''🔔 Notifications *enabled* for all flights!
 			
@@ -989,35 +983,35 @@ def notify(msg):
 			The first notification is sent 24 hours before a flight.
 			'''
 
-			if debugLog:
+			if debug_log:
 				logging.info(f'🔀 chat {chat} enabled keyword={raw_str} for the first time. all_flag=False')
 
 		elif not all_flag:
-			notifyCursor.execute("INSERT INTO notify (chat, keyword, lastnotified, enabled) VALUES (?, ?, 0, 1)", (chat, raw_str))
+			notify_cursor.execute("INSERT INTO notify (chat, keyword, lastnotified, enabled) VALUES (?, ?, 0, 1)", (chat, raw_str))
 			info_string = f'''🔔 Notifications *enabled* for *{raw_str}*.
 
 			You will now be notified for all flights of {raw_str}. 
 			The first notification is sent 24 hours before a flight.
 			'''
 
-			if debugLog:
+			if debug_log:
 				logging.info(f'🔀 chat {chat} enabled keyword={raw_str} for the first time. all_flag=False')
 
 		else:
-			notifyCursor.execute("INSERT INTO notify (chat, keyword, lastnotified, enabled) VALUES (?, ?, 0, 0)", (chat, raw_str))
+			notify_cursor.execute("INSERT INTO notify (chat, keyword, lastnotified, enabled) VALUES (?, ?, 0, 0)", (chat, raw_str))
 			info_string = f'''🔕 Notifications *disabled* for *{raw_str}*.
 
 			You have enabled notifications for all flights previously; you will continue to receive notifications for all flights,
 			except for the ones you have disabled. To re-enable notifications for *{raw_str}*, simply send this same command again.
 			'''
 
-			if debugLog:
+			if debug_log:
 				logging.info(f'🔀 chat {chat} disabled keyword={raw_str}. all_flag=True, defaulted to disable.')
 
 		bot.sendMessage(chat, inspect.cleandoc(info_string), parse_mode='Markdown')
 
-	notifyConn.commit()
-	notifyConn.close()
+	notify_conn.commit()
+	notify_conn.close()
 	return
 
 
@@ -1034,17 +1028,14 @@ def launchUpdateCheck():
 		# if T- < 1 hour, notify (if not notified)
 		# if T- < 5 minutes, notify (if not notified)
 
-	launchDir = 'data/launch'
-	if not os.path.isfile(os.path.join(launchDir, 'launches.db')):
+	launch_dir = 'data/launch'
+	if not os.path.isfile(os.path.join(launch_dir, 'launches.db')):
 		createLaunchDatabase()
 		getLaunchUpdates(None)
 
 	# Establish connection to the launch database
-	conn = sqlite3.connect(os.path.join(launchDir, 'launches.db'))
+	conn = sqlite3.connect(os.path.join(launch_dir, 'launches.db'))
 	c = conn.cursor()
-
-	# SELECT ALL THAT ARE LESS THAN 24 HOURS FROM NOW
-	# also select all the notification statuses, check if we might need to update
 
 	# Select all launches from the database that have a T- of less than 24 hours and 15 seconds
 	Tminus_threshold_24h = 24*3600 + 15
@@ -1065,24 +1056,16 @@ def launchUpdateCheck():
 		NET <= {unix_12h_threshold} AND NET >= {now_timestamp} AND notify12h = 0 OR 
 		NET <= {unix_60m_threshold} AND NET >= {now_timestamp} AND notify60min = 0 OR
 		NET <= {unix_5m_threshold} AND NET >= {now_timestamp} AND notify5min = 0''')
-	
-	# old call based on T-; not dynamic 
-	#c.execute(f'''SELECT * FROM launches 
-	#	WHERE 
-	#	Tminus <= {Tminus_threshold_24h} AND Tminus > 0 AND notify24h = 0 OR
-	#	Tminus <= {Tminus_threshold_12h} AND Tminus > 0 AND notify12h = 0 OR 
-	#	Tminus <= {Tminus_threshold_1h} AND Tminus > 0 AND notify60min = 0 OR
-	#	Tminus <= {Tminus_threshold_5m} AND Tminus > 0 AND notify5min = 0''')
 
-	queryReturn = c.fetchall()
-	if len(queryReturn) == 0:
+	query_return = c.fetchall()
+	if len(query_return) == 0:
 		updateStats({'db_calls': 1})
 		return
 
 	# we presumably have at least one launch now that has an unsent notification
 	# update the database, then check again
-	if debugLog:
-		logging.info(f'⏰ Found {len(queryReturn)} pending notifications... Updating database to verify.')
+	if debug_log:
+		logging.info(f'⏰ Found {len(query_return)} pending notifications... Updating database to verify.')
 	
 	getLaunchUpdates(None)
 	c.execute(f'''SELECT * FROM launches 
@@ -1091,24 +1074,17 @@ def launchUpdateCheck():
 		NET <= {unix_12h_threshold} AND NET >= {now_timestamp} AND notify12h = 0 OR 
 		NET <= {unix_60m_threshold} AND NET >= {now_timestamp} AND notify60min = 0 OR
 		NET <= {unix_5m_threshold} AND NET >= {now_timestamp} AND notify5min = 0''')
-
-	#c.execute(f'''SELECT * FROM launches 
-	#	WHERE 
-	#	Tminus <= {Tminus_threshold_24h} AND Tminus > 0 AND notify24h = 0 OR
-	#	Tminus <= {Tminus_threshold_12h} AND Tminus > 0 AND notify12h = 0 OR 
-	#	Tminus <= {Tminus_threshold_1h} AND Tminus > 0 AND notify60min = 0 OR
-	#	Tminus <= {Tminus_threshold_5m} AND Tminus > 0 AND notify5min = 0''')
 	
 	updateStats({'db_calls': 2})
-	queryReturn = c.fetchall()
-	if len(queryReturn) == 0:
+	query_return = c.fetchall()
+	if len(query_return) == 0:
 		return
 
-	for row in queryReturn:
+	for row in query_return:
 		# decide which notification to send
-		curr_Tminus = queryReturn[0][10]
-		NET = queryReturn[0][9]
-		status_24h, status_12h, status_1h, status_5m = queryReturn[0][11], queryReturn[0][12], queryReturn[0][13], queryReturn[0][14]
+		curr_Tminus = query_return[0][10]
+		NET = query_return[0][9]
+		status_24h, status_12h, status_1h, status_5m = query_return[0][11], query_return[0][12], query_return[0][13], query_return[0][14]
 
 		notif_class = []
 		if NET <= unix_24h_threshold and status_24h == 0:
@@ -1122,7 +1098,7 @@ def launchUpdateCheck():
 			if now_timestamp - NET > 0:
 				if now_timestamp - NET > 600:
 					notif_class = []
-					if debugLog:
+					if debug_log:
 						logging.info(f'🛑 Launch happened {now_timestamp - NET} seconds ago; aborted notification sending. id: {row[1]}')
 
 					return
@@ -1130,25 +1106,16 @@ def launchUpdateCheck():
 					notif_class.append('5m')
 			else:
 				notif_class.append('5m')
-
-		#if curr_Tminus <= Tminus_threshold_24h and status_24h == 0:
-		#	notif_class.append('24h')
-		#if curr_Tminus <= Tminus_threshold_12h and status_12h == 0:
-		#	notif_class.append('12h')
-		#if curr_Tminus <= Tminus_threshold_1h and status_1h == 0:
-		#	notif_class.append('1h')
-		#if curr_Tminus <= Tminus_threshold_5m and status_5m == 0:
-		#	notif_class.append('5m')
 		
 		if len(notif_class) == 0:
-			if debugLog:
-				logging.info(f'⚠️ Error setting notif_class in notificationHandler(): curr_Tminus:{curr_Tminus}, launch:{queryReturn[0][1]}.\
+			if debug_log:
+				logging.info(f'⚠️ Error setting notif_class in notificationHandler(): curr_Tminus:{curr_Tminus}, launch:{query_return[0][1]}.\
 				 24h: {status_24h}, 12h: {status_12h}, 1h: {status_1h}, 5m: {status_5m}')
 			
 			return
 
 		else:
-			if debugLog:
+			if debug_log:
 				logging.info(f'✅ Set {len(notif_class)} notif_classes. Timestamp: {now_timestamp}, flt NET: {NET}')
 
 		notificationHandler(row, notif_class)
@@ -1184,12 +1151,12 @@ def spxAPIHandler():
 
 	def multiParse(json, launch_count):
 		# check if db exists
-		launchDir = 'data/launch'
-		if not os.path.isfile(os.path.join(launchDir, 'spx-launches.db')):
+		launch_dir = 'data/launch'
+		if not os.path.isfile(os.path.join(launch_dir, 'spx-launches.db')):
 			createSPXDatabase()
 
 		# open connection
-		conn = sqlite3.connect(os.path.join(launchDir, 'spx-launches.db'))
+		conn = sqlite3.connect(os.path.join(launch_dir, 'spx-launches.db'))
 		c = conn.cursor()
 
 		# launch, id, keywords, countrycode, NET, T-, notify24hour, notify12hour, notify60min, notify5min, success, launched, hold
@@ -1210,9 +1177,6 @@ def spxAPIHandler():
 				orbit = launch['rocket']['second_stage']['payloads'][0]['orbit']
 			except:
 				orbit = '?'
-
-			#print(f'{launch_num}')
-			#print(f"launch[rocket][fairings]: {launch['rocket']['fairings']}")
 			
 			try:
 				fairing_reused = launch['rocket']['fairings']['reused']
@@ -1284,14 +1248,6 @@ def spxAPIHandler():
 						serials = serials + ','
 						landing_intents = landing_intents + ','
 
-					'''
-					print(inspect.cleandoc(f"""Constructed booster information strings:
-						reuses: {reuses}
-						serials: {serials}
-						landing_intents: {landing_intents}
-						"""))
-
-					'''
 			else:
 				reuses, serials, landing_intents = None, None, None
 
@@ -1334,26 +1290,18 @@ def spxAPIHandler():
 	API_VERSION = 'v3'
 
 	# construct the call URL
-	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{constructParams(PARAMS)}' #&{fields}
+	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{constructParams(PARAMS)}'
 	
 	try: # perform the API call
 		API_RESPONSE = requests.get(API_CALL)
 	except Exception as e:
-		if debugLog:
+		if debug_log:
 			logging.info(f'🛑 Error in r/SpaceX API request: {e}')
 		return
 
-	# dump the json for later inspection
-	launch_json = API_RESPONSE.json()
-	
-	#with open(os.path.join('spacex_launch_cache.json'), 'w') as json_store:
-	#	json.dump(launch_json, json_store, indent=4)
-
 	# parse all launches one-by-one in the returned json-file
+	launch_json = API_RESPONSE.json()
 	multiParse(launch_json, len(launch_json))
-
-	#if debugLog:
-	#	logging.info('🔀 SpaceX database updated')
 
 	# update stats
 	updateStats({'API_requests':1, 'db_updates':1, 'data':len(API_RESPONSE.content)})
@@ -1365,13 +1313,13 @@ def spxAPIHandler():
 def spxInfoStrGen(launch_name, run_count):
 	# open the database connection and check if the launch exists in the database
 	# if not, update
-	launchDir = 'data/launch'
-	if not os.path.isfile(os.path.join(launchDir, 'spx-launches.db')):
+	launch_dir = 'data/launch'
+	if not os.path.isfile(os.path.join(launch_dir, 'spx-launches.db')):
 		createSPXDatabase()
 		spxAPIHandler()
 
 	# open connection
-	conn = sqlite3.connect(os.path.join(launchDir, 'spx-launches.db'))
+	conn = sqlite3.connect(os.path.join(launch_dir, 'spx-launches.db'))
 	c = conn.cursor()
 
 	# unix time for NET
@@ -1380,14 +1328,14 @@ def spxInfoStrGen(launch_name, run_count):
 	# perform a raw select; if not found, pull all and do some diffing
 	# launch names are stored in lower case
 	c.execute('''SELECT * FROM launches WHERE launch_name = ?''', (launch_name.lower(),))
-	queryReturn = c.fetchall()
-	if len(queryReturn) == 0:
+	query_return = c.fetchall()
+	if len(query_return) == 0:
 		# try pulling all launches, diff them, sort by NET
 		c.execute('''SELECT * FROM launches WHERE NET >= ?''', (today_unix,))
-		queryReturn = c.fetchall()
+		query_return = c.fetchall()
 
 		launch_names = {} # launch name -> NET dictionary
-		for row in queryReturn:
+		for row in query_return:
 			if row[1] not in launch_names:
 				launch_names[row[1]] = row[2]
 
@@ -1404,13 +1352,13 @@ def spxInfoStrGen(launch_name, run_count):
 		if len(close_matches) == 0:
 			close_matches = difflib.get_close_matches(launch_name_stripped, stripped_keys)
 			if len(close_matches) == 1:
-				if debugLog:
+				if debug_log:
 					logging.info(f'Close match found for {launch_name_stripped}: {close_matches}')
 				
 				diff_match = close_matches[0]
 
 			elif len(close_matches) == 0:
-				if debugLog:
+				if debug_log:
 					logging.info(f'🛑 Error finding {launch_name_stripped} from keys!\nStripped_keys:')
 					for key in stripped_keys:
 						logging.info(key)
@@ -1418,7 +1366,7 @@ def spxInfoStrGen(launch_name, run_count):
 				return
 
 			elif len(close_matches) > 1:
-				if debugLog:
+				if debug_log:
 					logging.info(f'⚠️ More than one close match when attempting to find {launch_name_stripped}; \
 					matches: {close_matches}. Returning.')
 				
@@ -1426,7 +1374,7 @@ def spxInfoStrGen(launch_name, run_count):
 
 
 		elif len(close_matches) == 1:
-			if debugLog:
+			if debug_log:
 				logging.info(f'✅ Got a single close match! {launch_name_stripped} -> {close_matches}')
 			
 			diff_match = close_matches[0]
@@ -1437,51 +1385,51 @@ def spxInfoStrGen(launch_name, run_count):
 				if row[2] < smallest_net:
 					smallest_net, net_index = row[2], i
 
-			if debugLog:
+			if debug_log:
 				logging.info(logging.info(f'⚠️ Got more than 1 close_match initially; parse by NET. {launch_name_stripped} -> {close_matches}'))
 
 			diff_match = close_matches[net_index]
 
 		else:
 			if run_count == 0:
-				if debugLog:
+				if debug_log:
 					logging.info(f'🛑 Error in spxInfoStrGen: unable to find launches \
 						with a NET >= {today_unix}. Updating and trying again...')
 
 				spxAPIHandler()
 				spxInfoStrGen(launch_name, 1)
 			else:
-				if debugLog:
+				if debug_log:
 					logging.info(f'🛑 Error in spxInfoStrGen: unable to find launches \
 						with a NET >= {today_unix}. Tried once before, not trying again.')
 
 			return
 
-	elif len(queryReturn) == 1:
-		if debugLog:
-			logging.info(f'✅ Got a single return from the query – no need to diff! {launch_name} -> {queryReturn}')
+	elif len(query_return) == 1:
+		if debug_log:
+			logging.info(f'✅ Got a single return from the query – no need to diff! {launch_name} -> {query_return}')
 		
-		db_match = queryReturn[0]
+		db_match = query_return[0]
 		diff_match = None
 
 	else:
-		if debugLog:
+		if debug_log:
 			logging.info(f'⚠️ Error in spxInfoStrGen(): got more than one launch. \
-				query: {launch_name}, return: {queryReturn}')
+				query: {launch_name}, return: {query_return}')
 
 		return
 
 	# if we got a diff_match, pull the launch manually from the spx database
 	if diff_match != None:
 		c.execute('''SELECT * FROM launches WHERE launch_name = ?''', (diff_match,))
-		queryReturn = c.fetchall()
-		if len(queryReturn) == 1:
-			if debugLog:
+		query_return = c.fetchall()
+		if len(query_return) == 1:
+			if debug_log:
 				logging.info(f'✅ Found diff_match from database!')
-			db_match = queryReturn[0]
+			db_match = query_return[0]
 		else:
-			if debugLog:
-				logging.info(f'🛑 Found {len(queryReturn)} matches from db... Exiting')
+			if debug_log:
+				logging.info(f'🛑 Found {len(query_return)} matches from db... Exiting')
 			return
 
 	# same found in multiparse
@@ -1589,7 +1537,7 @@ def spxInfoStrGen(launch_name, run_count):
 			spx_info = f'ℹ️ No booster information available yet'
 
 	else:
-		if debugLog:
+		if debug_log:
 			logging.info(f'🛑 Error in spxInfoStrGen: vehicle not found ({db_match[4]})')
 		
 		return None
@@ -1661,12 +1609,12 @@ def getLaunchUpdates(launch_ID):
 
 	def multiParse(json, launch_count):
 		# check if db exists
-		launchDir = 'data/launch'
-		if not os.path.isfile(os.path.join(launchDir, 'launches.db')):
+		launch_dir = 'data/launch'
+		if not os.path.isfile(os.path.join(launch_dir, 'launches.db')):
 			createLaunchDatabase()
 
 		# open connection
-		conn = sqlite3.connect(os.path.join(launchDir, 'launches.db'))
+		conn = sqlite3.connect(os.path.join(launch_dir, 'launches.db'))
 		c = conn.cursor()
 
 		# launch, id, keywords, countrycode, NET, T-, notify24hour, notify12hour, notify60min, notify5min, success, launched, hold
@@ -1766,9 +1714,7 @@ def getLaunchUpdates(launch_ID):
 	
 	# datetime, so we can only get launches starting today
 	now = datetime.datetime.now()
-	t_start = datetime.datetime.today()
 	today_call = f'{now.year}-{now.month}-{now.day}'
-	#fields = f'fields=name,net,lsp,missions,netstamp,hashtag'
 
 	# what we're throwing at the API
 	API_REQUEST = f'launch'
@@ -1785,27 +1731,24 @@ def getLaunchUpdates(launch_ID):
 	try:
 		API_RESPONSE = requests.get(API_CALL, headers=headers)
 	except Exception as e:
-		if debugLog:
+		if debug_log:
 			logging.info(f'🛑 Error in API request: {e}')
 			logging.info(f'⚠️ Trying again after 3 seconds...')
 
 		time.sleep(3)
 		getLaunchUpdates(None)
 
-		if debugLog:
+		if debug_log:
 			logging.info(f'✅ Success!')
 		
 		return
 
 	# pull json, dump for later inspection
 	launch_json = API_RESPONSE.json()
-	
-	#with open(os.path.join('data', 'launch_cache', 'launch_json.json'), 'w') as json_store:
-	#	json.dump(launch_json, json_store, indent=4)
 
 	# if we got nothing in return from the API
 	if len(launch_json['launches']) == 0:
-		if debugLog:
+		if debug_log:
 			if API_RESPONSE.status_code == 404:
 				logging.info('⚠️ No launches found!')
 			else:
@@ -1816,10 +1759,6 @@ def getLaunchUpdates(launch_ID):
 	# we got something, parse all of it
 	elif len(launch_json['launches']) >= 1:
 		multiParse(launch_json, len(launch_json['launches']))
-
-	#if debugLog:
-		#elapsed = abs(datetime.datetime.today() - t_start).microseconds / 1000000
-		#logging.info(f'🕐 Launch database updated. Took {elapsed:.2f} seconds.')
 
 	updateStats({'API_requests':1, 'db_updates':1, 'data':len(API_RESPONSE.content)})
 	return
@@ -1877,18 +1816,18 @@ def notificationHandler(launch_row, notif_class):
 		lsp_flag = LSP_IDs[keywords][1]
 
 	# pull launch information from database
-	launchDir = 'data/launch'
-	conn = sqlite3.connect(os.path.join(launchDir, 'launches.db'))
+	launch_dir = 'data/launch'
+	conn = sqlite3.connect(os.path.join(launch_dir, 'launches.db'))
 	c = conn.cursor()
 
 	# select the launch we're tracking
 	c.execute(f'''SELECT * FROM launches WHERE id = {launch_id}''')
-	queryReturn = c.fetchall()
+	query_return = c.fetchall()
 
-	launch_name = queryReturn[0][0]
-	vehicle = queryReturn[0][5]
-	pad = queryReturn[0][6]
-	info_text = queryReturn[0][7]
+	launch_name = query_return[0][0]
+	vehicle = query_return[0][5]
+	pad = query_return[0][6]
+	info_text = query_return[0][7]
 
 	if info_text != None:
 		info_text = f'ℹ️ {info_text}'
@@ -1896,10 +1835,10 @@ def notificationHandler(launch_row, notif_class):
 		info_text = f'ℹ️ No launch information available'
 	
 	if lsp is None:
-		lsp = queryReturn[0][3]
-		lsp_short = queryReturn[0][4]
+		lsp = query_return[0][3]
+		lsp_short = query_return[0][4]
 
-	launch_unix = datetime.datetime.utcfromtimestamp(queryReturn[0][9])
+	launch_unix = datetime.datetime.utcfromtimestamp(query_return[0][9])
 	if launch_unix.second == 0:
 		launch_time = f'{launch_unix.hour}:{launch_unix.minute}'
 	else:
@@ -1925,7 +1864,7 @@ def notificationHandler(launch_row, notif_class):
 
 	# if we have more than one entry in notif_class, toggle the ones that should've been sent already
 	if len(notif_class) > 1:
-		if debugLog:
+		if debug_log:
 			logging.info('⚠️ More than one notification in notif_class; attempting to handle properly...')
 
 		# set notif_class to the list's last entry, so we avoid sending double notifications (i.e. 24h and 12h at the same time)
@@ -1938,11 +1877,11 @@ def notificationHandler(launch_row, notif_class):
 				notification_type = notif_dict[notif_time] # map the notification time to database column name
 				c.execute(f'UPDATE launches SET {notification_type} = 1 WHERE id = ?', (launch_id,))
 				
-				if debugLog:
+				if debug_log:
 					logging.info(f'\t✅ notification disabled without sending for notif_time={notif_time}, launch_id={launch_id}')
 			
 			except Exception as e:
-				if debugLog:
+				if debug_log:
 					logging.info(f'\t🛑 Error disabling notification: {e}')
 
 		conn.commit()
@@ -2023,16 +1962,16 @@ def notificationHandler(launch_row, notif_class):
 	# pull all with matching keyword (LSP ID), matching country code notification, or an "all" marker (and no exclusion for this ID/country)
 	# Establish connection
 	conn.close()
-	conn = sqlite3.connect(os.path.join(launchDir,'notifications.db'))
+	conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
 	c = conn.cursor()
 
 	# pull all where keyword = LSP or "All"
 	c.execute('SELECT * FROM notify WHERE keyword == ? OR keyword == ?',(lsp, 'All'))
-	queryReturn = c.fetchall()
+	query_return = c.fetchall()
 
 	# parse output
 	notify_dict, notify_list = {}, [] # chat: id: toggle
-	for row in queryReturn:
+	for row in query_return:
 		chat = row[0]
 		if chat not in notify_dict:
 			notify_dict[chat] = {}
@@ -2051,7 +1990,7 @@ def notificationHandler(launch_row, notif_class):
 				disabled.append(l)
 
 		if lsp in disabled and 'All' in enabled:
-			if debugLog:
+			if debug_log:
 				logging.info(f'🔕 Not notifying {chat} about {lsp} due to disabled flag. All flag was enabled.')
 				try:
 					logging.info(f'⚠️ notify_dict[chat]: {notify_dict[chat]} | lsp: {lsp} | enabled: {enabled} | disabled: {disabled}')
@@ -2061,23 +2000,23 @@ def notificationHandler(launch_row, notif_class):
 		elif lsp in enabled or 'All' in enabled:
 			notify_list.append(chat)
 
-	if debugLog:
+	if debug_log:
 		logging.info(f'Sending notifications for launch {launch_id} | NET: {launch_unix} | notify_list: {notify_list}')
 
 	for chat in notify_list:
 		try:
 			bot.sendMessage(chat, launch_str, parse_mode='Markdown')
 		except Exception as e:
-			if debugLog:
+			if debug_log:
 				logging.info(f'🛑 Error sending notification to chat={chat}! Exception: {e}. Trying again after 1 second...')
 			
 			try:
 				time.sleep(1)
 				bot.sendMessage(chat, launch_str, parse_mode='Markdown')
-				if debugLog:
+				if debug_log:
 					logging.info(f'✅ Sent message!')
 			except:
-				if debugLog:
+				if debug_log:
 					logging.info(f'🛑 Failed sending message twice in a row. Not trying again.')
 
 
@@ -2087,17 +2026,17 @@ def notificationHandler(launch_row, notif_class):
 
 	# set notification as sent; if 12 hour sent but 24 hour not sent, disable "higher" ones as well
 	conn.close()
-	conn = sqlite3.connect(os.path.join(launchDir, 'launches.db'))
+	conn = sqlite3.connect(os.path.join(launch_dir, 'launches.db'))
 	c = conn.cursor()
 
 	# notif_dict declared above
 	try:
 		notification_type = notif_dict[notif_class]
 		c.execute(f'UPDATE launches SET {notification_type} = 1 WHERE id = ?', (launch_id,))
-		if debugLog:
+		if debug_log:
 			logging.info(f'⏰ {t_minus} {time_format} notification flag set to 1 for launch {launch_id}. Notifications sent: {len(notify_list)}')
 	except Exception as e:
-		if debugLog:
+		if debug_log:
 			logging.info(f'''⚠️ Error disabling notification in notificationHandler().
 			t_minus={t_minus}, launch_id={launch_id}. Notifications sent: {len(notify_list)}.
 			Exception: {e}. Disabling all further notifications.''')
@@ -2116,21 +2055,21 @@ def updateStats(input):
 		createStatsDatabase()
 
 	# Establish connection
-	statsConn = sqlite3.connect(os.path.join('data', 'statistics.db'))
-	statsCursor = statsConn.cursor()
+	stats_conn = sqlite3.connect(os.path.join('data', 'statistics.db'))
+	stats_cursor = stats_conn.cursor()
 
 	try: # check if table exists
-		statsCursor.execute('''CREATE TABLE stats (notifications INTEGER, API_requests INTEGER, 
+		stats_cursor.execute('''CREATE TABLE stats (notifications INTEGER, API_requests INTEGER, 
 			db_updates INTEGER, commands INTEGER, data INTEGER, db_calls INTEGER, PRIMARY KEY (notifications, API_requests))''')
-		statsCursor.execute("INSERT INTO stats (notifications, API_requests, db_updates, commands, data, db_calls) VALUES (0, 0, 0, 0, 0, 0)")
+		stats_cursor.execute("INSERT INTO stats (notifications, API_requests, db_updates, commands, data, db_calls) VALUES (0, 0, 0, 0, 0, 0)")
 	except sqlite3.OperationalError:
 		pass
 
 	for stat, val in input.items():
-		statsCursor.execute(f"UPDATE stats SET {stat} = {stat} + {val}")
+		stats_cursor.execute(f"UPDATE stats SET {stat} = {stat} + {val}")
 	
-	statsConn.commit()
-	statsConn.close()
+	stats_conn.commit()
+	stats_conn.close()
 	return
 
 
@@ -2140,28 +2079,27 @@ def statistics(msg):
 	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
 
 	# read stats db
-	statsConn = sqlite3.connect(os.path.join('data','statistics.db'))
-	statsCursor = statsConn.cursor()
+	stats_conn = sqlite3.connect(os.path.join('data','statistics.db'))
+	stats_cursor = stats_conn.cursor()
 
 	# notifications INTEGER, API_requests INTEGER, db_updates INTEGER, commands INTEGER
 	try: # pull stats from db
-		statsCursor.execute("SELECT * FROM stats")
+		stats_cursor.execute("SELECT * FROM stats")
 
 		# parse returned global data
-		queryReturn = statsCursor.fetchall()
-		if len(queryReturn) != 0:
-			notifs = queryReturn[0][0]
-			api_reqs = queryReturn[0][1]
-			db_updates = queryReturn[0][2]
-			commands = queryReturn[0][3]
-			data = queryReturn[0][4]
-			db_calls = queryReturn[0][5]
+		query_return = stats_cursor.fetchall()
+		if len(query_return) != 0:
+			notifs = query_return[0][0]
+			api_reqs = query_return[0][1]
+			db_updates = query_return[0][2]
+			commands = query_return[0][3]
+			data = query_return[0][4]
 
 		else:
-			commands = notifs = api_reqs = db_updates = data = db_calls = 0
+			commands = notifs = api_reqs = db_updates = data = 0
 
 	except sqlite3.OperationalError:
-		commands = notifs = api_reqs = db_updates = data = db_calls = 0
+		commands = notifs = api_reqs = db_updates = data = 0
 
 	# get system uptime
 	up = uptime()
@@ -2209,10 +2147,10 @@ def statistics(msg):
 	c = conn.cursor()
 
 	c.execute('SELECT * FROM notify WHERE enabled = 1')
-	queryReturn = c.fetchall()
+	query_return = c.fetchall()
 
 	recipients = []
-	for row in queryReturn:
+	for row in query_return:
 		if row[0] not in recipients:
 			recipients.append(row[0])
 
@@ -2243,15 +2181,15 @@ def statistics(msg):
 
 # creates the spx database
 def createSPXDatabase():
-	launchDir = 'data/launch'
-	if not os.path.isdir(launchDir):
+	launch_dir = 'data/launch'
+	if not os.path.isdir(launch_dir):
 		if not os.path.isdir('data'):
 			os.mkdir('data')
 
 		os.mkdir('data/launch')
 
 	# Establish connection
-	conn = sqlite3.connect(os.path.join(launchDir, 'spx-launches.db'))
+	conn = sqlite3.connect(os.path.join(launch_dir, 'spx-launches.db'))
 	c = conn.cursor()
 
 	try:
@@ -2265,7 +2203,7 @@ def createSPXDatabase():
 		c.execute("CREATE INDEX keywordtminus ON launches (launch_name, NET)")
 	
 	except sqlite3.OperationalError as e:
-		if debugLog:
+		if debug_log:
 			logging.info(f'🛑 Error in createSPXDatabase: {e}')
 
 	conn.commit()
@@ -2275,15 +2213,15 @@ def createSPXDatabase():
 
 # creates a new notifications database, if one doesn't exist
 def createNotifyDatabase():
-	launchDir = 'data/launch'
-	if not os.path.isdir(launchDir):
+	launch_dir = 'data/launch'
+	if not os.path.isdir(launch_dir):
 		if not os.path.isdir('data'):
 			os.mkdir('data')
 
 		os.mkdir('data/launch')
 
 	# Establish connection
-	conn = sqlite3.connect(os.path.join(launchDir,'notifications.db'))
+	conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
 	c = conn.cursor()
 
 	try:
@@ -2300,15 +2238,15 @@ def createNotifyDatabase():
 
 # creates a launch database
 def createLaunchDatabase():
-	launchDir = 'data/launch'
-	if not os.path.isdir(launchDir):
+	launch_dir = 'data/launch'
+	if not os.path.isdir(launch_dir):
 		if not os.path.isdir('data'):
 			os.mkdir('data')
 
 		os.mkdir('data/launch')
 
 	# Establish connection
-	conn = sqlite3.connect(os.path.join(launchDir, 'launches.db'))
+	conn = sqlite3.connect(os.path.join(launch_dir, 'launches.db'))
 	c = conn.cursor()
 
 	try:
@@ -2325,7 +2263,7 @@ def createLaunchDatabase():
 		c.execute("CREATE INDEX keywordtminus ON launches (id, NET)")
 	
 	except sqlite3.OperationalError as e:
-		if debugLog:
+		if debug_log:
 			logging.info(f'Error in createLaunchDatabase: {e}')
 		pass
 
@@ -2336,12 +2274,12 @@ def createLaunchDatabase():
 
 # creates a statistics database
 def createStatsDatabase():
-	dataDir = 'data'
+	data_dir = 'data'
 	if not os.path.isdir('data'):
 		os.mkdir('data')
 
 	# Establish connection
-	conn = sqlite3.connect(os.path.join(dataDir, 'statistics.db'))
+	conn = sqlite3.connect(os.path.join(data_dir, 'statistics.db'))
 	c = conn.cursor()
 
 	try:
@@ -2371,7 +2309,7 @@ def firstRun():
 	time.sleep(1)
 
 	print('To function, launchbot needs a bot API key;')
-	print('instructions to obtain this can be found on Github.')
+	print('to get one, send a message to @botfather on Telegram.')
 
 	# create a settings file for the bot; we'll store the API keys here
 	if not os.path.isfile('data' + '/bot-settings.json'):
@@ -2384,28 +2322,28 @@ def firstRun():
 
 
 # update bot token
-def updateToken(updateTokens):
+def updateToken(update_tokens):
 	# create /data and /chats
 	if not os.path.isdir('data'):
 		firstRun()
 
 	if not os.path.isfile('data' + '/bot-settings.json'):
-		with open('data/bot-settings.json', 'w') as jsonData:
-			settingMap = {} # empty .json file
+		with open('data/bot-settings.json', 'w') as json_data:
+			setting_map = {} # empty .json file
 	else:
-		with open('data' + '/bot-settings.json', 'r') as jsonData:
-				settingMap = json.load(jsonData) # use old .json
+		with open('data' + '/bot-settings.json', 'r') as json_data:
+				setting_map = json.load(json_data) # use old .json
 
-	if 'botToken' in updateTokens:
-		tokenInput = str(input('Enter the bot token for launchBot: '))
-		while ':' not in tokenInput:
+	if 'botToken' in update_tokens:
+		token_input = str(input('Enter the bot token for launchBot: '))
+		while ':' not in token_input:
 			print('Please try again – bot-tokens look like "123456789:ABHMeJViB0RHL..."')
-			tokenInput = str(input('Enter the bot token for launchbot: '))
+			token_input = str(input('Enter the bot token for launchbot: '))
 
-		settingMap['botToken'] = tokenInput
+		setting_map['botToken'] = token_input
 
-	with open('data' + '/bot-settings.json', 'w') as jsonData:
-		json.dump(settingMap, jsonData, indent=4)
+	with open('data' + '/bot-settings.json', 'w') as json_data:
+		json.dump(setting_map, json_data, indent=4)
 
 	time.sleep(2)
 	print('Token update successful!\n')
@@ -2414,21 +2352,21 @@ def updateToken(updateTokens):
 # main
 def main():
 	# some global vars for use in other functions
-	global TOKEN, bot, version, botID, botUsername
-	global debugLog, debugMode
+	global TOKEN, bot, version, bot_ID, bot_username
+	global debug_log, debug_mode
 
 	# current version
-	version = '0.2.1 beta'
+	version = '0.2.3 beta'
 
 	# default
 	start = False
-	debugLog = False
-	debugMode = False
+	debug_log = False
+	debug_mode = False
 
 	# list of args the program accepts
-	startArgs = ['start', '-start']
-	debugArgs = ['log', '-log', 'debug', '-debug']
-	botTokenArgs = ['newbottoken', '-newbottoken']
+	start_args = ['start', '-start']
+	debug_args = ['log', '-log', 'debug', '-debug']
+	bot_token_args = ['newbottoken', '-newbottoken']
 
 	if len(sys.argv) == 1:
 		print('Give at least one of the following arguments:')
@@ -2440,19 +2378,19 @@ def main():
 		sys.exit('Program stopping...')
 
 	else:
-		updateTokens = []
+		update_tokens = []
 		for arg in sys.argv:
 			arg = arg.lower()
 
-			if arg in startArgs:
+			if arg in start_args:
 				start = True
 
 			# update tokens if instructed to
-			if arg in botTokenArgs:
-				updateTokens.append('botToken')
-			if arg in debugArgs:
+			if arg in bot_token_args:
+				update_tokens.append('botToken')
+			if arg in debug_args:
 				if arg == 'log' or arg == '-log':
-					debugLog = True
+					debug_log = True
 					if not os.path.isdir('data'):
 						firstRun()
 					
@@ -2470,11 +2408,11 @@ def main():
 					logging.info('🤖 Bot started')
 
 				if arg == 'debug' or arg == '-debug':
-					debugMode = True
+					debug_mode = True
 
 
-		if len(updateTokens) != 0:
-			updateToken(updateTokens)
+		if len(update_tokens) != 0:
+			updateToken(update_tokens)
 
 		if start is False:
 			sys.exit('No start command given – exiting. To start the bot, include -start in startup options.')
@@ -2484,21 +2422,21 @@ def main():
 		firstRun()
 
 	try:
-		botSettingsPath = os.path.join('data','bot-settings.json')
-		with open(botSettingsPath, 'r') as jsonData:
-			settingMap = json.load(jsonData)
+		bot_settings_path = os.path.join('data','bot-settings.json')
+		with open(bot_settings_path, 'r') as json_data:
+			setting_map = json.load(json_data)
 
 	except FileNotFoundError:
 		firstRun()
 
-		with open(botSettingsPath, 'r') as jsonData:
-			settingMap = json.load(jsonData)
+		with open(bot_settings_path, 'r') as json_data:
+			setting_map = json.load(json_data)
 
 	# token for the Telegram API; get from args or as a text file
-	if len(settingMap['botToken']) == 0 or ':' not in settingMap['botToken']:
+	if len(setting_map['botToken']) == 0 or ':' not in setting_map['botToken']:
 		firstRun()
 	else:
-		TOKEN = settingMap['botToken']
+		TOKEN = setting_map['botToken']
 
 	# create the bot
 	bot = telepot.Bot(TOKEN)
@@ -2507,9 +2445,9 @@ def main():
 	ssl._create_default_https_context = ssl._create_unverified_context
 
 	# get the bot's username and id
-	botSpecs = bot.getMe()
-	botUsername = botSpecs['username']
-	botID = botSpecs['id']
+	bot_specs = bot.getMe()
+	bot_username = bot_specs['username']
+	bot_ID = bot_specs['id']
 
 	# valid commands we monitor for
 	global valid_commands, valid_commands_alt
@@ -2523,21 +2461,20 @@ def main():
 	# generate the "alternate" commands we listen for, as in ones suffixed with the bot's username 
 	valid_commands_alt = []
 	for command in valid_commands:
-		altCommand = command + '@' + botUsername
-		valid_commands_alt.append(altCommand)
+		valid_commands_alt.append(command + '@' + bot_username)
 
 	MessageLoop(bot, handle).run_as_thread()
 	time.sleep(1)
 
-	if not debugMode:
+	if not debug_mode:
 		print('| LaunchBot.py v{:s}'.format(version))
 		print("| Don't close this window or set the computer to sleep. Quit: ctrl + c.")
 		time.sleep(0.5)
 
-		statusMsg = f'  Connected to Telegram! ✅'
-		sys.stdout.write('%s\r' % statusMsg)
+		status_msg = f'  Connected to Telegram! ✅'
+		sys.stdout.write('%s\r' % status_msg)
 
-	if debugLog:
+	if debug_log:
 		logging.info('✅ Bot connected')
 
 	# schedule regular database updates and NET checks
@@ -2551,7 +2488,7 @@ def main():
 	spxAPIHandler()
 
 	# fancy prints so the user can tell that we're actually doing something
-	if not debugMode:
+	if not debug_mode:
 		cursor.hide()
 		print_map = {0: '|', 1: '/', 2: '—', 3: '\\', 4: '|', 5: '/', 6: '—', 7: '\\'}
 		while True:
