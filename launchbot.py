@@ -3,7 +3,7 @@ import telepot, sqlite3, cursor, difflib, schedule
 import ujson as json
 
 from telepot.loop import MessageLoop
-from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton
+from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
 from uptime import uptime
 
 '''
@@ -13,23 +13,38 @@ Roadmap
 	- implement support for SpaceX core information
 
 0.3 (January):
+	- add a "show more" button
+	- add a mute button to notifications ✅
+	- update /notify to be more user friendly ✅
+	- implement /feedback ✅
 	- improve notification handling with the hold flag -> moving NETs and info text regarding them
-	- change launch database index from tminus to net
+	- change launch database index from tminus to net ✅
 	- add probability of launch
 	- handle notification send checks with schedule, instead of polling every 20-30 seconds (i.e. update schedule every time db is updated)
 
 ---------------------------------
 To-do
-- /feedback with inline keyboard
-- add button to mute a single launch
-- add launch location; could be in db as pad/location
-- add support for moving NETs; if new NET doesn't match old NET, purge previous notifications etc.
+Essential & usability
+- /feedback with inline keyboard (simple, good practice for inline functionality)
+
+- add local time option
+- add button to mute a single launch (Mute this launch | Only notify 5 minutes before)
+- add in-line features to the /notify command, or make it entirely based around in-line features
+	- Initial /start sends the inline keyboard and asks which notifications to enable
+	- Choose all or "let me choose" (-> list of providers; choose by name or country)
+	- Ask user which notifications they'd like to receive; 24 h, 12 h, 1 h, 5 min
+	- Done! Let the user know that they can modify their preferences at any time with /notify (similar in-line thing)
+- reset notification flag if NET moves forward, add a piece of info text saying that the launch was previously held
+
+Improvements
+- add launch location; could be in db as "pad/location", e.g. LC-39A, USA or LC-39A, Florida
+- add orbit information (already available in db for SpX launches; found in launch library?)
+- add support for moving NETs; if new NET doesn't match old NET, purge previous notifications if slip is large enough etc.
 - add support for search in /next
 - add support for country codes (dict map)
 - fix the issue with all-flag causing some notifications to be unable to be disabled (i.e. those not in the supported list)
 - add probability of launch to info message (i.e. add a new column to the launch database)
-- notify users of a launch holding? 
-- reset notification flag if NET moves forward, add a piece of info text saying that the launch was previously held
+- notify users of a launch holding? (edit message?)
 '''
 
 # main loop-function for messages with flavor=chat
@@ -120,34 +135,27 @@ def handle(msg):
 
 		reply_msg = f'''🚀 *Hi there!* I'm *LaunchBot*, a launch information and notifications bot!
 
-		*To get started*, you can enable all notifications: `/notify all`
-		Or, just check the next flight: `/next`
-	
-		*Commands*
-		`/notify` toggle notifications for various launch service providers.
-		`/next` shows the next launch.
-		`/shecdule` displays a simple schedule of upcoming flights.
-		`/statistics` displays various statistics about the bot.
+		*List of commands*
+		/notify adjust notification settings
+		/next shows the next launch
+		/schedule displays a simple flight schedule
+		/statistics displays various statistics about the bot
 
-		*Example usage*
-		`/notify all`: toggle notifications for all launches
-		`/notify SpaceX`: toggle notifications for all SpaceX launches
+		*Changelog for version 0.3.1*
+		- rewrote /notify with a user-friendly UI
+		- implemented per-launch muting
+		- more robust error handling
+		- tons of bug fixes and improvements
 
-		*LaunchBot* version {version}.
+		*LaunchBot* version {version} ✨
 		'''
 		
 		bot.sendMessage(chat, inspect.cleandoc(reply_msg), parse_mode='Markdown')
 
-		# ask if the user wants to enable all notifications
-		msg_text = f'🔔 Would you like to enable all notifications? (You can disable them at any time)'
-		keyboard = InlineKeyboardMarkup(inline_keyboard=[
-			[InlineKeyboardButton(text='✅ Yes please!', callback_data=f'{chat}/notify/All')],
-			[InlineKeyboardButton(text='🛑 No, thank you.', callback_data=f'{chat}/notify/None')]])
-
-		bot.sendMessage(chat, msg_text, reply_markup=keyboard)
+		notify(msg)
 
 		if debug_log:
-			logging.info(f'🌟 Bot added to a new chat! chat_id={chat}. Sent an inline_keyboard.')
+			logging.info(f'🌟 Bot added to a new chat! chat_id={chat}. Sent user the new inline keyboard.')
 
 		return
 	
@@ -199,41 +207,31 @@ def handle(msg):
 				# construct info message
 				reply_msg = f'''🚀 *LaunchBot version {version}*
 
-				Hi there, I'm *LaunchBot*! To get started, you can enable some notifications, or check the next flight with /next!
+				Hi there, I'm *LaunchBot!* To get started, you can enable some notifications, or check the next flight with /next!
 
 				*List of commands*
-				`/notify` toggle notifications for various launch service providers
-				`/next` shows the next launch
-				`/schedule` displays a simple flight schedule
-				`/statistics` displays various statistics about the bot
+				/notify adjust notification settings
+				/next shows the next launch
+				/schedule displays a simple flight schedule
+				/statistics displays various statistics about the bot
 
-				*Example usage*
-				`/notify all`: toggle notifications for all flights
-				`/notify SpaceX`: toggle notifications for all SpaceX launches.
-				'/next': show the next launch
-				`/schedule`: display the flight schedule
+				*Changelog for version 0.3.1*
+				- rewrote /notify with a user-friendly UI
+				- implemented per-launch muting
+				- more robust error handling
+				- tons of bug fixes and improvements
 
-				*Changelog for version 0.2.3*
-				- implemented /next & /schedule
-				- added Falcon 9 & Heavy information
-				- fixed various issues with setting notifications
-				- fix issues with notification formatting
-				- various fixes and improvements
+				*LaunchBot* version {version} ✨
 				'''
 				
 				bot.sendMessage(chat, inspect.cleandoc(reply_msg), parse_mode='Markdown')
 
 				# /start, send also the inline keyboard
 				if command in [valid_commands[0], valid_commands_alt[0]]:
-					msg_text = f'🔔 Would you like to enable all notifications? (You can disable them at any time)'
-					keyboard = InlineKeyboardMarkup(inline_keyboard=[
-						[InlineKeyboardButton(text='✅ Yes please!', callback_data=f'{chat}/notify/All')],
-						[InlineKeyboardButton(text='🛑 No, thank you.', callback_data=f'{chat}/notify/None')]])
-
-					bot.sendMessage(chat, msg_text, reply_markup=keyboard)
+					notify(msg)
 
 					if debug_log:
-						logging.info(f'🌟 Bot added to a new chat! chat_id={chat}. Sent user an inline_keyboard.')
+						logging.info(f'🌟 Bot added to a new chat! chat_id={chat}. Sent user the new inline keyboard.')
 
 			# /next (3)
 			elif command in [valid_commands[2], valid_commands_alt[2]]:
@@ -251,6 +249,10 @@ def handle(msg):
 			elif command in [valid_commands[5], valid_commands_alt[5]]:
 				flightSchedule(msg)
 
+			# /feedback (7)
+			elif command in [valid_commands[6], valid_commands_alt[6]]:
+				feedback(msg)
+
 			return
 
 		else:
@@ -260,10 +262,96 @@ def handle(msg):
 
 
 def callbackHandler(msg):
+	def updateMainView(chat, msg, provider_by_cc):
+		# figure out what the text for the "enable all/disable all" button should be
+		providers = []
+		for key, val in provider_by_cc.items():
+			for provider in val:
+				providers.append(provider)
+
+		notification_statuses, disabled_count, all_flag = getUserNotificationsStatus(chat, providers), 0, False
+		for key, val in notification_statuses.items():
+			if val == 0:
+				disabled_count += 1
+				break
+
+			if key == 'All' and val == 1:
+				all_flag = True
+
+		if all_flag:
+			global_text = f'🌍 Enable all' if disabled_count != 0 else f'🌍 Disable all'
+		elif not all_flag:
+			global_text = f'🌍 Enable all'
+
+		keyboard = InlineKeyboardMarkup(
+			inline_keyboard = [
+				[InlineKeyboardButton(text=global_text, callback_data=f'notify/toggle/all/0')],
+				[InlineKeyboardButton(text='🇪🇺 European Union', callback_data=f'notify/list/EU')],
+				[InlineKeyboardButton(text='🇺🇸 United States', callback_data=f'notify/list/USA')],
+				[InlineKeyboardButton(text='🇷🇺 Russia', callback_data=f'notify/list/RUS')],
+				[InlineKeyboardButton(text='🇨🇳 China', callback_data=f'notify/list/CHN')],
+				[InlineKeyboardButton(text='🇮🇳 India', callback_data=f'notify/list/IND')],
+				[InlineKeyboardButton(text='🇯🇵 Japan', callback_data=f'notify/list/JPN')],
+				[InlineKeyboardButton(text='✅ Done', callback_data=f'notify/done')]
+			]
+		)
+
+		# tuple containing necessary information to edit the message
+		msg_identifier = (msg['message']['chat']['id'],msg['message']['message_id'])
+
+		# now we have the keyboard; update the previous keyboard
+		bot.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
+		return
+
+
+	def updateListView(msg, chat, provider_list):
+		# get the user's current notification settings for all the providers so we can add the bell emojis
+		notification_statuses = getUserNotificationsStatus(chat, provider_list)
+
+		# get status for the "enable all" toggle for the country code
+		providers = []
+		for provider in provider_by_cc[country_code]:
+			providers.append(provider)
+
+		notification_statuses, disabled_count = getUserNotificationsStatus(chat, providers), 0
+		for key, val in notification_statuses.items():
+			if val == 0:
+				disabled_count += 1
+				break
+
+		local_text = f'Enable all' if disabled_count != 0 else f'Disable all'
+
+		# we now have the list of providers for this country code. Generate the buttons dynamically.
+		inline_keyboard = [[
+			InlineKeyboardButton(
+				text=f'{flag_map[country_code]} {local_text}',
+				callback_data=f'notify/toggle/country_code/{country_code}/{country_code}')
+		]]
+
+		for provider in provider_list:
+			notification_icon = {0:'🔕', 1:'🔔'}[notification_statuses[provider]]
+			inline_keyboard.append([
+				InlineKeyboardButton(
+					text=f'{provider} {notification_icon}',
+					callback_data=f'notify/toggle/lsp/{provider}/{country_code}')
+				])
+
+		# append a back button, so user can return to the "main menu"
+		inline_keyboard.append([InlineKeyboardButton(text=f'⏮ Return to menu', callback_data=f'notify/main_menu')])
+
+		keyboard = InlineKeyboardMarkup(
+			inline_keyboard=inline_keyboard
+			)
+
+		# tuple containing necessary information to edit the message
+		msg_identifier = (msg['message']['chat']['id'],msg['message']['message_id'])
+
+		# now we have the keyboard; update the previous keyboard
+		bot.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
+		return
+
 	try:
 		query_id, from_id, query_data = telepot.glance(msg, flavor='callback_query')
-		if debug_log:
-			logging.info(f'🔊 Callback query: query_id:{query_id}, from_id:{from_id}, data:{query_data}')
 	
 	except Exception as caught_exception:
 		if debug_log:
@@ -271,13 +359,12 @@ def callbackHandler(msg):
 
 		return
 
-	# verify input, assume (chat/command/data) | (https://core.telegram.org/bots/api#callbackquery)
+	# verify input, assume (command/data/...) | (https://core.telegram.org/bots/api#callbackquery)
 	input_data = query_data.split('/')
-	chat = input_data[0]
+	chat = msg['message']['chat']['id']
 
 	# check that the query is from an admin or an owner
-	sender = bot.getChatMember(chat, from_id)
-	chat_type = bot.getChat(chat)['type']
+	sender, chat_type = bot.getChatMember(chat, from_id), bot.getChat(chat)['type']
 	if chat_type != 'private' and sender['status'] != 'creator' and sender['status'] != 'administrator':
 		bot.answerCallbackQuery(query_id, text="🚨 This button is only callable by administrators!")
 		if debug_log:
@@ -286,43 +373,166 @@ def callbackHandler(msg):
 		return
 
 	# callbacks only supported for notify at the moment; verify it's a notify command
-	if input_data[1] != 'notify':
+	if input_data[0] not in ['notify', 'mute']:
 		if debug_log:
 			logging.info(f'⚠️ Incorrect input data in callbackHandler! input_data={input_data}')
 
 		return
 
-	updateStats({'commands':1})
+	# check if notification database exists
+	launch_dir = 'data/launch'
+	if not os.path.isfile(os.path.join(launch_dir,'notifications.db')):
+		createNotifyDatabase()
 
-	if input_data[2] in ['None', 'All']:
-		if input_data[2] == 'None':
-			all_flag = 0
-			bot.answerCallbackQuery(query_id, text='🔇 Got it, you can enable notifications manually at any time with /notify!')	
+	flag_map = {
+	'USA': '🇺🇸',
+	'EU': '🇪🇺',
+	'RUS': '🇷🇺',
+	'CHN': '🇨🇳',
+	'IND': '🇮🇳',
+	'JPN': '🇯🇵'
+	}
+
+	if input_data[0] == 'notify':
+		# user requests a list of launch providers for a country code
+		if input_data[1] == 'list':
+			country_code = input_data[2]
+			try:
+				provider_list = provider_by_cc[country_code]
+			except:
+				if debug_log:
+					logging.info(f'Error finding country code {country_code} from provider_by_cc!')
+				return
+
+			bot.answerCallbackQuery(query_id, text=f'{flag_map[country_code]}')
+			updateListView(msg, chat, provider_list)
+
+		# user requests to return to the main menu; send the main keyboard
+		elif input_data[1] == 'main_menu':
+			bot.answerCallbackQuery(query_id, text='⏮ Returned to main menu')
+			updateMainView(chat, msg, provider_by_cc)
+
+		# user requested to toggle a notification
+		elif input_data[1] == 'toggle':
+			def getAllToggleNewStatus(toggle_type, country_code, chat):
+				providers = []
+				if toggle_type == 'all':
+					for key, val in provider_by_cc.items():
+						for provider in val:
+							providers.append(provider)
+				elif toggle_type == 'country_code':
+					for provider in provider_by_cc[country_code]:
+						providers.append(provider)
+
+				notification_statuses, disabled_count = getUserNotificationsStatus(chat, providers), 0
+				for key, val in notification_statuses.items():
+					if val == 0:
+						disabled_count += 1
+						break
+
+				return 1 if disabled_count != 0 else 0
+
+			if input_data[2] not in ['country_code', 'lsp', 'all']:
+				return
+
+			if input_data[2] == 'all':
+				all_toggle_new_status = getAllToggleNewStatus('all', None, chat)
+
+			else:
+				country_code = input_data[3]
+				if input_data[2] == 'country_code':
+					all_toggle_new_status = getAllToggleNewStatus('country_code', country_code, chat)			
+				else:
+					all_toggle_new_status = 0
+
+			# chat, type, keyword
+			new_status = toggleNotification(chat, input_data[2], input_data[3], all_toggle_new_status)
+
+			if input_data[2] == 'lsp':
+				reply_text = {
+					1:f'🔔 Enabled notifications for {input_data[3]}',
+					0:f'🔕 Disabled notifications for {input_data[3]}'}[new_status]
+			elif input_data[2] == 'country_code':
+				reply_text = {
+					1:f'🔔 Enabled notifications for {flag_map[input_data[3]]}',
+					0:f'🔕 Disabled notifications for {flag_map[input_data[3]]}'}[new_status]
+			elif input_data[2] == 'all':
+				reply_text = {
+					1:f'🔔 Enabled all notifications 🌍',
+					0:f'🔕 Disabled all notifications 🌍'}[new_status]
+
+			# give feedback to the button press
+			bot.answerCallbackQuery(query_id, text=reply_text)
+
+			if debug_log:
+				logging.info(f'🔔 {chat} toggled a notification: type={input_data[2]}, keyword={input_data[3]}')
+
+			# update list view if an lsp button was pressed
+			if input_data[2] != 'all':
+				country_code = input_data[4]
+				try:
+					provider_list = provider_by_cc[country_code]
+				except:
+					if debug_log:
+						logging.info(f'Error finding country code {country_code} from provider_by_cc!')
+					return
+
+				# update keyboard list view
+				updateListView(msg, chat, provider_list)
+			
+			# update main view if "enable all" button was pressed, as in this case we're in the main view
+			else:
+				updateMainView(chat, msg, provider_by_cc)
+
+		# user is done; remove the keyboard
+		elif input_data[1] == 'done':
+			# tuple containing necessary information to edit the message
+			msg_identifier = (msg['message']['chat']['id'],msg['message']['message_id'])
+
+			# new text + callback text
+			reply_text = f'✅ All done!'
+			msg_text = f'✅ *All done* — your preferences were saved!\n\nℹ️ To edit your notifications: /notify@{bot_username}'
+
+			# now we have the keyboard; update the previous keyboard
+			bot.editMessageText(msg_identifier, text=msg_text, reply_markup=None, parse_mode='Markdown')
+			bot.answerCallbackQuery(query_id, text=reply_text)
+
+			if debug_log:
+				logging.info(f'💫 {chat} finished setting notifications with the "Done" button!')
 	
-		elif input_data[2] == 'All':
-			all_flag = 1
-			bot.answerCallbackQuery(query_id, text="✅ Got it! You'll be notified of all flights now!")
-
-		# check if notification database exists
-		launch_dir = 'data/launch'
-		if not os.path.isfile(os.path.join(launch_dir,'notifications.db')):
-			createNotifyDatabase()
+	elif input_data[0] == 'mute':
+		# user wants to mute a launch from notification inline keyboard
+		# /mute/$provider/$launch_id/(0/1) | 1=muted (true), 0=not muted
 		
-		# connect to database
-		notify_conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
-		notify_cursor = notify_conn.cursor()
+		# reverse the button status on press
+		new_toggle_state = 0 if int(input_data[3]) == 1 else 1
+		new_text = {0:'🔊 Unmute this launch', 1:'🔇 Mute this launch'}[new_toggle_state]
+		new_data = f'mute/{input_data[1]}/{input_data[2]}/{new_toggle_state}'
+
+		# create new keyboard
+		inline_keyboard = [[InlineKeyboardButton(text=new_text, callback_data=new_data)]]
+		keyboard = InlineKeyboardMarkup(
+			inline_keyboard=inline_keyboard
+			)
+
+		# tuple containing necessary information to edit the message
+		msg_identifier = (msg['message']['chat']['id'],msg['message']['message_id'])
+		callback_text = f'🔇 Launch muted!' if input_data[3] == '1' else f'🔊 Launch unmuted!'
 		
 		try:
-			notify_cursor.execute("INSERT INTO notify (chat, keyword, lastnotified, enabled) VALUES (?, ?, 0, ?)", (chat, 'All', all_flag))
-		except:
-			notify_cursor.execute("UPDATE notify SET enabled = ? WHERE chat = ? AND keyword = ?", (all_flag, chat, 'All'))
+			bot.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
+			bot.answerCallbackQuery(query_id, text=callback_text)
+			
+			if debug_log:
+				logging.info(f'🔇 {chat} muted launch {input_data[2]} for {input_data[1]}')
 
-		notify_conn.commit()
-		notify_conn.close()
+		except Exception as exception:
+			if debug_log:
+				logging.info(f'⚠️ {exception}')
 
-		if debug_log:
-			logging.info(f'⌨️ {chat} toggled all notifications to state={all_flag} with inline keyboard')
-	
+		# toggle the mute here, so we can give more responsive feedback
+		toggleLaunchMute(chat, input_data[1], input_data[2], input_data[3])	
+
 	return
 
 
@@ -341,13 +551,10 @@ def timerHandle(command, chat):
 	# check if settings.json exists; if not, generate it
 	if not os.path.isfile('data/command-timers.json'):
 		with open('data/command-timers.json', 'w') as json_data:
-			setting_map = {} # empty .json file
-			
-			# generate fields
+			setting_map = {}
 			setting_map['commandTimers'] = {}
 			for command in valid_commands:
-				command = command.replace('/','')
-				setting_map['commandTimers'][command] = '0.35'
+				setting_map['commandTimers'][command.replace('/','')] = '0.35'
 			
 			json.dump(setting_map, json_data, indent=4)
 
@@ -358,7 +565,6 @@ def timerHandle(command, chat):
 	# load timer for command
 	try:
 		timer = float(setting_map['commandTimers'][command])
-	
 	except KeyError:
 		with open('data/command-timers.json', 'w') as json_data:
 			setting_map['commandTimers'][command] = '0.35'
@@ -369,15 +575,12 @@ def timerHandle(command, chat):
 	if timer <= -1:
 		return False
 
-
 	# checking if the command has been called previously
 	# load time the command was previously called
 	if not os.path.isfile('data/last-called.json'):
 		with open('data/last-called.json', 'w') as json_data:
 			lastMap = {}
 			if chat not in lastMap:
-				if debug_log:
-					logging.info(f'🌟 New chat detected! chat_id={chat}')
 				lastMap[chat] = {}
 
 			# never called, set to 0
@@ -419,6 +622,291 @@ def timerHandle(command, chat):
 	return True
 
 
+def getUserNotificationsStatus(chat, provider_list):
+	'''
+	The function takes a list of provider strings as input, and returns a dictionary containing
+	the notification status for all of the providers for a given chat.
+	'''
+
+	# Establish connection
+	launch_dir = 'data/launch'
+	conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
+	c = conn.cursor()
+
+	c.execute("SELECT * FROM notify WHERE chat = ?",(chat,))
+	query_return = c.fetchall()
+	conn.close()
+
+	notification_statuses = {}
+	for provider in provider_list:
+		notification_statuses[provider] = 0
+
+	all_flag = False
+	if len(query_return) != 0:
+		for row in query_return:
+			provider, enabled_status = row[1], row[3]
+			if enabled_status == 1:
+				notification_statuses[provider] = 1
+
+			if provider == 'All':
+				all_flag = True
+
+	if not all_flag:
+		notification_statuses['All'] = 0
+	else:
+		notification_statuses['All'] = 1
+
+	return notification_statuses
+
+
+# toggle a notification for chat of type (lsp, country) with the value keyword
+def toggleNotification(chat, toggle_type, keyword, all_toggle_new_status):
+	# Establish connection
+	launch_dir = 'data/launch'
+	conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
+	c = conn.cursor()
+
+	# if toggle type is a country code, map the ccode to a list of providers
+	if toggle_type == 'country_code':
+		provider_list = provider_by_cc[keyword]
+	
+	elif toggle_type == 'lsp':
+		provider_list = [keyword]
+	
+	elif toggle_type == 'all':
+		provider_list = ['All']
+		for key, val in provider_by_cc.items():
+			for provider in val:
+				provider_list.append(provider)
+
+	'''
+	global provider_by_cc
+	provider_by_cc = {
+		'USA': [
+			'NASA',
+			'SpaceX',
+			'ULA',
+			'Rocket Lab',
+			'Virgin Orbit',
+			'Firefly Aerospace',
+			'Northrop Grumman',
+			'International Launch Services'],
+		
+		'EU': [
+			'Arianespace',
+			'Eurockot',
+			'Starsem'],
+		
+		'CHN': [
+			'CASC',
+			'ExPace'],
+		
+		'RUS': [
+			'KhSC',
+			'ISC Kosmotras',
+			'Russian Space Forces',
+			'Eurockot',
+			'Sea Launch',
+			'Land Launch',
+			'Starsem',
+			'International Launch Services'],
+		
+		'IND': [
+			'ISRO',
+			'Antrix Corporation'],
+		
+		'JPN': [
+			'JAXA',
+			'Mitsubishi Heavy Industries']
+	}
+
+	'''
+
+	# toggle each notification
+	if toggle_type == 'lsp':
+		for provider in provider_list:
+			try: # insert as new; if we run into an exception, get the status and update accordingly
+				c.execute("INSERT INTO notify (chat, keyword, muted_launches, enabled) VALUES (?, ?, ?, 1)", (chat, provider, None))
+				new_status = 1
+			
+			except: # already found, update status
+				# pull the current status
+				c.execute("SELECT * FROM notify WHERE chat = ? AND keyword = ?", (chat, provider))
+				query_return = c.fetchall()
+
+				if len(query_return) == 0:
+					if debug_log:
+						logging.info(f'⚠️ Error getting current status for provider "{provider}" in toggleNotification()')
+					return
+				
+				new_status = 0 if query_return[0][3] == 1 else 1
+				c.execute("UPDATE notify SET enabled = ? WHERE chat = ? AND keyword = ?", (new_status, chat, provider))
+
+	elif toggle_type in ['all', 'country_code']:
+		for provider in provider_list:
+			try: # insert as new; if we run into an exception, get the status and update accordingly
+				c.execute("INSERT INTO notify (chat, keyword, muted_launches, enabled) VALUES (?, ?, ?, ?)", (chat, provider, None, all_toggle_new_status))
+			
+			except: # already found, update status
+				c.execute("UPDATE notify SET enabled = ? WHERE chat = ? AND keyword = ?", (all_toggle_new_status, chat, provider))
+
+	conn.commit()
+	conn.close()
+
+	if toggle_type == 'lsp':
+		return new_status
+	else:
+		return all_toggle_new_status
+
+
+def toggleLaunchMute(chat, launch_provider, launch_id, toggle):
+	launch_dir = 'data/launch'
+	if not os.path.isfile(os.path.join(launch_dir,'notifications.db')):
+		createNotifyDatabase()
+
+	conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
+	c = conn.cursor()
+	
+	# pull the current muted_launches field
+	c.execute("SELECT muted_launches FROM notify WHERE chat = ? AND keyword = ?", (chat, launch_provider))
+	query_return = c.fetchall()
+
+	# mute
+	if toggle == '1':
+		if len(query_return) == 0:
+			new_mute_string = str(launch_id)
+		else:
+			if query_return[0][0] == None:
+				new_mute_string = str(launch_id)
+
+			elif query_return[0][0] != '':
+				if launch_id in query_return[0][0].split(','):
+					new_mute_string = query_return[0][0]
+				else:
+					new_mute_string = f'{query_return[0][0]},{launch_id}'
+			else:
+				new_mute_string = f'{launch_id}'
+			
+			new_mute_string = new_mute_string.replace(f'None,', '')
+
+	# unmute
+	elif toggle == '0':
+		new_mute_string = ''
+		if len(query_return) == 0:
+			pass
+		else:
+			mute_string = query_return[0][0]
+			if mute_string == None:
+				new_mute_string = str(launch_id)
+			elif f'{launch_id},' in mute_string:
+				new_mute_string = mute_string.replace(f'{launch_id},', '')
+			elif f',{launch_id}' in mute_string:
+				new_mute_string = mute_string.replace(f',{launch_id}', '')
+			else:
+				new_mute_string = mute_string.replace(f'{launch_id}', '')
+
+			new_mute_string = new_mute_string.replace(f'None,', '')
+
+	if len(query_return) == 0:
+		c.execute("INSERT INTO notify (chat, keyword, muted_launches, enabled) VALUES (?, ?, ?, ?)", (chat, launch_provider, new_mute_string, 1))
+	else:
+		c.execute("UPDATE notify SET muted_launches = ? WHERE chat = ? AND keyword = ?", (new_mute_string, chat, launch_provider))
+
+	conn.commit()
+	conn.close()
+	return
+
+
+def notify(msg):
+	'''
+	This is a way of dramatically simplifying the setup of notifications for the bot, as people seem to have troubly using /notify.
+
+	Flow of this function (transitions handled by callbackHandler)
+	- /notify invoked
+		- is this the first time /notify is invoked, i.e. is the chat found in notify databse?
+			- if yes, send a quick welcome message
+			- if not, tell the user which notifications are enabled
+
+	- send the user a custom keyboard of country flags, but with a quick "🌍 Enable all" button
+	- when a country flag is pressed, show a list of launch providers, with a "🇺🇸 Enable all" button on the top
+	- user can press the "Enable all" button, or pick individual providers, like SpaceX or Rocket Lab
+	'''
+
+	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
+	launch_dir = 'data/launch'
+
+	# check if notification database exists
+	if not os.path.isfile(os.path.join(launch_dir,'notifications.db')):
+		createNotifyDatabase()
+
+	# send the user the base keyboard where we start working up from.
+	message_text = f'''
+	🛰 Hi there, nice to see you! Let's set some notifications for you.
+
+	You can search for launch providers using the flags, or just enable all using the 🌍-button!
+
+	🔔 = *enabled* (tap to disable)
+	🔕 = *disabled* (tap to enable)
+	'''
+
+	# figure out what the text for the "enable all/disable all" button should be
+	providers = []
+	for key, val in provider_by_cc.items():
+		for provider in val:
+			providers.append(provider)
+
+	notification_statuses, disabled_count = getUserNotificationsStatus(chat, providers), 0
+	for key, val in notification_statuses.items():
+		if val == 0:
+			disabled_count += 1
+			break
+
+	global_text = f'🌍 Enable all' if disabled_count != 0 else f'🌍 Disable all'
+
+	keyboard = InlineKeyboardMarkup(
+		inline_keyboard = [
+			[InlineKeyboardButton(text=global_text, callback_data=f'notify/toggle/all/0')],
+			[InlineKeyboardButton(text='🇪🇺 European Union', callback_data=f'notify/list/EU')],
+			[InlineKeyboardButton(text='🇺🇸 United States', callback_data=f'notify/list/USA')],
+			[InlineKeyboardButton(text='🇷🇺 Russia', callback_data=f'notify/list/RUS')],
+			[InlineKeyboardButton(text='🇨🇳 China', callback_data=f'notify/list/CHN')],
+			[InlineKeyboardButton(text='🇮🇳 India', callback_data=f'notify/list/IND')],
+			[InlineKeyboardButton(text='🇯🇵 Japan', callback_data=f'notify/list/JPN')],
+			[InlineKeyboardButton(text='✅ Done', callback_data=f'notify/done')]
+		]
+	)
+
+	bot.sendMessage(
+		chat, inspect.cleandoc(message_text),
+		parse_mode='Markdown',
+		reply_markup=keyboard
+		)
+
+	return
+
+
+# receive feedback from users. Mainly as ForceReply and inline-features practice, though.
+def feedback(msg):
+	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
+
+	# feedback called by $chat; send the user a message with ForceReply in it, so we can get a response
+	message_text = f'''
+	✍️ *Hi there!* This is a way of sharing feedback and reporting issues to the developer of the bot. All feedback is anonymous.
+
+	Please note that it is impossible for me to reply to your feedback, but you can be sure I'll read it! Just write your feedback below.
+	'''
+
+	bot.sendMessage(
+		chat, inspect.cleandoc(message_text), parse_mode='Markdown',
+		reply_markup=ForceReply(selective=True), reply_to_message_id=msg['message_id']
+		)
+
+	if debug_log:
+		logging.info(f'✍️ User requested to send feedback – sending message with force_reply to {chat}.')
+
+	return
+
+
 # display a very simple schedule for upcoming flights (all)
 def flightSchedule(msg):
 	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
@@ -449,7 +937,7 @@ def flightSchedule(msg):
 	# pick 5 smallest, map into dict with dates
 	sched_dict = {}
 	for row, i in zip(query_return, range(len(query_return))):
-		if i > 5:
+		if i > 9:
 			break
 
 		launch_unix = datetime.datetime.utcfromtimestamp(row[9])
@@ -476,7 +964,7 @@ def flightSchedule(msg):
 		# create the date string; key in the form of year-month-day
 		ymd_split = key.split('-')
 		try:
-			suffix = {1: 'st', 2: 'nd', 3: 'rd'}[str(ymd_split[2])[-1]]
+			suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(ymd_split[2])[-1])]
 		except:
 			suffix = 'th'
 
@@ -507,11 +995,13 @@ def nextFlight(msg):
 	elif cmd == 'all':
 		pass
 
-	elif len(difflib.get_close_matches('all', ['all'])) == 1:
+	elif len(difflib.get_close_matches(cmd, ['all'])) == 1:
 		cmd = 'all'
 
 	else:
-		bot.sendMessage(chat, '⚠️ Not a valid query type – currently supported queries are `/next` and `/next all`.', parse_mode='Markdown')
+		resp_str = '⚠️ Not a valid query type – currently supported queries are `/next` and `/next all`.'
+		resp_str += '\n\n`/next` shows the next launch you have enabled notifications for.'
+		bot.sendMessage(chat, resp_str, parse_mode='Markdown')
 		return
 
 	# if command was "all", no need to perform a special select
@@ -607,7 +1097,7 @@ def nextFlight(msg):
 	info = query_return[7]
 
 	if lsp_name == 'SpaceX':
-		spx_info_str = spxInfoStrGen(mission_name, 0)
+		spx_info_str, spx_orbit_info = spxInfoStrGen(mission_name, 0)
 		if spx_info_str != None:
 			spx_str = True
 		else:
@@ -690,13 +1180,15 @@ def nextFlight(msg):
 	elif (eta.seconds/3600) < 24 and (eta.seconds/3600) >= 1: # under a day, more than an hour
 		t_h = math.floor(eta.seconds/3600)
 		t_m = math.floor((eta.seconds-t_h*3600)/60)
+		t_s = math.floor(eta.seconds-t_h*3600-t_m*60)
 
+		s_suff = 'second' if t_s == 1 else 'seconds'
 		min_suff = 'minute' if t_m == 1 else 'minutes'
 
 		if t_h == 1:
-			eta_str = f'{t_h} hour, {t_m} {min_suff}'
+			eta_str = f'{t_h} hour, {t_m} {min_suff}, {t_s} {s_suff}'
 		else:
-			eta_str = f'{t_h} hours, {t_m} {min_suff}'
+			eta_str = f'{t_h} hours, {t_m} {min_suff}, {t_s} {s_suff}'
 	
 	elif (eta.seconds/3600) < 1:
 		t_m = math.floor(eta.seconds/60)
@@ -727,7 +1219,7 @@ def nextFlight(msg):
 	118: 	['ILS', '🇺🇸🇷🇺'],
 	193: 	['Eurockot', '🇪🇺🇷🇺'],
 	119:	['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'],
-	123:	['Starsem SA', '🇪🇺🇷🇺'],
+	123:	['Starsem', '🇪🇺🇷🇺'],
 	194:	['ExPace', '🇨🇳']
 	}
 
@@ -741,7 +1233,7 @@ def nextFlight(msg):
 	if user_notif_enabled:
 		notify_str = '🔔 You will be notified of this launch!'
 	else:
-		notify_str = f'🔕 You will *not* be notified of this launch.\nℹ️ *To enable* notifications: `/notify {lsp_name}`'
+		notify_str = f'🔕 You will *not* be notified of this launch.\nℹ️ *To enable:* /notify@{bot_username}'
 
 	if info is not None:
 		info_msg = f'ℹ️ {info}'
@@ -763,7 +1255,7 @@ def nextFlight(msg):
 	}
 
 	try:
-		suffix = {1: 'st', 2: 'nd', 3: 'rd'}[str(launch_unix.day)[-1]]
+		suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(launch_unix.day)[-1])]
 	except:
 		suffix = 'th'
 
@@ -775,6 +1267,27 @@ def nextFlight(msg):
 		header = f'🚀 *Next launch* is by {lsp_name} {lsp_flag}\n*Mission* {mission_name}\n*Vehicle* {vehicle_name}\n*Pad* {pad_name}'
 	else:
 		header = f'🚀 *Next launch* is by {lsp_name}\n*Mission* {mission_name}\n*Vehicle* {vehicle_name}\n*Pad* {pad_name}'
+
+	if lsp_name.replace('`','') == 'SpaceX':
+		if spx_orbit_info != '' and spx_orbit_info != None:
+			orbit_map = {
+			'VLEO': 'Very low-Earth orbit',
+			'SO': 'Sub-orbital',
+			'LEO': 'Low-Earth orbit',
+			'SSO': 'Sun-synchronous',
+			'MEO': 'Medium-Earth orbit',
+			'GEO': 'Geostationary (direct)',
+			'GTO': 'Geostationary (transfer)',
+			'ISS': 'ISS'
+			}
+
+			if spx_orbit_info in orbit_map.keys():
+				spx_orbit_info = orbit_map[spx_orbit_info]
+				spx_orbit_info = ' '.join("`{}`".format(word) for word in spx_orbit_info.split(' '))
+			else:
+				spx_orbit_info = f'`{spx_orbit_info}`'
+
+			header += f'\n*Orbit* {spx_orbit_info}'
 
 	time_str = f'📅 {date_str}`,` `{launch_time} UTC`\n⏱ {eta_str}'
 	
@@ -797,341 +1310,10 @@ def nextFlight(msg):
 	return
 
 
-# handles the /notify command, i.e. toggles notifications
-def notify(msg):
-	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
-	launch_dir = 'data/launch'
-
-	bot.sendChatAction(chat, action='typing')
-
-	# check if notification database exists
-	if not os.path.isfile(os.path.join(launch_dir,'notifications.db')):
-		createNotifyDatabase()
-
-	# connect to database
-	notify_conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
-	notify_cursor = notify_conn.cursor()
-
-	# split input
-	command_split = msg['text'].strip().split(" ")
-	notify_text = ' '.join(command_split[1:]).lower()
-	raw_str = ' '.join(command_split[1:])
-
-	# list supported notification settings (missing All)
-	supported_notifs = [
-	'All',
-	'SpaceX',
-	'Rocket Lab',
-	'Northrop Grumman',
-	'ULA',
-	'Mitsubishi Heavy Industries',
-	'Sea Launch',
-	'Arianespace',
-	'Eurockot',
-	'International Launch Services',
-	'ISC Kosmotras',
-	'Starsem',
-	'Antrix Corporation',
-	'CASC',
-	'ExPace'
-	]
-
-	'''
-	'USA',
-	'EU',
-	'Russia',
-	'India',
-	'China',
-	'''
-
-	supported_notifs_lower = [x.lower() for x in supported_notifs]
-	valid_notifs_str = '''⚠️ *Invalid notification!* Below is a list of supported notifications.
-
-		Notifications are sent 24 hours, 12 hours, 60 minutes, and 5 minutes before a flight.
-
-		To list the notifications you currently have enabled, simply send `/notify`.
-
-		To enable *all notifications:* `/notify all` *(EXPERIMENTAL)*
-
-		*New-space launch providers*
-		- SpaceX 🇺🇸
-		- Rocket Lab 🇺🇸🇳🇿
-		- Blue Origin 🇺🇸 (not yet supported)
-
-		*Old-space launch providers*
-		- ULA 🇺🇸
-		- Northrop Grumman 🇺🇸
-		- Mitsubishi Heavy Industries 🇯🇵
-		- Sea Launch 🇷🇺
-
-		*Governmental launch service providers*
-		- Arianespace 🇪🇺
-		- Eurockot 🇪🇺🇷🇺
-		- International Launch Services 🇺🇸🇷🇺
-		- ISC Kosmotras 🇷🇺🇺🇦🇰🇿
-		- Starsem 🇪🇺🇷🇺
-		- Antrix Corporation 🇮🇳
-		- CASC 🇨🇳
-		- ExPace 🇨🇳
-
-		*Space agencies* _(not yet supported)_
-		- ESA 🇪🇺
-		- NASA 🇺🇸
-		- ROSCOSMOS 🇷🇺
-		- JAXA 🇯🇵
-		- ISRO 🇮🇳
-		- CNSA 🇨🇳
-
-		*By launch service provider's country* _(not yet supported)_
-		- EU 🇪🇺
-		- USA 🇺🇸
-		- Japan 🇯🇵
-		- India 🇮🇳
-		- China 🇨🇳
-		- Russia 🇷🇺
-		- New Zealand 🇳🇿
-
-		ℹ️ *An example* toggle command would be `/notify Rocket Lab`.
-		'''
-
-	if notify_text == 'help' or len(difflib.get_close_matches(notify_text, ['help'])) >= 1:
-		valid_notifs_str = valid_notifs_str.replace(
-			'⚠️ *Invalid notification!* Below is a list of supported notifications:',
-			'ℹ️ *Below is a list of supported notifications:*')
-		bot.sendMessage(chat, inspect.cleandoc(valid_notifs_str), parse_mode='Markdown')
-		return
-
-	# if no input, simply list all enabled notifications; if all-flag is set, list the disabled notifications
-	if len(notify_text) == 0:
-		# pull all entries from the notification database that contain the chat ID and are enabled
-		notify_cursor.execute("SELECT * FROM notify WHERE chat = ?", (chat,))
-
-		# construct a list of enabled notification
-		info_message = ''
-		query_return = notify_cursor.fetchall()
-
-		enabled_notifs, disabled_notifs = [], []
-		for row in query_return:
-			if row[3] == 1:
-				enabled_notifs.append(row[1])
-			else:
-				disabled_notifs.append(row[1])
-
-		# set the all_flag and whether we'll list disabled notifications only
-		all_flag = True if 'All' in enabled_notifs else False
-		if not all_flag and 'All' in disabled_notifs:
-			disabled_notifs.remove('All')
-
-		if not all_flag and len(enabled_notifs) == 0:
-			valid_notifs_str = valid_notifs_str.replace(
-				'⚠️ *Invalid notification!* Below is a list of supported notifications.',
-				'ℹ️ *No notifications are enabled for this chat.* Below is a list of supported notifications:')
-			bot.sendMessage(chat, inspect.cleandoc(valid_notifs_str), parse_mode='Markdown')
-			return
-
-		# no all_flag enabled, list enabled notifications
-		elif len(enabled_notifs) > 0 and not all_flag:
-			info_message = '🔔 The following notifications are enabled for this chat\n\n'
-			
-			for notif, i in zip(enabled_notifs, range(len(enabled_notifs))):
-				info_message = info_message + '\t- ' + notif
-
-				if i != len(enabled_notifs) - 1:
-					info_message = info_message + '\n'
-
-			info_message = info_message + '\n\n🔕 Disable a notification by sending `/notify` again.'
-			info_message = info_message + '\n*For a list of supported notifications:* `/notify help`.'
-
-			bot.sendMessage(chat, inspect.cleandoc(info_message), parse_mode='Markdown')
-			notify_conn.close()
-			return
-
-		# all_flag enabled, list disabled notifications only
-		elif all_flag:
-			if len(disabled_notifs) > 0:
-				info_message = '🔔 You have notifications enabled for all flights, with some exceptions.\n'
-				info_message += '🔕 The following notifications are *disabled* for this chat:\n\n'
-				
-				for notif, i in zip(disabled_notifs, range(len(disabled_notifs))):
-					info_message = info_message + '\t- ' + notif
-
-					if i != len(disabled_notifs) - 1:
-						info_message = info_message + '\n'
-
-				info_message = info_message + '\n\n*Enable a notification* by sending `/notify` for that keyword again.'
-				info_message = info_message + '\n*For a list of supported notifications:* `/notify help`.'
-
-			else:
-				info_message = '''🔔 You have notifications enabled for all flights, with no exceptions.
-				
-				🔕 To not receive a notification, send `/notify` for that launch provider.
-				To disable notifications for *all flights*: `/notify all`
-				
-				For a list of supported notifications: `/notify help`.
-				'''
-
-			bot.sendMessage(chat, inspect.cleandoc(info_message), parse_mode='Markdown')
-			notify_conn.close()
-			return
-
-	# get close matches to our input
-	close_matches = difflib.get_close_matches(raw_str, supported_notifs)
-
-	# check if we have a direct match; if we do have, match the lower-cased input to the correctly cased name
-	if notify_text in supported_notifs_lower:
-		raw_str = supported_notifs[supported_notifs_lower.index(notify_text)]
-
-	# no close matches; invalid input
-	elif len(close_matches) == 0:
-		bot.sendMessage(chat, inspect.cleandoc(valid_notifs_str), parse_mode='Markdown')
-		return
-
-	else: # found a close match, continue
-		if len(close_matches) == 1:
-			if debug_log:
-				logging.info(f'ℹ️ User mistype corrected: {raw_str} -> {close_matches[0]}')
-			notify_text, raw_str = close_matches[0], close_matches[0]
-			pass
-		
-		else: # multiple close matches, ask user what they meant
-			meant_str = ' or '.join(close_matches)
-			if debug_log:
-				logging.info(f'ℹ️ User mistype corrected: "{meant_str}"')
-			bot.sendMessage(chat, f'⚠️ Did you mean {meant_str}?')
-			return
-
-
-	# pull all entries from the notification database that contain the chat ID and notify_text
-	notify_cursor.execute("SELECT * FROM notify WHERE chat = ? AND keyword = ? OR chat = ? AND keyword = ?", (chat, raw_str, chat, 'All'))
-
-	# n rows, in the form of chat ID - keyword - UNIX-timestamp - enabled
-	query_return = notify_cursor.fetchall()
-
-	# check if the chat has the all-flag set to enabled
-	all_flag, parsed_query_return = False, []
-	for row, i in zip(query_return, range(len(query_return))):
-		if 'All' in row[1]:
-			if row[3] == 1:
-				all_flag = True
-			else:
-				all_flag = False
-			
-			if len(query_return) == 1 and raw_str == 'All':
-				parsed_query_return.append([row[0], row[1], row[2], row[3]])
-		else:
-			parsed_query_return.append([row[0], row[1], row[2], row[3]])
-
-	query_return = tuple(parsed_query_return)
-
-	# check if the notification string can already be found; if it is, just do as we normally would
-	if len(query_return) > 0:
-		# if enabled, disable, and vice versa
-		new_status = 0 if query_return[0][3] == 1 else 1
-		notify_status = 'enabled' if new_status == 1 else 'disabled'
-		notify_icon = {0:'🔕', 1:'🔔'}[new_status]
-
-		if raw_str != 'All':
-			extra_info_str = {
-			0: f'''All notifications for flights of {raw_str} have been disabled.
-			You will not receive any further notifications.
-
-			To re-enable notifications, send `/notify {raw_str}` again.
-			''',
-			1: f'''You will now be notified for all flights of {raw_str}.
-			
-			The first notification is sent 24 hours before a flight.
-			To disable notifications, send `/notify {raw_str}` again.
-			'''
-			}[new_status]
-
-			info_string = f'''
-			{notify_icon} Notifications *{notify_status}* for *{raw_str}*
-
-			{extra_info_str}
-			'''
-
-		else:
-			extra_info_str = {
-			0: f'''You have disabled the all-notifications flag.
-			You will continue receiving the notifications you have manually set.
-
-			To list the notifications you will still receive: `/notify`
-			''',
-			
-			1: f'''You will now be notified for all flights, excluding the ones you have disabled manually.
-			The first notification is sent 24 hours before a flight.
-
-			To list the notifications you have disabled: `/notify`
-			'''
-			}[new_status]
-
-			info_string = f'''
-			{notify_icon} Notifications *{notify_status}* for *all flights*
-
-			{extra_info_str}
-			'''
-
-		if debug_log:
-			logging.info(f'🔀 chat {chat} set keyword={raw_str} to {new_status}')
-
-		notify_cursor.execute("UPDATE notify SET enabled = ? WHERE chat = ? AND keyword = ?", (new_status, chat, raw_str))
-		bot.sendMessage(chat, inspect.cleandoc(info_string), parse_mode='Markdown')
-
-	# notification can't be found; insert as new
-	else:
-		if raw_str == 'All':
-			notify_cursor.execute("INSERT INTO notify (chat, keyword, lastnotified, enabled) VALUES (?, ?, 0, 1)", (chat, raw_str))
-
-			info_string = f'''🔔 Notifications *enabled* for all flights!
-			
-			Individual notifications can be disabled with /notify.
-			The first notification is sent 24 hours before a flight.
-			'''
-
-			if debug_log:
-				logging.info(f'🔀 chat {chat} enabled keyword={raw_str} for the first time. all_flag=False')
-
-		elif not all_flag:
-			notify_cursor.execute("INSERT INTO notify (chat, keyword, lastnotified, enabled) VALUES (?, ?, 0, 1)", (chat, raw_str))
-			info_string = f'''🔔 Notifications *enabled* for *{raw_str}*.
-
-			You will now be notified for all flights of {raw_str}. 
-			The first notification is sent 24 hours before a flight.
-			'''
-
-			if debug_log:
-				logging.info(f'🔀 chat {chat} enabled keyword={raw_str} for the first time. all_flag=False')
-
-		else:
-			notify_cursor.execute("INSERT INTO notify (chat, keyword, lastnotified, enabled) VALUES (?, ?, 0, 0)", (chat, raw_str))
-			info_string = f'''🔕 Notifications *disabled* for *{raw_str}*.
-
-			To re-enable notifications for *{raw_str}*, simply send this command again.
-			To list your enabled notifications, send `/notify`.
-			'''
-
-			if debug_log:
-				logging.info(f'🔀 chat {chat} disabled keyword={raw_str}. all_flag=True, defaulted to disable.')
-
-		bot.sendMessage(chat, inspect.cleandoc(info_string), parse_mode='Markdown')
-
-	notify_conn.commit()
-	notify_conn.close()
-	return
-
-
 # handles API update requests and decides on which notification to send
 def launchUpdateCheck():
 	# compare data to data found in local launch database
 	# send a notification if launch time is approaching
-
-	# every time this is ran: (every 15-30 seconds)
-	# check data (T-) in launch.db
-	# if we're past a threshold, check for updates again, then notify if we're still past the threshold:
-		# if T- < 24 hours, notify (if not notified)
-		# if T- < 12 hours, notify (if not notified)
-		# if T- < 1 hour, notify (if not notified)
-		# if T- < 5 minutes, notify (if not notified)
 
 	launch_dir = 'data/launch'
 	if not os.path.isfile(os.path.join(launch_dir, 'launches.db')):
@@ -1164,13 +1346,12 @@ def launchUpdateCheck():
 
 	query_return = c.fetchall()
 	if len(query_return) == 0:
-		updateStats({'db_calls': 1})
 		return
 
 	# we presumably have at least one launch now that has an unsent notification
 	# update the database, then check again
 	if debug_log:
-		logging.info(f'⏰ Found {len(query_return)} pending notifications... Updating database to verify.')
+		logging.info(f'⏰ Found {len(query_return)} pending notification(s)... Updating database to verify.')
 	
 	getLaunchUpdates(None)
 	c.execute(f'''SELECT * FROM launches 
@@ -1180,9 +1361,10 @@ def launchUpdateCheck():
 		NET <= {unix_60m_threshold} AND NET >= {now_timestamp} AND notify60min = 0 OR
 		NET <= {unix_5m_threshold} AND NET >= {now_timestamp} AND notify5min = 0''')
 	
-	updateStats({'db_calls': 2})
 	query_return = c.fetchall()
 	if len(query_return) == 0:
+		if debug_log:
+			logging.info(f'❓ No notifications found after re-check. Returning.')
 		return
 
 	for row in query_return:
@@ -1465,8 +1647,8 @@ def spxInfoStrGen(launch_name, run_count):
 		if len(close_matches) == 0:
 			close_matches = difflib.get_close_matches(launch_name_stripped, stripped_keys)
 			if len(close_matches) == 1:
-				if debug_log:
-					logging.info(f'Close match found for {launch_name_stripped}: {close_matches}')
+				#if debug_log:
+				#	logging.info(f'Close match found for {launch_name_stripped}: {close_matches}')
 				
 				diff_match = close_matches[0]
 
@@ -1487,8 +1669,8 @@ def spxInfoStrGen(launch_name, run_count):
 
 
 		elif len(close_matches) == 1:
-			if debug_log:
-				logging.info(f'✅ Got a single close match! {launch_name_stripped} -> {close_matches}')
+			#if debug_log:
+			#	logging.info(f'✅ Got a single close match! {launch_name_stripped} -> {close_matches}')
 			
 			diff_match = close_matches[0]
 		
@@ -1519,8 +1701,8 @@ def spxInfoStrGen(launch_name, run_count):
 			return
 
 	elif len(query_return) == 1:
-		if debug_log:
-			logging.info(f'✅ Got a single return from the query – no need to diff! {launch_name} -> {query_return}')
+		#if debug_log:
+		#	logging.info(f'✅ Got a single return from the query – no need to diff! {launch_name} -> {query_return}')
 		
 		db_match = query_return[0]
 		diff_match = None
@@ -1537,8 +1719,9 @@ def spxInfoStrGen(launch_name, run_count):
 		c.execute('''SELECT * FROM launches WHERE launch_name = ?''', (diff_match,))
 		query_return = c.fetchall()
 		if len(query_return) == 1:
-			if debug_log:
-				logging.info(f'✅ Found diff_match from database!')
+			#if debug_log:
+			#	logging.info(f'✅ Found diff_match from database!')
+			
 			db_match = query_return[0]
 		else:
 			if debug_log:
@@ -1551,6 +1734,9 @@ def spxInfoStrGen(launch_name, run_count):
 	# flight_num 0, launch_name 1, NET 2, orbit 3, vehicle 4, core_serials 5
 	# core_reuses 6, landing_intents 7, fairing_reused 8, fairing_rec_attempt 9, fairing_ship 10
 
+	# get the orbit
+	destination_orbit = db_match[3]
+
 	# booster information
 	if db_match[4] == 'FH': # a Falcon Heavy launch
 		reuses = db_match[6].split(',')
@@ -1561,7 +1747,7 @@ def spxInfoStrGen(launch_name, run_count):
 			else:
 				center_reuses = f'✨ new'
 		except:
-			center_reuses = f'♻️ ?'
+			center_reuses = f'♻️x?'
 
 		try:
 			int(reuses[1])
@@ -1570,7 +1756,7 @@ def spxInfoStrGen(launch_name, run_count):
 			else:
 				booster1_reuses = f'✨ new'
 		except:
-			booster1_reuses = f'♻️ ?'
+			booster1_reuses = f'♻️x?'
 
 		try:
 			int(reuses[2])
@@ -1579,7 +1765,7 @@ def spxInfoStrGen(launch_name, run_count):
 			else:
 				booster2_reuses = f'✨ new'
 		except:
-			booster2_reuses = f'♻️ ?'
+			booster2_reuses = f'♻️x?'
 
 		# pull serials from db, construct serial strings
 		serials = db_match[5].split(',')
@@ -1610,11 +1796,11 @@ def spxInfoStrGen(launch_name, run_count):
 		landing_intents = db_match[7]
 		if landing_intents != 'expend':
 			if 'None' in landing_intents:
-				recovery_str = 'Unknown'
+				recovery_str = '*Recovery* `Unknown`'
 			else:
-				recovery_str = f"{landing_intents}"
+				recovery_str = f"*Recovery* `{landing_intents}`"
 		else:
-			recovery_str = f'No recovery — godspeed, {core_serial}'
+			recovery_str = f'*No recovery* `godspeed,` `{core_serial}` 💫'
 
 	# construct the Falcon-specific information message
 	if db_match[4] == 'FH':
@@ -1642,41 +1828,45 @@ def spxInfoStrGen(launch_name, run_count):
 			else:
 				reuses = f'✨ new'
 		except:
-			reuses = f'♻️ ?'
+			reuses = f'♻️x?'
 
-		spx_info = f'*Booster information*\n*Core* `{core_serial}` `{reuses}`\n*Recovery* `{recovery_str}`'
-
+		spx_info = f'*Booster information*\n*Core* `{core_serial}` `{reuses}`\n{recovery_str}'
 		if core_serial == 'Unknown':
-			spx_info = f'ℹ️ No booster information available yet'
+			spx_info = f'🚀 No booster information available yet'
 
 	else:
 		if debug_log:
 			logging.info(f'🛑 Error in spxInfoStrGen: vehicle not found ({db_match[4]})')
 		
-		return None
+		return None, None
 
 	# check if there is fairing recovery & orbit information available
 	if db_match[8] != '0' and db_match[8] != '1':
-		if 'Dragon' in db_match[8]: # check if it's a Dragon flight
-			dragon_info = db_match[8].split('/')
-			dragon_serial = 'Unknown' if dragon_info[1] == 'None' else dragon_info[1]
-			dragon_reused = '♻️ *reused*' if dragon_info[2] == 'True' else '✨ new'
-			dragon_crew = dragon_info[3]
-			
-			crew_str = ''
-			if 'Crew' in dragon_info[0] and dragon_crew != 'None':
-				if int(dragon_crew) != 0:
-					for i in range(int(dragon_crew)):
-						crew_str += '👨‍🚀'
-				else:
-					crew_str = 'Unmanned'
-			elif 'Crew' in dragon_info[0] and dragon_crew == 'None':
-				crew_str = 'Unmanned/Unknown'			
-			elif 'Crew' not in dragon_info[0]:
-				crew_str = 'Cargo mission'
+		try:
+			if 'Dragon' in db_match[8]: # check if it's a Dragon flight
+				dragon_info = db_match[8].split('/')
+				dragon_serial = 'Unknown' if dragon_info[1] == 'None' else dragon_info[1]
+				dragon_reused = '♻️ `Reused`' if dragon_info[2] == 'True' else '✨ `New`'
+				dragon_crew = dragon_info[3]
+				
+				crew_str = ''
+				if 'Crew' in dragon_info[0] and dragon_crew != 'None':
+					if int(dragon_crew) != 0:
+						for i in range(int(dragon_crew)):
+							crew_str += '👨‍🚀'
+					else:
+						crew_str = 'Unmanned'
+				elif 'Crew' in dragon_info[0] and dragon_crew == 'None':
+					crew_str = 'Unmanned/Unknown'			
+				elif 'Crew' not in dragon_info[0]:
+					crew_str = 'Cargo mission'
 
-			fairing_info = f'*Dragon information*\n*Type* {dragon_info[0]}\n*SN* {dragon_serial} {dragon_reused}\n*Crew* {crew_str}'
-			spx_info = spx_info + '\n\n' + fairing_info
+				cap_type = ' '.join("`{}`".format(word) for word in dragon_info[0].split(' '))
+				fairing_info = f'*Dragon information*\n*Type* {cap_type}\n*Serial* `{dragon_serial}` {dragon_reused}\n*Crew* `{crew_str}`'
+				spx_info = spx_info + '\n\n' + fairing_info
+
+		except:
+			pass
 
 	else:
 		try:
@@ -1704,7 +1894,7 @@ def spxInfoStrGen(launch_name, run_count):
 				logging.info(f'{e}')
 			pass
 
-	return spx_info
+	return spx_info, destination_orbit
 
 
 # handles API requests from launchUpdateCheck()
@@ -1880,29 +2070,90 @@ def getLaunchUpdates(launch_ID):
 
 # gets a request to send a notification about launch X from launchUpdateCheck()
 def notificationHandler(launch_row, notif_class):
-	# handle notification sending, so we can retry more easily and handle exceptions
-	def sendNotification(chat, notification):
+	def loadMuteStatus(chat, launch_id, keywords):
+		conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
+		c = conn.cursor()
+		c.execute("SELECT muted_launches FROM notify WHERE chat = ? AND keyword = ?", (chat, keywords))
+		query_return = c.fetchall()
+
+		if len(query_return) == 0:
+			mute_status = 0
+		else:
+			if query_return[0][0] == None:
+				mute_status = 0
+			elif str(launch_id) in query_return[0][0].split(','):
+				mute_status = 1
+			else:
+				mute_status = 0
+
+		return mute_status
+
+
+	# removes all notification settings for a chat from the notify database
+	def cleanNotifyDatabase(chat):
+		conn = sqlite3.connect(os.path.join('data/launch', 'notifications.db'))
+		c = conn.cursor()
+		
+		c.execute("DELETE FROM notify WHERE chat = ?", (chat,))
+		conn.commit()
+		conn.close()
+		return
+
+
+	# handle notification sending; done in a separate function so we can retry more easily and handle exceptions
+	def sendNotification(chat, notification, launch_id, keywords):
 		try:
-			bot.sendMessage(chat, notification, parse_mode='Markdown')
+			# load mute status, generate keys
+			mute_status = loadMuteStatus(chat, launch_id, keywords)
+			mute_press = 0 if mute_status == 1 else 1
+			
+			mute_key = {0:f'🔇 Mute this launch',1:'🔊 Unmute this launch'}[mute_status]
+
+			# /mute/$provider/$launch_id/(0/1) | 1=muted (true), 0=not muted
+			keyboard = InlineKeyboardMarkup(
+				inline_keyboard = [
+					[
+						InlineKeyboardButton(text=mute_key, callback_data=f'mute/{keywords}/{launch_id}/{mute_press}')
+					]
+				]
+			)
+
+			bot.sendMessage(chat, notification, parse_mode='Markdown', reply_markup=keyboard)
 			return True
+		
 		except telepot.exception.BotWasBlockedError:
+			if debug_log:
+				logging.info(f'⚠️ Bot was blocked by {chat} – cleaning notify database...')
+
+			cleanNotifyDatabase(chat)
+			return True
+
+		except telepot.exception.TelegramError as error:
+			# Bad Request: chat not found
+			if error.error_code == 400:
 				if debug_log:
-					logging.info(f'⚠️ Bot was blocked by {chat} – cleaning notifiy database...')
+					logging.info(f'⚠️ chat {chat} not found – cleaning notify database...')
 
-				conn = sqlite3.connect(os.path.join('data/launch', 'notifications.db'))
-				c = conn.cursor()
-				
-				c.execute("DELETE FROM notify WHERE chat = ?", (chat,))
-				conn.commit()
-				conn.close()
-
+				cleanNotifyDatabase(chat)
 				return True
+
+			else:
+				if debug_log:
+					logging.info(f'⚠️ unhandled telepot.exception.TelegramError in sendNotification: {error}')
+
+				return False
 
 		except Exception as caught_exception:
 			return caught_exception
 
 
-	# lsp ID -> name dictionary
+	''' lsp ID -> name dictionary
+	Used to shorten the names, so we don't end up with super long messages
+	Also gives us a pretty flag! 
+	
+	This dictionary also maps custom shortened names (Northrop Grumman, Starsem)
+	to their real ID.
+	'''
 	LSP_IDs = {
 	121: 	['SpaceX', '🇺🇸'],
 	147: 	['Rocket Lab', '🇺🇸'],
@@ -1916,18 +2167,8 @@ def notificationHandler(launch_row, notif_class):
 	118: 	['ILS', '🇺🇸🇷🇺'],
 	193: 	['Eurockot', '🇪🇺🇷🇺'],
 	119:	['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'],
-	123:	['Starsem SA', '🇪🇺🇷🇺'],
+	123:	['Starsem', '🇪🇺🇷🇺'],
 	194:	['ExPace', '🇨🇳']
-	}
-
-	# map country codes found in launch database to human-friendly strings
-	ccode_map = {
-	'CHN': 'China',
-	'USA': 'USA',
-	'FRA': 'EU',
-	'RUS': 'Russia',
-	'JPN': 'Japan',
-	'IND': 'India'
 	}
 
 	'''
@@ -1945,7 +2186,7 @@ def notificationHandler(launch_row, notif_class):
 	launch_id = launch_row[1]
 	keywords = int(launch_row[2])
 
-	# check if LSP ID in keywords is in our custom list
+	# check if LSP ID in keywords is in our custom list, so we can get the short name and the flag
 	if keywords not in LSP_IDs.keys():
 		lsp, lsp_flag = None, ''
 	else:
@@ -1961,6 +2202,7 @@ def notificationHandler(launch_row, notif_class):
 	c.execute(f'''SELECT * FROM launches WHERE id = {launch_id}''')
 	query_return = c.fetchall()
 
+	# parse the input so we can generate the message later
 	launch_name = query_return[0][0]
 	vehicle = query_return[0][5]
 	pad = query_return[0][6]
@@ -2042,7 +2284,7 @@ def notificationHandler(launch_row, notif_class):
 
 	# if it's a SpaceX launch, pull get the info string
 	if lsp_name == 'SpaceX':
-		spx_info_str = spxInfoStrGen(launch_name, 0)
+		spx_info_str, spx_orbit_info = spxInfoStrGen(launch_name, 0)
 		if spx_info_str != None:
 			spx_str = True
 		else:
@@ -2056,8 +2298,31 @@ def notificationHandler(launch_row, notif_class):
 	# construct the "base" message
 	message_header = f'🚀 *{launch_name}* is launching in *{t_minus} {time_format}*\n'
 	message_header += f'*Launch provider* {lsp_str} {lsp_flag}\n*Vehicle* {vehicle_name}\n*Pad* {pad_name}'
+
+	# if it's a SpaceX launch, append the orbit to the header
+	if lsp_name == 'SpaceX':
+		if spx_orbit_info != '' and spx_orbit_info != None:
+			orbit_map = {
+			'VLEO': 'Very low-Earth orbit',
+			'SO': 'Sub-orbital',
+			'LEO': 'Low-Earth orbit',
+			'SSO': 'Sun-synchronous',
+			'MEO': 'Medium-Earth orbit',
+			'GEO': 'Geostationary (direct)',
+			'GTO': 'Geostationary (transfer)',
+			'ISS': 'ISS'
+			}
+
+			if spx_orbit_info in orbit_map.keys():
+				spx_orbit_info = orbit_map[spx_orbit_info]
+				spx_orbit_info = ' '.join("`{}`".format(word) for word in spx_orbit_info.split(' '))
+			else:
+				spx_orbit_info = f'`{spx_orbit_info}`'
+
+			message_header += f'\n*Orbit* {spx_orbit_info}'
+
 	message_footer = f'*🕓 The launch is scheduled* for `{launch_time} UTC`\n'
-	message_footer += f'*🔕 To disable:* `/notify {lsp_name}`'
+	message_footer += f'*🔕 To disable* use /notify@{bot_username}'
 	launch_str = message_header + '\n\n' + info_text + '\n\n' + message_footer
 
 	# if NOT a SpaceX launch and we're close to launch, add the video URL
@@ -2109,6 +2374,35 @@ def notificationHandler(launch_row, notif_class):
 	c.execute('SELECT * FROM notify WHERE keyword == ? OR keyword == ?',(lsp, 'All'))
 	query_return = c.fetchall()
 
+	# parse for possible mutes
+	parsed_query_return = []
+	muted_chats = []
+	for row in query_return:
+		append = True
+		if row[2] != None:
+			if row[2] != '':
+				split = row[2].split(',')
+				for muted_id in split:
+					if muted_id == str(launch_id):
+						append = False
+						muted_chats.append(row[0])
+
+		if append:
+			if row[0] not in muted_chats:
+				parsed_query_return.append(row)
+
+	query_return = parsed_query_return
+	parsed_query_return = []
+	for row in query_return:
+		if row[0] in muted_chats:
+			if debug_log:
+				logging.info(f'🔇 Not notifying chat {row[0]} due to muted launch')
+			pass
+		else:
+			parsed_query_return.append(row)
+
+	query_return = parsed_query_return
+
 	# parse output
 	notify_dict, notify_list = {}, [] # chat: id: toggle
 	for row in query_return:
@@ -2142,7 +2436,7 @@ def notificationHandler(launch_row, notif_class):
 		logging.info(f'Sending notifications for launch {launch_id} | NET: {launch_unix} | notify_list: {notify_list}')
 
 	for chat in notify_list:
-		ret = sendNotification(chat, launch_str)
+		ret = sendNotification(chat, launch_str, launch_id, launch_row[3])
 
 		if ret != True and debug_log:
 			logging.info(f'🛑 Error sending notification to chat={chat}! Exception: {ret}')
@@ -2150,7 +2444,7 @@ def notificationHandler(launch_row, notif_class):
 		tries = 1
 		while ret != True:
 			time.sleep(2)
-			ret = sendNotification(chat, launch_str)
+			ret = sendNotification(chat, launch_str, launch_id, launch_row[3])
 			tries += 1
 			
 			if ret == True:
@@ -2369,9 +2663,9 @@ def createNotifyDatabase():
 
 	try:
 		# chat ID - keyword - UNIX timestamp - enabled true/false
-		c.execute("CREATE TABLE notify (chat TEXT, keyword TEXT, lastnotified INTEGER, enabled INTEGER, PRIMARY KEY (chat, keyword))")
+		c.execute("CREATE TABLE notify (chat TEXT, keyword TEXT, muted_launches TEXT, enabled INTEGER, PRIMARY KEY (chat, keyword))")
 		c.execute("CREATE INDEX enabledchats ON notify (chat, enabled)")
-	except sqlite3.OperationalError:
+	except sqlite3.OperationalError as exception:
 		pass
 
 	conn.commit()
@@ -2499,7 +2793,7 @@ def main():
 	global debug_log, debug_mode
 
 	# current version
-	version = '0.2.3 beta'
+	version = '0.3.1 beta'
 
 	# default
 	start = False
@@ -2598,13 +2892,54 @@ def main():
 	valid_commands = [
 	'/start', '/help', 
 	'/next', '/notify',
-	'/statistics', '/schedule'
+	'/statistics', '/schedule',
+	'/feedback'
 	]
 
 	# generate the "alternate" commands we listen for, as in ones suffixed with the bot's username 
 	valid_commands_alt = []
 	for command in valid_commands:
 		valid_commands_alt.append(command + '@' + bot_username)
+
+	global provider_by_cc
+	provider_by_cc = {
+		'USA': [
+			'NASA',
+			'SpaceX',
+			'ULA',
+			'Rocket Lab',
+			'Virgin Orbit',
+			'Firefly Aerospace',
+			'Northrop Grumman',
+			'International Launch Services'],
+		
+		'EU': [
+			'Arianespace',
+			'Eurockot',
+			'Starsem'],
+		
+		'CHN': [
+			'CASC',
+			'ExPace'],
+		
+		'RUS': [
+			'KhSC',
+			'ISC Kosmotras',
+			'Russian Space Forces',
+			'Eurockot',
+			'Sea Launch',
+			'Land Launch',
+			'Starsem',
+			'International Launch Services'],
+		
+		'IND': [
+			'ISRO',
+			'Antrix Corporation'],
+		
+		'JPN': [
+			'JAXA',
+			'Mitsubishi Heavy Industries']
+	}
 
 	MessageLoop(bot, {'chat': handle, 'callback_query': callbackHandler}).run_as_thread()
 	time.sleep(1)
@@ -2616,9 +2951,6 @@ def main():
 
 		status_msg = f'  Connected to Telegram! ✅'
 		sys.stdout.write('%s\r' % status_msg)
-
-	#if debug_log:
-	#	logging.info('✅ Bot connected')
 
 	# schedule regular database updates and NET checks
 	schedule.every(10).minutes.do(getLaunchUpdates, launch_ID=None)
@@ -2633,7 +2965,7 @@ def main():
 	# fancy prints so the user can tell that we're actually doing something
 	if not debug_mode:
 		cursor.hide()
-		print_map = {0: '|', 1: '/', 2: '—', 3: '\\', 4: '|', 5: '/', 6: '—', 7: '\\'}
+		print_map = {0:'|', 1:'/', 2:'—', 3:'\\', 4:'|', 5:'/', 6:'—', 7:'\\'}
 		while True:
 			schedule.run_pending()
 			for i in range(0,8):
@@ -2649,11 +2981,3 @@ def main():
 
 
 main()
-
-
-
-
-
-
-
-
