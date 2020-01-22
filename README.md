@@ -3,8 +3,6 @@ A rocket launch info & notifications bot for Telegram. Reachable at `@rocketrybo
 
 APIs used: Launch Library for flights, r/SpaceX API for Falcon 9/Heavy booster and recovery information.
 
-If you host the bot yourself, please change `headers = {'user-agent': 'telegram-launchbot/0.2'}` in `getLaunchUpdates()` to something else.
-
 **Basic instructions**
 
 Install the Python3 dependencies with PIP, using the requirements.txt file found in the repository: `python3 -m pip install -R requirements.txt `
