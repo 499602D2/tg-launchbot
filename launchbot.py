@@ -26,7 +26,6 @@ Roadmap
 
 ---------------------------------
 Changelog 0.3.X
-
 ---------------------------------
 To-do
 Essential & usability
@@ -313,7 +312,7 @@ def callbackHandler(msg):
 				[InlineKeyboardButton(text='🇮🇳 India', callback_data=f'notify/list/IND'),
 				InlineKeyboardButton(text='🇯🇵 Japan', callback_data=f'notify/list/JPN')],
 				
-				[InlineKeyboardButton(text='✅ Finish', callback_data=f'notify/done')]
+				[InlineKeyboardButton(text='✅ Save and exit', callback_data=f'notify/done')]
 			]
 		)
 
@@ -337,7 +336,7 @@ def callbackHandler(msg):
 
 		notification_statuses, disabled_count = getUserNotificationsStatus(chat, providers), 0
 		for key, val in notification_statuses.items():
-			if val == 0:
+			if val == 0 and key != 'All':
 				disabled_count += 1
 				break
 
@@ -430,7 +429,12 @@ def callbackHandler(msg):
 	# check that the query is from an admin or an owner
 	sender, chat_type = bot.getChatMember(chat, from_id), bot.getChat(chat)['type']
 	if chat_type != 'private' and sender['status'] != 'creator' and sender['status'] != 'administrator':
-		bot.answerCallbackQuery(query_id, text="🚨 This button is only callable by administrators!")
+		try:
+			bot.answerCallbackQuery(query_id, text="🚨 This button is only callable by administrators!")
+		except Exception as error:
+			if debug_log:
+				logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
+
 		if debug_log:
 			logging.info(f'✋ Callback query called by a non-admin in {chat}, returning | {(1000*(timer() - start)):.0f} ms')
 		
@@ -468,12 +472,22 @@ def callbackHandler(msg):
 					logging.info(f'Error finding country code {country_code} from provider_by_cc!')
 				return
 
-			bot.answerCallbackQuery(query_id, text=f'{flag_map[country_code]}')
+			try:
+				bot.answerCallbackQuery(query_id, text=f'{flag_map[country_code]}')
+			except Exception as error:
+				if debug_log:
+					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
+
 			updateListView(msg, chat, provider_list)
 
 		# user requests to return to the main menu; send the main keyboard
 		elif input_data[1] == 'main_menu':
-			bot.answerCallbackQuery(query_id, text='⏮ Returned to main menu')
+			try:
+				bot.answerCallbackQuery(query_id, text='⏮ Returned to main menu')
+			except Exception as error:
+				if debug_log:
+					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
+
 			updateMainView(chat, msg, provider_by_cc)
 
 			if debug_log and chat != 421341996:
@@ -487,15 +501,22 @@ def callbackHandler(msg):
 					for key, val in provider_by_cc.items():
 						for provider in val:
 							providers.append(provider)
+				
 				elif toggle_type == 'country_code':
 					for provider in provider_by_cc[country_code]:
 						providers.append(provider)
 
 				notification_statuses, disabled_count = getUserNotificationsStatus(chat, providers), 0
 				for key, val in notification_statuses.items():
-					if val == 0:
-						disabled_count += 1
-						break
+					if toggle_type == 'country_code' and key != 'All':
+						if val == 0:
+							disabled_count += 1
+							break
+					
+					elif toggle_type == 'all' or toggle_type == 'lsp':
+						if val == 0:
+							disabled_count += 1
+							break
 
 				return 1 if disabled_count != 0 else 0
 
@@ -529,7 +550,11 @@ def callbackHandler(msg):
 					0:f'🔕 Disabled all notifications 🌍'}[new_status]
 
 			# give feedback to the button press
-			bot.answerCallbackQuery(query_id, text=reply_text)
+			try:
+				bot.answerCallbackQuery(query_id, text=reply_text)
+			except Exception as error:
+				if debug_log:
+					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 			if debug_log and chat != 421341996:
 				# 0			1		2		3			4
@@ -565,7 +590,11 @@ def callbackHandler(msg):
 
 			# now we have the keyboard; update the previous keyboard
 			bot.editMessageText(msg_identifier, text=msg_text, reply_markup=None, parse_mode='Markdown')
-			bot.answerCallbackQuery(query_id, text=reply_text)
+			try:
+				bot.answerCallbackQuery(query_id, text=reply_text)
+			except Exception as error:
+				if debug_log:
+					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 			if debug_log and chat != 421341996:
 				logging.info(f'💫 {chat} finished setting notifications with the "Done" button! | {(1000*(timer() - start)):.0f} ms')
@@ -591,7 +620,11 @@ def callbackHandler(msg):
 		
 		try:
 			bot.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
-			bot.answerCallbackQuery(query_id, text=callback_text)
+			try:
+				bot.answerCallbackQuery(query_id, text=callback_text)
+			except Exception as error:
+				if debug_log:
+					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 			
 			if debug_log and chat != 421341996:
 				if new_toggle_state == 0:
@@ -637,7 +670,11 @@ def callbackHandler(msg):
 
 		# now we have the keyboard; update the previous keyboard
 		bot.editMessageText(msg_identifier, text=new_message_text, reply_markup=keyboard, parse_mode='Markdown')
-		bot.answerCallbackQuery(query_id, text=query_reply_text)
+		try:
+			bot.answerCallbackQuery(query_id, text=query_reply_text)
+		except Exception as error:
+			if debug_log:
+				logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 		if debug_log and chat != 421341996:
 			logging.info(f'{chat} pressed "{query_reply_text}" button in /next | {(1000*(timer() - start)):.0f} ms')
@@ -658,74 +695,45 @@ def timerHandle(command, chat):
 	# get current time
 	now_called = datetime.datetime.today()
 
-	# check if settings.json exists; if not, generate it
-	if not os.path.isfile('data/command-timers.json'):
-		with open('data/command-timers.json', 'w') as json_data:
-			setting_map = {}
-			setting_map['commandTimers'] = {}
-			for command in valid_commands:
-				setting_map['commandTimers'][command.replace('/','')] = '0.35'
-			
-			json.dump(setting_map, json_data, indent=4)
-
-	# load settings
-	with open('data/command-timers.json', 'r') as json_data:
-		setting_map = json.load(json_data)
-
-	# load timer for command
+	# load timer for command (command_timers)
 	try:
-		timer = float(setting_map['commandTimers'][command])
+		timer = float(command_timers['commandTimers'][command])
 	except KeyError:
-		with open('data/command-timers.json', 'w') as json_data:
-			setting_map['commandTimers'][command] = '0.35'
-			json.dump(setting_map, json_data, indent=4)
-
-		timer = float(setting_map['commandTimers'][command])
+		command_timers['commandTimers'][command] = '0.35'
+		timer = float(command_timers['commandTimers'][command])
 
 	if timer <= -1:
 		return False
 
-	# checking if the command has been called previously
+	# checking if the command has been called previously (chat_command_calls)
 	# load time the command was previously called
-	if not os.path.isfile('data/last-called.json'):
-		with open('data/last-called.json', 'w') as json_data:
-			lastMap = {}
-			if chat not in lastMap:
-				lastMap[chat] = {}
+	if chat not in chat_command_calls:
+		chat_command_calls[chat] = {}
 
-			# never called, set to 0
-			if command not in lastMap[chat]:
-				lastMap[chat][command] = '0'
-
-			json.dump(lastMap, json_data, indent=4)
-
-	with open('data/last-called.json') as json_data:
-		lastMap = json.load(json_data)
+	# never called, set to 0
+	if command not in chat_command_calls[chat]:
+		chat_command_calls[chat][command] = '0'
 
 	try:
-		last_called = lastMap[chat][command]
+		last_called = chat_command_calls[chat][command]
 	except KeyError:
-		if chat not in lastMap:
-			lastMap[chat] = {}
+		if chat not in chat_command_calls:
+			chat_command_calls[chat] = {}
 		
-		if command not in lastMap[chat]:
-			lastMap[chat][command] = '0'	
+		if command not in chat_command_calls[chat]:
+			chat_command_calls[chat][command] = '0'	
 		
-		last_called = lastMap[chat][command]
+		last_called = chat_command_calls[chat][command]
 
 	if last_called == '0': # never called; store now
-		lastMap[chat][command] = str(now_called) # stringify datetime object, store
-		with open('data/last-called.json', 'w') as json_data:
-			json.dump(lastMap, json_data, indent=4)
+		chat_command_calls[chat][command] = str(now_called) # stringify datetime object, store
 	
 	else:
 		last_called = datetime.datetime.strptime(last_called, "%Y-%m-%d %H:%M:%S.%f") # unstring datetime object
 		time_since = abs(now_called - last_called)
 
 		if time_since.seconds > timer:
-			lastMap[chat][command] = str(now_called) # stringify datetime object, store
-			with open('data/last-called.json', 'w') as json_data:
-				json.dump(lastMap, json_data, indent=4)
+			chat_command_calls[chat][command] = str(now_called) # stringify datetime object, store
 		else:
 			return False
 
@@ -951,7 +959,7 @@ def notify(msg):
 				[InlineKeyboardButton(text='🇮🇳 India', callback_data=f'notify/list/IND'),
 				InlineKeyboardButton(text='🇯🇵 Japan', callback_data=f'notify/list/JPN')],
 				
-				[InlineKeyboardButton(text='✅ Finish', callback_data=f'notify/done')]
+				[InlineKeyboardButton(text='✅ Save and exit', callback_data=f'notify/done')]
 			]
 		)
 
@@ -1136,8 +1144,6 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 		chat = msg['message']['chat']['id']
 		if cmd == 'None':
 			cmd = None
-
-		#print(f'current_index:{current_index}, command_invoke:{command_invoke}, cmd:{cmd}')
 
 	# if command was "all", no need to perform a special select
 	# if no command, we'll need to figure out what LSPs the user has set notifs for
@@ -1787,7 +1793,7 @@ def spxAPIHandler():
 
 	# what we're throwing at the API
 	API_REQUEST = f'launches/upcoming'
-	PARAMS = {'limit': 10, 'start': f'{now.year}-{now.month}-{now.day}'}
+	PARAMS = {'limit': 20, 'start': f'{now.year}-{now.month}-{now.day}'}
 	API_URL = 'https://api.spacexdata.com'
 	API_VERSION = 'v3'
 
@@ -1796,9 +1802,9 @@ def spxAPIHandler():
 	
 	try: # perform the API call
 		API_RESPONSE = requests.get(API_CALL)
-	except Exception as e:
+	except Exception:
 		if debug_log:
-			logging.info(f'🛑 Error in r/SpaceX API request: {e}')
+			logging.info(f'🛑 Exception in r/SpaceX API request')
 			logging.info(f'⚠️ Trying again after 3 seconds...')
 
 		time.sleep(3)
@@ -2271,9 +2277,9 @@ def getLaunchUpdates(launch_ID):
 
 	try:
 		API_RESPONSE = requests.get(API_CALL, headers=headers)
-	except Exception as e:
+	except Exception:
 		if debug_log:
-			logging.info(f'🛑 Error in API request: {e}')
+			logging.info(f'🛑 Error in LL API request')
 			logging.info(f'⚠️ Trying again after 3 seconds...')
 
 		time.sleep(3)
@@ -2288,7 +2294,7 @@ def getLaunchUpdates(launch_ID):
 	launch_json = API_RESPONSE.json()
 
 	'''
-	with open('data' + '/launch' + '/launch-json.json', 'w') as json_data:
+	with open(os.path.join('data', 'launch', 'launch-json.json'), 'w') as json_data:
 		json.dump(launch_json, json_data, indent=4)
 	'''
 
@@ -3101,7 +3107,7 @@ def main():
 	global debug_log, debug_mode
 
 	# current version
-	version = '0.3.3 beta'
+	version = '0.3.4 beta'
 
 	# default
 	start = False
@@ -3209,6 +3215,7 @@ def main():
 	for command in valid_commands:
 		valid_commands_alt.append(command + '@' + bot_username)
 
+	# all the launch providers supported; used in many places, so declared globally here
 	global provider_by_cc
 	provider_by_cc = {
 		'USA': [
@@ -3249,6 +3256,15 @@ def main():
 			'Mitsubishi Heavy Industries']
 	}
 
+	# start command timers, store in memory instead of storage to reduce disk writes
+	global command_timers, chat_command_calls
+	command_timers, chat_command_calls = {}, {}
+
+	# initialize the timer dict to avoid spam
+	command_timers['commandTimers'] = {}
+	for command in valid_commands:
+		command_timers['commandTimers'][command.replace('/','')] = '0.35'
+
 	MessageLoop(bot, {'chat': handle, 'callback_query': callbackHandler}).run_as_thread()
 	time.sleep(1)
 
@@ -3285,7 +3301,7 @@ def main():
 	else:
 		while True:
 			schedule.run_pending()
-			time.sleep(1)
+			time.sleep(2)
 
 
 main()
