@@ -1,31 +1,42 @@
 import os, sys, time, ssl, datetime, logging, math, requests, inspect
 import telepot, sqlite3, cursor, difflib, schedule
-import ujson as json
 
+import ujson as json
+from uptime import uptime
 from timeit import default_timer as timer
+
 from telepot.loop import MessageLoop
 from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
-from uptime import uptime
 
 '''
+TOP PRIORITIES
+1. Getting LaunchBot to run with zero human-interaction
+	- start scheduling notification checks more intelligently, instead of brute-forcing them every 30 seconds
+
+2. Functionize more of the processes
+	- move callbacks to a function, pass text + tuple + keyboard as args
+
 Roadmap
 0.2 (December):
-	- implement /next using DB calls
-	- implement support for SpaceX core information
+	- ✅ implement /next using DB calls
+	- ✅ implement support for SpaceX core information
 
 0.3 (January):
-	- add "next" and "previous" button(s) to /next command ✅
-	- add a "more info"/"less info" button
-	- add a mute button to notifications ✅
-	- update /notify to be more user friendly ✅
-	- implement /feedback ✅
-	- improve notification handling with the hold flag -> moving NETs and info text regarding them
-	- change launch database index from tminus to net ✅
-	- add probability of launch
+	- ✅ add "next" and "previous" button(s) to /next command
+	- ✅ add a mute button to notifications
+	- ✅ update /notify to be more user friendly
+	- ✅ implement /feedback
+	- ✅ improve notification handling with the hold flag -> moving NETs and info text regarding them
+	- ✅ change launch database index from tminus to net
 	- handle notification send checks with schedule, instead of polling every 20-30 seconds (i.e. update schedule every time db is updated)
+
+0.4 (February)
+	- add a "more info"/"less info" button
+	- add probability of launch and launch location, separate from mission name etc. with \n\n
 
 ---------------------------------
 Changelog 0.3.X
+
 ---------------------------------
 To-do
 Essential & usability
@@ -51,7 +62,6 @@ Improvements
 - ✅(sorta) add orbit information (already available in db for SpX launches; found in launch library?)
 - add support for moving NETs; if new NET doesn't match old NET, purge previous notifications if slip is large enough etc.
 - add support for search in /next
-- ✅ add support for country codes (dict map)
 - fix the issue with all-flag causing some notifications to be unable to be disabled (i.e. those not in the supported list)
 - add probability of launch to info message (i.e. add a new column to the launch database)
 - notify users of a launch holding? (edit message?)
@@ -151,6 +161,8 @@ def handle(msg):
 		/schedule displays a simple flight schedule
 		/statistics displays various statistics about the bot
 
+		*Note!* Commands are only callable by group admins and moderators
+
 		*Changelog for version 0.3.X*
 		- rewrote /notify with a user-friendly UI
 		- you can now navigate ⏪⏩ with /next
@@ -176,6 +188,7 @@ def handle(msg):
 	except Exception as e:
 		if debug_log:
 			logging.info(f'🛑 Error generating command split, returning: {e}')
+			logging.info(f'msg object: {msg}')
 		return
 
 	# regular text, pass
@@ -220,6 +233,8 @@ def handle(msg):
 				/next shows the next launch
 				/schedule displays a simple flight schedule
 				/statistics displays various stats about the bot
+
+				*Note!* Commands are only callable by group admins and moderators
 
 				*Changelog for version 0.3.X*
 				- rewrote /notify with a user-friendly UI
@@ -278,7 +293,7 @@ def handle(msg):
 
 
 def callbackHandler(msg):
-	def updateMainView(chat, msg, provider_by_cc):
+	def updateMainView(chat, msg, provider_by_cc, text_refresh):
 		# figure out what the text for the "enable all/disable all" button should be
 		providers = []
 		for key, val in provider_by_cc.items():
@@ -320,7 +335,25 @@ def callbackHandler(msg):
 		msg_identifier = (msg['message']['chat']['id'],msg['message']['message_id'])
 
 		# now we have the keyboard; update the previous keyboard
-		bot.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
+		if text_refresh:
+			message_text = f'''
+			🛰 Hi there, nice to see you! Let's set some notifications for you.
+
+			You can search for launch providers, like SpaceX (🇺🇸) or ISRO (🇮🇳), using the flags, or simply enable all!
+
+			🔔 = *enabled* (press to disable)
+			🔕 = *disabled* (press to enable)
+			'''
+
+			try:
+				bot.editMessageText(msg_identifier, text=inspect.cleandoc(message_text), reply_markup=keyboard, parse_mode='Markdown')
+			except:
+				pass
+		else:
+			try:
+				bot.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
+			except:
+				pass
 
 		return
 
@@ -472,23 +505,27 @@ def callbackHandler(msg):
 					logging.info(f'Error finding country code {country_code} from provider_by_cc!')
 				return
 
+			updateListView(msg, chat, provider_list)
+
 			try:
 				bot.answerCallbackQuery(query_id, text=f'{flag_map[country_code]}')
 			except Exception as error:
 				if debug_log:
 					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-			updateListView(msg, chat, provider_list)
-
 		# user requests to return to the main menu; send the main keyboard
 		elif input_data[1] == 'main_menu':
+			try:
+				if input_data[2] == 'refresh_text':
+					updateMainView(chat, msg, provider_by_cc, True)
+			except:
+				updateMainView(chat, msg, provider_by_cc, False)
+
 			try:
 				bot.answerCallbackQuery(query_id, text='⏮ Returned to main menu')
 			except Exception as error:
 				if debug_log:
 					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
-
-			updateMainView(chat, msg, provider_by_cc)
 
 			if debug_log and chat != 421341996:
 				logging.info(f'⏮ {chat} (main-view update) | {(1000*(timer() - start)):.0f} ms')
@@ -557,8 +594,6 @@ def callbackHandler(msg):
 					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 			if debug_log and chat != 421341996:
-				# 0			1		2		3			4
-				# notify 	toggle 	lsp 	provider 	country_code}
 				logging.info(f'{chat} {reply_text} | {(1000*(timer() - start)):.0f} ms')
 
 			# update list view if an lsp button was pressed
@@ -576,7 +611,7 @@ def callbackHandler(msg):
 			
 			# update main view if "enable all" button was pressed, as in this case we're in the main view
 			else:
-				updateMainView(chat, msg, provider_by_cc)
+				updateMainView(chat, msg, provider_by_cc, False)
 
 		# user is done; remove the keyboard
 		elif input_data[1] == 'done':
@@ -590,6 +625,7 @@ def callbackHandler(msg):
 
 			# now we have the keyboard; update the previous keyboard
 			bot.editMessageText(msg_identifier, text=msg_text, reply_markup=None, parse_mode='Markdown')
+			
 			try:
 				bot.answerCallbackQuery(query_id, text=reply_text)
 			except Exception as error:
@@ -611,8 +647,7 @@ def callbackHandler(msg):
 		# create new keyboard
 		inline_keyboard = [[InlineKeyboardButton(text=new_text, callback_data=new_data)]]
 		keyboard = InlineKeyboardMarkup(
-			inline_keyboard=inline_keyboard
-			)
+			inline_keyboard=inline_keyboard)
 
 		# tuple containing necessary information to edit the message
 		msg_identifier = (msg['message']['chat']['id'],msg['message']['message_id'])
@@ -620,6 +655,7 @@ def callbackHandler(msg):
 		
 		try:
 			bot.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
+			
 			try:
 				bot.answerCallbackQuery(query_id, text=callback_text)
 			except Exception as error:
@@ -662,14 +698,35 @@ def callbackHandler(msg):
 			new_message_text, keyboard = nextFlight(msg, int(current_index)-1, False, cmd)
 
 		elif input_data[1] == 'refresh':
-			new_message_text, keyboard = nextFlight(msg, int(current_index), False, cmd)
+			try:
+				new_message_text, keyboard = nextFlight(msg, int(current_index), False, cmd)
+			
+			except TypeError:
+				new_message_text = '🔄 No launches found! No launches found! Try enabling notifications for other providers, or searching for all flights.'
+				inline_keyboard = []
+				inline_keyboard.append([InlineKeyboardButton(text='🔔 Adjust your notification settings', callback_data=f'notify/main_menu/refresh_text')])
+				inline_keyboard.append([InlineKeyboardButton(text='🔎 Search for all flights', callback_data=f'next_flight/refresh/0/all')])
+				keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+			except Exception as e:
+				if debug_log:
+					logging.info(f'⚠️ No launches found after refresh! {e}')
+
 
 		# query reply text
 		query_reply_text = {'next': 'Next flight ⏩', 'prev': '⏪ Previous flight', 'refresh': '🔄 Refreshed data!'}[input_data[1]]
 		msg_identifier = (msg['message']['chat']['id'],msg['message']['message_id'])
 
 		# now we have the keyboard; update the previous keyboard
-		bot.editMessageText(msg_identifier, text=new_message_text, reply_markup=keyboard, parse_mode='Markdown')
+		try:
+			bot.editMessageText(msg_identifier, text=new_message_text, reply_markup=keyboard, parse_mode='Markdown')
+		except telepot.exception.TelegramError as exception:
+			if exception.error_code == 400 and 'Bad Request: message is not modified' in exception.description:
+				pass
+			else:
+				if debug_log:
+					logging.info(f'⚠️ TelegramError updating message text: {exception}')
+		
 		try:
 			bot.answerCallbackQuery(query_id, text=query_reply_text)
 		except Exception as error:
@@ -1229,16 +1286,21 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 	max_index = len(query_return)
 	if max_index > 0:
 		query_return.sort(key=lambda tup: tup[9])
-		query_return = query_return[current_index]
+		try:
+			query_return = query_return[current_index]
+		except Exception as error:
+			if debug_log:
+				logging.info(f'⚠️ Exception setting query_return: {error}')
+
+			query_return = query_return[0]
 	else:
-		provider_str = '\n\t\t- '.join(notif_providers)
-		msg_text = f'''⚠️ No upcoming launches with a NET-date specified found. Searched for the following launch service providers:
+		msg_text = '🔄 No launches found! Try enabling notifications for other providers, or searching for all flights.'
+		inline_keyboard = []
+		inline_keyboard.append([InlineKeyboardButton(text='🔔 Adjust your notification settings', callback_data=f'notify/main_menu/refresh_text')])
+		inline_keyboard.append([InlineKeyboardButton(text='🔎 Search for all flights', callback_data=f'next_flight/refresh/0/all')])
+		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
-		- {provider_str}
-
-		ℹ️ To search for all upcoming launches: `/next all`
-		'''
-		bot.sendMessage(chat, inspect.cleandoc(msg_text), parse_mode='Markdown')
+		bot.sendMessage(chat, msg_text, reply_markup=keyboard)
 		return
 
 	# close connection
@@ -1505,14 +1567,14 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 				inline_keyboard[0].append(InlineKeyboardButton(text='Next ⏩', callback_data=f'next_flight/next/{current_index}/{cmd}'))
 			elif back:
 				inline_keyboard = [([InlineKeyboardButton(text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}/{cmd}')])]
-				inline_keyboard[0].append(
-					(InlineKeyboardButton(text='⏮ First', callback_data=f'next_flight/prev/1/{cmd}')))
+				inline_keyboard.append([(InlineKeyboardButton(text='⏮ First', callback_data=f'next_flight/prev/1/{cmd}'))])
 
 		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 	elif max_index == 1:
 		inline_keyboard = []
 		inline_keyboard.append([InlineKeyboardButton(text='🔄 Refresh', callback_data=f'next_flight/prev/1/{cmd}')])
+		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 	if current_index == 0 and command_invoke == True:
 		if max_index > 1:
@@ -1520,6 +1582,7 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 		else:
 			bot.sendMessage(chat, msg_text, parse_mode='Markdown')
 	else:
+		#print(f'max_index: {max_index}, current_index: {current_index}, cmd={cmd}')
 		return msg_text, keyboard
 
 	return
@@ -1890,17 +1953,30 @@ def spxInfoStrGen(launch_name, run_count):
 					return None, None
 
 			elif len(close_matches) > 1:
-				if debug_log:
-					logging.info(f'⚠️ More than one close match when attempting to find {launch_name_stripped}; \
-					matches: {close_matches}. Returning.')
+				#if debug_log:
+				#	logging.info(f'⚠️ More than one close match when attempting to find {launch_name_stripped}; \
+				#	matches: {close_matches}. Parsing manually.')
+
+				manual_matches = []
+				for key in stripped_keys:
+					if launch_name_stripped in key:
+						manual_matches.append(key)
+
+				if len(manual_matches) == 1:
+					diff_match = manual_matches[0]
+
+				else:
+					smallest_net, net_index = close_matches[0][2], 0
+					for row, i in zip(close_matches, range(len(close_matches))):
+						if row[2] < smallest_net:
+							smallest_net, net_index = row[2], i
 				
-				return None, None
+					diff_match = close_matches[net_index]
+				
+				#return None, None
 
 
 		elif len(close_matches) == 1:
-			#if debug_log:
-			#	logging.info(f'✅ Got a single close match! {launch_name_stripped} -> {close_matches}')
-			
 			diff_match = close_matches[0]
 		
 		elif len(close_matches) > 1:
@@ -1909,8 +1985,8 @@ def spxInfoStrGen(launch_name, run_count):
 				if row[2] < smallest_net:
 					smallest_net, net_index = row[2], i
 
-			if debug_log:
-				logging.info(logging.info(f'⚠️ Got more than 1 close_match initially; parse by NET. {launch_name_stripped} -> {close_matches}'))
+			#if debug_log:
+			#	logging.info(logging.info(f'⚠️ Got more than 1 close_match initially; parse by NET. {launch_name_stripped} -> {close_matches}'))
 
 			diff_match = close_matches[net_index]
 
@@ -1930,9 +2006,6 @@ def spxInfoStrGen(launch_name, run_count):
 			return None, None
 
 	elif len(query_return) == 1:
-		#if debug_log:
-		#	logging.info(f'✅ Got a single return from the query – no need to diff! {launch_name} -> {query_return}')
-		
 		db_match = query_return[0]
 		diff_match = None
 
@@ -1948,9 +2021,6 @@ def spxInfoStrGen(launch_name, run_count):
 		c.execute('''SELECT * FROM launches WHERE launch_name = ?''', (diff_match,))
 		query_return = c.fetchall()
 		if len(query_return) == 1:
-			#if debug_log:
-			#	logging.info(f'✅ Found diff_match from database!')
-			
 			db_match = query_return[0]
 		else:
 			if debug_log:
@@ -2241,19 +2311,82 @@ def getLaunchUpdates(launch_ID):
 			# update if launch ID found, insert if id not found
 			# launch, id, keywords, lsp_name, vehicle, pad, info, countrycode, NET, Tminus
 			# notify24h, notify12h, notify60min, notify5min, notifylaunch, success, launched, hold
-			
-			# lsp_name, vehicle, pad, mission_text
-			try:
+			try: # launch not found, insert as new
 				c.execute('''INSERT INTO launches
 					(launch, id, keywords, lsp_name, lsp_short, vehicle, pad, info, countrycode, NET, Tminus,
 					notify24h, notify12h, notify60min, notify5min, notifylaunch, success, launched, hold, vid)
 					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?, ?)''',
 					(launch_name, launch_id, lsp, lsp_name, lsp_short, vehicle, pad, mission_text, countrycode, net_unix, Tminus, success, launched, holding, vid_url))
 			
-			except:
-				c.execute('''UPDATE launches
-					SET NET = ?, Tminus = ?, success = ?, launched = ?, hold = ?, info = ?, pad = ?, vid = ?
-					WHERE id = ?''', (net_unix, Tminus, success, launched, holding, mission_text, pad, vid_url, launch_id))
+			except: # launch found
+				# Launch is already found; check if the new NET matches the old NET.
+				c.execute('SELECT NET, notify24h, notify12h, notify60min, notify5min FROM launches WHERE id = ?',(launch_id,))
+				old_info = c.fetchall()[0]
+				old_NET = old_info[0]
+
+				# new net doesn't match old NET; decide what to do with the notification flags, if they have been set
+				new_NET = int(net_unix)
+
+				if old_NET != new_NET:
+					notification_statuses = {
+					'24h': old_info[1],
+					'12h': old_info[2],
+					'1h': old_info[3],
+					'5m': old_info[4]}
+
+					net_diff = new_NET - old_NET
+
+					if net_diff < 0:
+						if debug_log:
+							logging.info(f'🕑 NET for launch {launch_id} moved left. Old NET: {old_NET}, new NET: {new_NET}, diff: {net_diff}')
+
+					# at least 1 notification has already been sent
+					if 1 in notification_statuses.values() and net_diff > 0:
+
+						'''
+						- 24: if the slip is greater than 24 hours, toggle 24 hour flag and all that were sent
+						- if the slip is greater than 12 hours, toggle 12 hour flag
+						- if the slip is greater than 2 hours, toggle the 1 hour flag
+						- if the slip is over 30 minutes, toggle the 5 min flag
+						'''
+
+						disabled_statuses = []
+						for key, status in notification_statuses.items():
+							if key == '24h' and status == 1:
+								if net_diff >= 3600*24:
+									notification_statuses['24h'] = 0
+									disabled_statuses.append('24h')
+
+							elif key == '12h' and status == 1:
+								if net_diff >= 3600*12:
+									notification_statuses['12h'] = 0
+									disabled_statuses.append('12h')
+
+							elif key == '1h' and status == 1:
+								if net_diff >= 3600*2:
+									notification_statuses['1h'] = 0
+									disabled_statuses.append('1h')
+
+							elif key == '5m' and status == 1:
+								if net_diff >= 3600*0.5:
+									notification_statuses['5m'] = 0
+									disabled_statuses.append('5m')
+
+						if debug_log:
+							if len(disabled_statuses) > 0:
+								disabled_notif_str = ', '.join(disabled_statuses)
+								logging.info(f'🚩 {disabled_notif_str} flags set to 0 for {launch_id} | lsp={lsp_short}, lname={launch_name}, net_diff={net_diff}')
+
+					c.execute('''UPDATE launches
+						SET NET = ?, Tminus = ?, success = ?, launched = ?, hold = ?, info = ?, pad = ?, vid = ?, notify24h = ?, notify12h = ?, notify60min = ?, notify5min = ?
+						WHERE id = ?''', (
+							net_unix, Tminus, success, launched, holding, mission_text, pad, vid_url,
+							notification_statuses['24h'], notification_statuses['12h'], notification_statuses['1h'], notification_statuses['5m'], launch_id))
+
+				else:
+					c.execute('''UPDATE launches
+						SET NET = ?, Tminus = ?, success = ?, launched = ?, hold = ?, info = ?, pad = ?, vid = ?
+						WHERE id = ?''', (net_unix, Tminus, success, launched, holding, mission_text, pad, vid_url, launch_id))
 
 		conn.commit()
 		conn.close()
@@ -3107,7 +3240,7 @@ def main():
 	global debug_log, debug_mode
 
 	# current version
-	version = '0.3.4 beta'
+	version = '0.3.5 beta'
 
 	# default
 	start = False
@@ -3156,11 +3289,9 @@ def main():
 
 					# start log
 					logging.basicConfig(filename=log,level=logging.DEBUG,format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
-					#logging.info('🤖 Bot started')
 
 				if arg == 'debug' or arg == '-debug':
 					debug_mode = True
-
 
 		if len(update_tokens) != 0:
 			updateToken(update_tokens)
@@ -3269,16 +3400,16 @@ def main():
 	time.sleep(1)
 
 	if not debug_mode:
-		print('| LaunchBot.py v{:s}'.format(version))
-		print("| Don't close this window or set the computer to sleep. Quit: ctrl + c.")
+		print(f"| LaunchBot.py version {version}")
+		print(f"| Don't close this window or set the computer to sleep. Quit: ctrl + c.")
 		time.sleep(0.5)
 
 		status_msg = f'  Connected to Telegram! ✅'
 		sys.stdout.write('%s\r' % status_msg)
 
 	# schedule regular database updates and NET checks
-	schedule.every(10).minutes.do(getLaunchUpdates, launch_ID=None)
-	schedule.every(10).minutes.do(spxAPIHandler)
+	schedule.every(5).minutes.do(getLaunchUpdates, launch_ID=None)
+	schedule.every(5).minutes.do(spxAPIHandler)
 	schedule.every(30).seconds.do(launchUpdateCheck)
 	
 	# run both scheduled jobs now, so we don't have to sit in the dark for a while
