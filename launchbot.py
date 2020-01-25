@@ -9,13 +9,6 @@ from telepot.loop import MessageLoop
 from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
 
 '''
-TOP PRIORITIES
-1. Getting LaunchBot to run with zero human-interaction
-	- start scheduling notification checks more intelligently, instead of brute-forcing them every 30 seconds
-
-2. Functionize more of the processes
-	- move callbacks to a function, pass text + tuple + keyboard as args
-
 Roadmap
 0.2 (December):
 	- ✅ implement /next using DB calls
@@ -28,43 +21,24 @@ Roadmap
 	- ✅ implement /feedback
 	- ✅ improve notification handling with the hold flag -> moving NETs and info text regarding them
 	- ✅ change launch database index from tminus to net
-	- handle notification send checks with schedule, instead of polling every 20-30 seconds (i.e. update schedule every time db is updated)
 
 0.4 (February)
 	- add a "more info"/"less info" button
 	- add probability of launch and launch location, separate from mission name etc. with \n\n
+	- handle notification send checks with schedule, instead of polling every 20-30 seconds (i.e. update schedule every time db is updated)
+	- create a copy of the launch databases in memory (c = sqlite3.connect(':memory:')) -> update on disk db update
+	- unify spx-launch database and launch database into one file with separate tables
+	- allow users to set their own notifications (i.e. 24h/12h/...)
+	- allow users to set their own timezone
+
+Later versions
+	- notify users of a launch holding? (edit message?)
+	- functionize more of the processes
+		- move callbacks to a function, pass text + tuple + keyboard as args
 
 ---------------------------------
 Changelog 0.3.X
 
----------------------------------
-To-do
-Essential & usability
-- ✅ /feedback with inline keyboard (simple, good practice for inline functionality) 
-- add local time option
-- ✅ add button to mute a single launch (Mute this launch)
-- ✅ add in-line features to the /notify command, or make it entirely based around in-line features
-	- Initial /start sends the inline keyboard and asks which notifications to enable
-	- Choose all or "let me choose" (-> list of providers; choose by name or country)
-	- Ask user which notifications they'd like to receive; 24 h, 12 h, 1 h, 5 min
-	- Done! Let the user know that they can modify their preferences at any time with /notify (similar in-line thing)
-- add one more column to notify database (make it the last column -> trivial to implement) -> allow users to set notification time preferences with /notify
-	- ⏰ Change when you receive notifications
-		- 24 hours before 🔔
-		- 12 hours before 🔔
-		- 1 hour before 🔔
-		- 5 minutes before 🔔
-		- return to menu
-- reset notification flag if NET moves forward, add a piece of info text saying that the launch was previously held
-
-Improvements
-- add launch location; could be in db as "pad/location", e.g. LC-39A, USA or LC-39A, Florida
-- ✅(sorta) add orbit information (already available in db for SpX launches; found in launch library?)
-- add support for moving NETs; if new NET doesn't match old NET, purge previous notifications if slip is large enough etc.
-- add support for search in /next
-- fix the issue with all-flag causing some notifications to be unable to be disabled (i.e. those not in the supported list)
-- add probability of launch to info message (i.e. add a new column to the launch database)
-- notify users of a launch holding? (edit message?)
 '''
 
 # main loop-function for messages with flavor=chat
@@ -3038,7 +3012,6 @@ def statistics(msg):
 	for row in query_return:
 		if row[0] not in recipients:
 			recipients.append(row[0])
-
 
 	reply_str = f'''
 	🚀 *LaunchBot version {version}*
