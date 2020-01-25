@@ -27,6 +27,7 @@ Roadmap
 	- add probability of launch and launch location, separate from mission name etc. with \n\n
 	- handle notification send checks with schedule, instead of polling every 20-30 seconds (i.e. update schedule every time db is updated)
 	- create a copy of the launch databases in memory (c = sqlite3.connect(':memory:')) -> update on disk db update
+		- reduces latency and disk reads
 	- unify spx-launch database and launch database into one file with separate tables
 	- allow users to set their own notifications (i.e. 24h/12h/...)
 	- allow users to set their own timezone
@@ -177,8 +178,13 @@ def handle(msg):
 			# command we saw
 			command = command_split[0].lower()
 
+			try:
+				sent_by = msg['from']['id']
+			except:
+				sent_by = 0
+
 			# check timers
-			if not timerHandle(command, chat):
+			if not timerHandle(command, chat, sent_by):
 				if debug_log:
 					logging.info(f'✋ Spam prevented from chat {chat}. Command: {command}, returning.')
 				return
@@ -244,7 +250,7 @@ def handle(msg):
 
 			# /schedule (6)
 			elif command in [valid_commands[5], valid_commands_alt[5]]:
-				flightSchedule(msg)
+				flightSchedule(msg, True)
 
 			# /feedback (7)
 			elif command in [valid_commands[6], valid_commands_alt[6]]:
@@ -448,7 +454,7 @@ def callbackHandler(msg):
 		return
 
 	# callbacks only supported for notify at the moment; verify it's a notify command
-	if input_data[0] not in ['notify', 'mute', 'next_flight']:
+	if input_data[0] not in ['notify', 'mute', 'next_flight', 'schedule']:
 		if debug_log:
 			logging.info(f'⚠️ Incorrect input data in callbackHandler! input_data={input_data} | {(1000*(timer() - start)):.0f} ms')
 
@@ -467,6 +473,9 @@ def callbackHandler(msg):
 	'IND': '🇮🇳',
 	'JPN': '🇯🇵'
 	}
+
+	# used to update the message
+	msg_identifier = (msg['message']['chat']['id'],msg['message']['message_id'])
 
 	if input_data[0] == 'notify':
 		# user requests a list of launch providers for a country code
@@ -562,7 +571,7 @@ def callbackHandler(msg):
 
 			# give feedback to the button press
 			try:
-				bot.answerCallbackQuery(query_id, text=reply_text)
+				bot.answerCallbackQuery(query_id, text=reply_text, show_alert=True)
 			except Exception as error:
 				if debug_log:
 					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
@@ -589,9 +598,6 @@ def callbackHandler(msg):
 
 		# user is done; remove the keyboard
 		elif input_data[1] == 'done':
-			# tuple containing necessary information to edit the message
-			msg_identifier = (msg['message']['chat']['id'], msg['message']['message_id'])
-
 			# new text + callback text
 			reply_text = f'✅ All done!'
 			msg_text = f'✅ *All done* — your preferences were saved!\n\n'
@@ -624,7 +630,6 @@ def callbackHandler(msg):
 			inline_keyboard=inline_keyboard)
 
 		# tuple containing necessary information to edit the message
-		msg_identifier = (msg['message']['chat']['id'],msg['message']['message_id'])
 		callback_text = f'🔇 Launch muted!' if input_data[3] == '1' else f'🔊 Launch unmuted!'
 		
 		try:
@@ -686,10 +691,8 @@ def callbackHandler(msg):
 				if debug_log:
 					logging.info(f'⚠️ No launches found after refresh! {e}')
 
-
 		# query reply text
 		query_reply_text = {'next': 'Next flight ⏩', 'prev': '⏪ Previous flight', 'refresh': '🔄 Refreshed data!'}[input_data[1]]
-		msg_identifier = (msg['message']['chat']['id'],msg['message']['message_id'])
 
 		# now we have the keyboard; update the previous keyboard
 		try:
@@ -710,12 +713,38 @@ def callbackHandler(msg):
 		if debug_log and chat != 421341996:
 			logging.info(f'{chat} pressed "{query_reply_text}" button in /next | {(1000*(timer() - start)):.0f} ms')
 
+	elif input_data[0] == 'schedule':
+		#schedule/refresh
+		if input_data[1] != 'refresh':
+			return
+
+		# pull new text and the keyboard
+		new_schedule_msg, keyboard = flightSchedule(msg, False)
+
+		try:
+			bot.editMessageText(msg_identifier, text=new_schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
+			query_reply_text = f'🔄 Schedule updated!'
+			bot.answerCallbackQuery(query_id, text=query_reply_text)
+		
+		except telepot.exception.TelegramError as exception:
+			if exception.error_code == 400 and 'Bad Request: message is not modified' in exception.description:
+				try:
+					query_reply_text = '🔄 Schedule refreshed – no changes detected!'
+					bot.answerCallbackQuery(query_id, text=query_reply_text)
+				except Exception as error:
+					if debug_log:
+						logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
+				pass
+			else:
+				if debug_log:
+					logging.info(f'⚠️ TelegramError updating message text: {exception}')
+
 	updateStats({'commands':1})
 	return
 
 
 # restrict command send frequency to avoid spam
-def timerHandle(command, chat):
+def timerHandle(command, chat, user):
 	# remove the '/' command prefix
 	command = command.strip('/')
 	chat = str(chat)
@@ -726,14 +755,14 @@ def timerHandle(command, chat):
 	# get current time
 	now_called = datetime.datetime.today()
 
-	# load timer for command (command_timers)
+	# load timer for command (command_cooldowns)
 	try:
-		timer = float(command_timers['commandTimers'][command])
+		cooldown = float(command_cooldowns['commandTimers'][command])
 	except KeyError:
-		command_timers['commandTimers'][command] = '0.35'
-		timer = float(command_timers['commandTimers'][command])
+		command_cooldowns['commandTimers'][command] = '0.35'
+		cooldown = float(command_cooldowns['commandTimers'][command])
 
-	if timer <= -1:
+	if cooldown <= -1:
 		return False
 
 	# checking if the command has been called previously (chat_command_calls)
@@ -763,9 +792,39 @@ def timerHandle(command, chat):
 		last_called = datetime.datetime.strptime(last_called, "%Y-%m-%d %H:%M:%S.%f") # unstring datetime object
 		time_since = abs(now_called - last_called)
 
-		if time_since.seconds > timer:
+		if time_since.seconds > cooldown:
 			chat_command_calls[chat][command] = str(now_called) # stringify datetime object, store
 		else:
+			class Spammer:
+				def __init__(self, uid):
+					self.id = uid
+					self.offenses = 1
+					self.spam_times = [timer()]
+					return
+
+				def get_offenses(self):
+					return self.offenses
+
+				def add_offense(self):
+					self.offenses += 1
+					self.spam_times.append(timer())
+					return
+
+			spammer_id_list = [spammer.id for spammer in spammers]
+			if user in spammer_id_list:
+				for spammer in spammers:
+					if spammer.id == user:
+						spammer.add_offense()
+						break
+
+				if debug_log:
+					logging.info(f'⚠️ User {user} now has {spammer.get_offenses()} spam offenses.')
+			else:
+				spammers.append(Spammer(user))
+				if debug_log:
+					logging.info(f'⚠️ Added user {user} to spammers.')
+
+
 			return False
 
 	return True
@@ -1026,7 +1085,7 @@ def feedback(msg):
 
 
 # display a very simple schedule for upcoming flights (all)
-def flightSchedule(msg):
+def flightSchedule(msg, command_invoke):
 	# Parse message so we can pass it as MarkdownV2
 	def reconstructMessageForMarkdown(message):
 		message_reconstruct = ''
@@ -1038,7 +1097,11 @@ def flightSchedule(msg):
 
 		return message_reconstruct
 
-	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
+	if command_invoke:
+		content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
+	else:
+		chat = msg['message']['chat']['id']
+
 	launch_dir = 'data/launch'
 
 	# open db connection
@@ -1145,7 +1208,14 @@ def flightSchedule(msg):
 	header_info = '_Dates are subject to change\n\n_'
 	schedule_msg = header + header_info + schedule_msg
 
-	bot.sendMessage(chat, schedule_msg, parse_mode='MarkdownV2')
+	inline_keyboard = []
+	inline_keyboard.append([InlineKeyboardButton(text='🔄 Refresh schedule', callback_data=f'schedule/refresh')])
+	keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+	if not command_invoke:
+		return schedule_msg, keyboard
+
+	bot.sendMessage(chat, schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
 	return
 
 
@@ -2141,6 +2211,7 @@ def spxInfoStrGen(launch_name, run_count):
 		except:
 			pass
 
+	''' Uncomment to add fairing information back
 	else:
 		try:
 			if int(db_match[8]) == 1 or int(db_match[8]) == 0:
@@ -2166,6 +2237,7 @@ def spxInfoStrGen(launch_name, run_count):
 			if debug_log:
 				logging.info(f'{e}')
 			pass
+	'''
 
 	return spx_info, destination_orbit
 
@@ -2503,15 +2575,12 @@ def notificationHandler(launch_row, notif_class):
 			# load mute status, generate keys
 			mute_status = loadMuteStatus(chat, launch_id, keywords)
 			mute_press = 0 if mute_status == 1 else 1
-			
 			mute_key = {0:f'🔇 Mute this launch',1:'🔊 Unmute this launch'}[mute_status]
 
 			# /mute/$provider/$launch_id/(0/1) | 1=muted (true), 0=not muted
 			keyboard = InlineKeyboardMarkup(
-				inline_keyboard = [
-					[
-						InlineKeyboardButton(text=mute_key, callback_data=f'mute/{keywords}/{launch_id}/{mute_press}')
-					]])
+				inline_keyboard = [[
+						InlineKeyboardButton(text=mute_key, callback_data=f'mute/{keywords}/{launch_id}/{mute_press}')]])
 
 			if silent == True:
 				bot.sendMessage(chat, notification, parse_mode='MarkdownV2', reply_markup=keyboard, disable_notification=True)
@@ -2854,7 +2923,7 @@ def notificationHandler(launch_row, notif_class):
 		else:
 			logging.info('🔊 Sending notification with sound')
 
-	reached_people = 0
+	reached_people, start_time = 0, timer()
 	for chat in notify_list:
 		ret = sendNotification(chat, launch_str, launch_id, launch_row[3], launch_row[-1], notif_class)
 
@@ -2883,6 +2952,9 @@ def notificationHandler(launch_row, notif_class):
 			if debug_log:
 				logging.info(f'⚠️ Error getting number of chat members for chat={chat}. Error: {error}')
 
+	# log end time
+	end_time = timer()
+
 	# update stats for sent notifications
 	conn.close()
 	updateStats({'notifications':len(notify_list)})
@@ -2897,8 +2969,11 @@ def notificationHandler(launch_row, notif_class):
 		c.execute(f'UPDATE launches SET {notification_type} = 1 WHERE id = ?', (launch_id,))
 		
 		if debug_log:
-			logging.info(f'⏰ {t_minus} {time_format} notification flag set to 1 for launch {launch_id}')
-			logging.info(f'ℹ️ Notifications sent: {len(notify_list)}, total number of people reached: {reached_people}')
+			try:
+				logging.info(f'🚩 {t_minus} {time_format} notification flag set to 1 for launch {launch_id}')
+				logging.info(f'ℹ️ Notifications sent: {len(notify_list)} in {((end_time - start_time)):.2f} s, number of people reached: {reached_people}')
+			except:
+				pass
 	
 	except Exception as e:
 		if debug_log:
@@ -3213,7 +3288,7 @@ def main():
 	global debug_log, debug_mode
 
 	# current version
-	version = '0.3.5 beta'
+	version = '0.3.6 beta'
 
 	# default
 	start = False
@@ -3361,13 +3436,13 @@ def main():
 	}
 
 	# start command timers, store in memory instead of storage to reduce disk writes
-	global command_timers, chat_command_calls
-	command_timers, chat_command_calls = {}, {}
+	global command_cooldowns, chat_command_calls, spammers
+	command_cooldowns, chat_command_calls, spammers = {}, {}, []
 
 	# initialize the timer dict to avoid spam
-	command_timers['commandTimers'] = {}
+	command_cooldowns['commandTimers'] = {}
 	for command in valid_commands:
-		command_timers['commandTimers'][command.replace('/','')] = '0.35'
+		command_cooldowns['commandTimers'][command.replace('/','')] = '1'
 
 	MessageLoop(bot, {'chat': handle, 'callback_query': callbackHandler}).run_as_thread()
 	time.sleep(1)
