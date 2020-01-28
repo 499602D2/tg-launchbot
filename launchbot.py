@@ -23,6 +23,7 @@ Roadmap
 	- ✅ change launch database index from tminus to net
 
 0.4 (February)
+	- ✅ Notify users of a launch being postponed if a notification has already been sent
 	- add a "more info"/"less info" button
 	- add probability of launch and launch location, separate from mission name etc. with \n\n
 	- handle notification send checks with schedule, instead of polling every 20-30 seconds (i.e. update schedule every time db is updated)
@@ -38,8 +39,8 @@ Later versions
 		- move callbacks to a function, pass text + tuple + keyboard as args
 
 ---------------------------------
-Changelog 0.3.X
-
+Changelog 0.4.0
+- added notifications about postponed launches when a notification has been sent already
 '''
 
 # main loop-function for messages with flavor=chat
@@ -135,16 +136,12 @@ def handle(msg):
 		/next shows the next launch
 		/schedule displays a simple flight schedule
 		/statistics displays various statistics about the bot
+		/feedback allows you to send feedback and suggestions
 
 		*Note!* Commands are only callable by group admins and moderators
 
-		*Changelog for version 0.3.X*
-		- rewrote /notify with a user-friendly UI
-		- you can now navigate ⏪⏩ with /next
-		- refreshed look for /schedule 🗓
-		- implemented per-launch muting 🔇
-		- more robust error handling
-		- tons of bug fixes and improvements
+		*Changelog for version 0.4*
+		- You now get notified about launches being postponed *(user request)*
 
 		*LaunchBot* version *{version}* ✨
 		'''
@@ -160,6 +157,8 @@ def handle(msg):
 	
 	try:
 		command_split = msg['text'].strip().split(" ")
+	except KeyError:
+		pass
 	except Exception as e:
 		if debug_log:
 			logging.info(f'🛑 Error generating command split, returning: {e}')
@@ -213,16 +212,12 @@ def handle(msg):
 				/next shows the next launch
 				/schedule displays a simple flight schedule
 				/statistics displays various stats about the bot
+				/feedback allows you to send feedback and suggestions
 
 				*Note!* Commands are only callable by group admins and moderators
 
-				*Changelog for version 0.3.X*
-				- rewrote /notify with a user-friendly UI
-				- you can now navigate ⏪⏩ with /next
-				- refreshed look for /schedule 🗓
-				- implemented per-launch muting 🔇
-				- more robust error handling
-				- tons of bug fixes and improvements
+				*Changelog for version 0.4*
+				- You now get notified about launches being postponed *(user request)*
 
 				*LaunchBot* version *{version}* ✨
 				'''
@@ -823,7 +818,6 @@ def timerHandle(command, chat, user):
 				spammers.append(Spammer(user))
 				if debug_log:
 					logging.info(f'⚠️ Added user {user} to spammers.')
-
 
 			return False
 
@@ -1626,7 +1620,6 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 		else:
 			bot.sendMessage(chat, msg_text, parse_mode='Markdown')
 	else:
-		#print(f'max_index: {max_index}, current_index: {current_index}, cmd={cmd}')
 		return msg_text, keyboard
 
 	return
@@ -1727,7 +1720,7 @@ def launchUpdateCheck():
 			if debug_log:
 				logging.info(f'✅ Set {len(notif_class)} notif_classes. Timestamp: {now_timestamp}, flt NET: {NET}')
 
-		notificationHandler(row, notif_class)
+		notificationHandler(row, notif_class, False)
 
 	return
 
@@ -1774,8 +1767,17 @@ def spxAPIHandler():
 			try:
 				launch = launch_json[i]
 			except KeyError as error:
-				if debug_log:
-					logging.info(f'⚠️ Got KeyError in spxAPIHandler(multiParse()), returning: {error}')
+				try:
+					if 'error' in launch_json.keys():
+						if debug_log:
+							logging.info(f'⚠️ Error in spxAPIHandler multiParse: {launch_json["error"]}')
+
+					elif debug_log:
+						logging.info(f'⚠️ Got KeyError in spxAPIHandler(multiParse()), returning: {error}')
+						logging.info(f'⚠️ range: 0,{launch_count}, i:{i}, launch_json: {launch_json}')
+
+				except:
+					pass
 
 				return
 
@@ -2244,6 +2246,58 @@ def spxInfoStrGen(launch_name, run_count):
 
 # handles API requests from launchUpdateCheck()
 def getLaunchUpdates(launch_ID):
+	# handle notification sending; done in a separate function so we can retry more easily and handle exceptions
+	def sendPostponeNotification(chat, notification, launch_id, keywords):
+		try:
+			# load mute status, generate keys
+			mute_status = loadMuteStatus(chat, launch_id, keywords)
+			mute_press = 0 if mute_status == 1 else 1
+			mute_key = {0:f'🔇 Mute this launch',1:'🔊 Unmute this launch'}[mute_status]
+
+			# /mute/$provider/$launch_id/(0/1) | 1=muted (true), 0=not muted
+			keyboard = InlineKeyboardMarkup(
+				inline_keyboard = [[
+						InlineKeyboardButton(text=mute_key, callback_data=f'mute/{keywords}/{launch_id}/{mute_press}')]])
+
+			bot.sendMessage(chat, notification, parse_mode='MarkdownV2', reply_markup=keyboard, disable_notification=False)
+			return True
+		
+		except telepot.exception.BotWasBlockedError:
+			if debug_log:
+				logging.info(f'⚠️ Bot was blocked by {chat} – cleaning notify database...')
+
+			cleanNotifyDatabase(chat)
+			return True
+
+		except telepot.exception.TelegramError as error:
+			# Bad Request: chat not found
+			if error.error_code == 400 and 'not found' in error.description:
+				if debug_log:
+					logging.info(f'⚠️ chat {chat} not found – cleaning notify database...')
+					logging.info(f'Error: {error}')
+
+				cleanNotifyDatabase(chat)
+				return True
+
+			# Rate limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
+			elif error.error_code == 429:
+				if debug_log:
+					logging.info(f'🚧 Rate-limited (429) - sleeping for 5 seconds and continuing. Error: {error}')
+
+				time.sleep(5)
+				return False
+
+			# Some error code we don't know how to handle
+			else:
+				if debug_log:
+					logging.info(f'⚠️ unhandled telepot.exception.TelegramError in sendNotification: {error}')
+
+				return False
+
+		except Exception as caught_exception:
+			return caught_exception
+
+
 	def constructParams(PARAMS):
 		param_url, i = '', 0
 		if PARAMS is not None:
@@ -2388,18 +2442,10 @@ def getLaunchUpdates(launch_ID):
 
 					# at least 1 notification has already been sent
 					if 1 in notification_statuses.values() and net_diff > 0:
-
-						'''
-						- 24: if the slip is greater than 24 hours, toggle 24 hour flag and all that were sent
-						- if the slip is greater than 12 hours, toggle 12 hour flag
-						- if the slip is greater than 2 hours, toggle the 1 hour flag
-						- if the slip is over 30 minutes, toggle the 5 min flag
-						'''
-
 						disabled_statuses = []
 						for key, status in notification_statuses.items():
 							if key == '24h' and status == 1:
-								if net_diff >= 3600*24:
+								if net_diff > 3600*24:
 									notification_statuses['24h'] = 0
 									disabled_statuses.append('24h')
 
@@ -2409,14 +2455,193 @@ def getLaunchUpdates(launch_ID):
 									disabled_statuses.append('12h')
 
 							elif key == '1h' and status == 1:
-								if net_diff >= 3600*2:
+								if net_diff >= 3600:
 									notification_statuses['1h'] = 0
 									disabled_statuses.append('1h')
 
 							elif key == '5m' and status == 1:
-								if net_diff >= 3600*0.5:
+								if net_diff >= 3600*(5/60):
 									notification_statuses['5m'] = 0
 									disabled_statuses.append('5m')
+
+						# construct the eta string
+						net_stamp = datetime.datetime.fromtimestamp(new_NET)
+						eta = abs(datetime.datetime.today() - new_NET)
+						if eta.days >= 365: # over 1 year
+							t_y = math.floor(eta.days/365)
+							t_m = math.floor(t_y*365 - eta.days)
+
+							year_suff = 'year' if t_y == 1 else 'years'
+							month_suff = 'month' if t_m == 1 else 'months'
+							eta_str = f'{t_y} {year_suff}, {t_m} {month_suff}'
+
+						elif eta.days < 365 and eta.days >= 31: # over 1 month
+							t_m = math.floor(eta.days/30)
+							t_d = math.floor(eta.days - t_m*30)
+
+							month_suff = 'month' if t_m == 1 else 'months'
+							day_suff = 'day' if t_d == 1 else 'days'
+							eta_str = f'{t_m} {month_suff}, {t_d} {day_suff}'
+
+						elif eta.days >= 1 and eta.days < 31: # over a day
+							t_d = eta.days
+							t_h = math.floor(eta.seconds/3600)
+							t_m = math.floor((eta.seconds-t_h*3600)/60)
+
+							day_suff = f'day' if t_d == 1 else f'days'
+							min_suff = 'minute' if t_m == 1 else 'minutes'
+							h_suff = 'hour' if t_h == 1 else 'hours'
+							eta_str = f'{t_d} {day_suff}, {t_h} {h_suff}, {t_m} {min_suff}'
+
+						elif (eta.seconds/3600) < 24 and (eta.seconds/3600) >= 1: # under a day, more than an hour
+							t_h = math.floor(eta.seconds/3600)
+							t_m = math.floor((eta.seconds-t_h*3600)/60)
+							t_s = math.floor(eta.seconds-t_h*3600-t_m*60)
+
+							h_suff = 'hour' if t_h == 1 else 'hours'
+							min_suff = 'minute' if t_m == 1 else 'minutes'
+							s_suff = 'second' if t_s == 1 else 'seconds'
+							eta_str = f'{t_h} {h_suff}, {t_m} {min_suff}, {t_s} {s_suff}'
+						
+						elif (eta.seconds/3600) < 1:
+							t_m = math.floor(eta.seconds/60)
+							t_s = math.floor(eta.seconds-t_m*60)
+
+							min_suff = 'minute' if t_m == 1 else 'minutes'
+							s_suff = 'second' if t_s == 1 else 'seconds'
+
+							if t_m > 0:
+								eta_str = f'{t_m} {min_suff}, {t_s} {s_suff}'
+							elif t_m == 0:
+								if t_s <= 10:
+									if t_s > 0:
+										eta_str = f'T-{t_s}, terminal countdown'
+									else:
+										if t_s == 0:
+											eta_str = 'T-0, launch commit'
+										else:
+											eta_str = 'T-0'
+								else:
+									eta_str = f'T- {t_s} {s_suff}'
+
+						# notify users with a message
+						launch_unix = datetime.datetime.utcfromtimestamp(new_NET)
+						if launch_unix.second == 0:
+							if launch_unix.minute < 10:
+								launch_time = f'{launch_unix.hour}:0{launch_unix.minute}'
+							else:
+								launch_time = f'{launch_unix.hour}:{launch_unix.minute}'
+						else:
+							if launch_unix.second < 10:
+								sec_time = f'0{launch_unix.second}'
+							else:
+								sec_time = launch_unix.second
+
+							if launch_unix.minute < 10:
+								min_time = f'0{launch_unix.minute}'
+							else:
+								min_time = launch_unix.minute
+
+							launch_time = f'{launch_unix.hour}:{min_time}.{sec_time}'
+
+						# lift-off date
+						ymd_split = f'{launch_unix.year}-{launch_unix.month}-{launch_unix.day}'.split('-')
+						try:
+							suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(ymd_split[2])[-1])]
+						except:
+							suffix = 'th'
+
+						month_map = {
+							1: 'January', 2: 'February', 3: 'March', 4: 'April',
+							5: 'May', 6: 'June', 7: 'July', 8: 'August',
+							9: 'Septemper', 10: 'October', 11: 'November', 12: 'December'}
+
+						date_str = f'{month_map[int(ymd_split[1])]} {ymd_split[2]}{suffix}'
+
+						# time-delta for postpone_str; net_diff is the time in seconds
+						if net_diff > 3600*24:
+							days = math.floor(net_diff/(3600*24))
+							hours = math.floor((net_diff - days*3600*24)/3600)
+							d_suff = 'day' if days == 1 else 'days'
+							h_suff = 'hour' if hours == 1 else 'hours'
+
+							if hours == 0:
+								postpone_str = f'{days} {d_suff}'
+							else:	
+								postpone_str = f'{days} {d_suff} and {hours} {h_suff}'
+
+						elif net_diff == 3600*24:
+							postpone_str = '24 hours'
+
+						elif net_diff < 3600*24:
+							hours = math.floor(net_diff/3600)
+							mins = math.floor((net_diff-hours*3600)/60)
+							h_suff = 'hour' if hours == 1 else 'hours'
+							m_suff = 'minute' if mins == 1 else 'minutes'
+							
+							if mins == 0:
+								postpone_str = f'{hours} {h_suff}'
+							else:
+								postpone_str = f'{hours} {h_suff} and {mins} {m_suff}'
+
+						# construct message
+						msg_text = f'📢 *{launch_name}* has been postponed by {postpone_str}. '
+						msg_text += f'{lsp_name} is now targeting lift-off on *{date_str}* at *{launch_time} UTC*.\n\n'
+						msg_text += f'⏱ {eta_str} until next launch attempt.\n'
+						msg_text = reconstructMessageForMarkdown(msg_text)
+						msg_text += f'ℹ️ _You will be re\-notified of this launch\. For detailed info\, use \/next\. '
+						msg_text += 'To disable\, mute this launch with the button below\._'
+
+						LSP_IDs = {
+							121: 	['SpaceX', '🇺🇸'],
+							147: 	['Rocket Lab', '🇺🇸'],
+							99: 	['Northrop Grumman', '🇺🇸'],
+							115: 	['Arianespace', '🇪🇺'],
+							124: 	['ULA', '🇺🇸'],
+							98: 	['Mitsubishi Heavy Industries', '🇯🇵'],
+							88: 	['CASC', '🇨🇳'],
+							190: 	['Antrix Corporation', '🇮🇳'],
+							122: 	['Sea Launch', '🇷🇺'],
+							118: 	['ILS', '🇺🇸🇷🇺'],
+							193: 	['Eurockot', '🇪🇺🇷🇺'],
+							119:	['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'],
+							123:	['Starsem', '🇪🇺🇷🇺'],
+							194:	['ExPace', '🇨🇳']
+							}
+
+						if lsp not in LSP_IDs.keys():
+							notify_list = getNotifyList(lsp_name, launch_id)
+						else:
+							notify_list = getNotifyList(LSP_IDs[lsp][0], launch_id)
+
+						# send the notifications
+						for chat in notify_list:
+							ret = sendPostponeNotification(chat, msg_text, launch_id, lsp)
+
+							if ret != True and debug_log:
+								logging.info(f'🛑 Error sending notification to chat={chat}! Exception: {ret}')
+
+							tries = 1
+							while ret != True:
+								time.sleep(2)
+								ret = sendPostponeNotification(chat, msg_text, launch_id, lsp)
+								tries += 1
+								
+								if ret == True:
+									if debug_log:
+										logging.info(f'✅ Notification sent successfully to chat={chat}! Took {tries} tries.')
+
+								elif ret != True and tries > 5:
+									if debug_log:
+										logging.info(f'⚠️ Tried to send notification to {chat} {tries} times – passing.')
+										
+									ret = True
+
+							if debug_log:
+								logging.info(f'📢 Notified {len(notify_list)} chats about the postpone ({postpone_str}) of launch {launch_id} by {lsp_name}')
+
+						# update stats
+						updateStats({'notifications':len(notify_list)})
 
 						if debug_log:
 							if len(disabled_statuses) > 0:
@@ -2424,7 +2649,8 @@ def getLaunchUpdates(launch_ID):
 								logging.info(f'🚩 {disabled_notif_str} flags set to 0 for {launch_id} | lsp={lsp_short}, lname={launch_name}, net_diff={net_diff}')
 
 					c.execute('''UPDATE launches
-						SET NET = ?, Tminus = ?, success = ?, launched = ?, hold = ?, info = ?, pad = ?, vid = ?, notify24h = ?, notify12h = ?, notify60min = ?, notify5min = ?
+						SET NET = ?, Tminus = ?, success = ?, launched = ?, hold = ?, info = ?, pad = ?,
+						vid = ?, notify24h = ?, notify12h = ?, notify60min = ?, notify5min = ?
 						WHERE id = ?''', (
 							net_unix, Tminus, success, launched, holding, mission_text, pad, vid_url,
 							notification_statuses['24h'], notification_statuses['12h'], notification_statuses['1h'], notification_statuses['5m'], launch_id))
@@ -2495,57 +2721,158 @@ def getLaunchUpdates(launch_ID):
 	return
 
 
-# gets a request to send a notification about launch X from launchUpdateCheck()
-def notificationHandler(launch_row, notif_class):
-	# MarkdownV2 requires some special handling, so parse the link here
-	def reconstructLinkForMarkdown(link):
-		link_reconstruct = ''
-		for char in link:
-			if char in [')', '\\']:
-				link_reconstruct += f'\\{char}'
-			else:
-				link_reconstruct += char
-
-		return link_reconstruct
-
-
-	# Same as above, but for the message text
-	def reconstructMessageForMarkdown(message):
-		message_reconstruct = ''
-		for char in message:
-			if char in ['_', '[', ']', '(', ')', '~', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']:
-				message_reconstruct += f'\\{char}'
-			else:
-				message_reconstruct += char
-
-		return message_reconstruct
-
-
-	def loadMuteStatus(chat, launch_id, keywords):
-		conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
-		c = conn.cursor()
-		c.execute("SELECT muted_launches FROM notify WHERE chat = ? AND keyword = ?", (chat, keywords))
-		query_return = c.fetchall()
-
-		if len(query_return) == 0:
-			mute_status = 0
+# MarkdownV2 requires some special handling, so parse the link here
+def reconstructLinkForMarkdown(link):
+	link_reconstruct = ''
+	for char in link:
+		if char in [')', '\\']:
+			link_reconstruct += f'\\{char}'
 		else:
-			if query_return[0][0] == None:
-				mute_status = 0
-			elif str(launch_id) in query_return[0][0].split(','):
-				mute_status = 1
-			else:
-				mute_status = 0
+			link_reconstruct += char
 
-		return mute_status
+	return link_reconstruct
 
 
-	# removes all notification settings for a chat from the notify database
-	def cleanNotifyDatabase(chat):
-		conn = sqlite3.connect(os.path.join('data/launch', 'notifications.db'))
-		c = conn.cursor()
+# Same as above, but for the message text
+def reconstructMessageForMarkdown(message):
+	message_reconstruct = ''
+	for char in message:
+		if char in ['_', '[', ']', '(', ')', '~', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']:
+			message_reconstruct += f'\\{char}'
+		else:
+			message_reconstruct += char
+
+	return message_reconstruct
+
+
+def getNotifyList(lsp, launch_id):
+	# pull all with matching keyword (LSP ID), matching country code notification, or an "all" marker (and no exclusion for this ID/country)
+	# Establish connection
+	launch_dir = 'data/launch'
+
+	if not os.path.isfile(os.path.join(launch_dir,'notifications.db')):
+		createNotifyDatabase()
+
+	conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
+	c = conn.cursor()
+
+	# pull all where keyword = LSP or "All"
+	c.execute('SELECT * FROM notify WHERE keyword == ? OR keyword == ?',(lsp, 'All'))
+	query_return = c.fetchall()
+
+	# parse for possible mutes
+	parsed_query_return = []
+	muted_chats = []
+	for row in query_return:
+		append = True
+		if row[2] != None:
+			if row[2] != '':
+				split = row[2].split(',')
+				for muted_id in split:
+					if muted_id == str(launch_id):
+						append = False
+						muted_chats.append(row[0])
+
+		if append:
+			if row[0] not in muted_chats:
+				parsed_query_return.append(row)
+
+	query_return = parsed_query_return
+	parsed_query_return = []
+	for row in query_return:
+		if row[0] in muted_chats:
+			if debug_log:
+				logging.info(f'🔇 Not notifying chat {row[0]} due to muted launch')
+			pass
+		else:
+			parsed_query_return.append(row)
+
+	query_return = parsed_query_return
+
+	# parse output
+	notify_dict, notify_list = {}, [] # chat: id: toggle
+	for row in query_return:
+		chat = row[0]
+		if chat not in notify_dict:
+			notify_dict[chat] = {}
 		
-		c.execute("DELETE FROM notify WHERE chat = ?", (chat,))
+		notify_dict[chat][row[1]] = row[3] # lsp: 0/1, or All: 0/1
+
+	# if All is enabled, and lsp is disabled
+	for chat, val in notify_dict.items(): # chat, dictionary (dict is in the form of LSP: toggle)
+		enabled, disabled = [], []
+		for l, e in val.items(): # lsp, enabled
+			if e == 1:
+				enabled.append(l)
+			else:
+				disabled.append(l)
+
+		if lsp in disabled and 'All' in enabled:
+			if debug_log:
+				logging.info(f'🔕 Not notifying {chat} about {lsp} due to disabled flag. All flag was enabled.')
+				try:
+					logging.info(f'ℹ️ notify_dict[{chat}]: {notify_dict[chat]} | lsp: {lsp} | enabled: {enabled} | disabled: {disabled}')
+				except:
+					logging.info(f'⚠️ KeyError getting notify_dict[chat]. notify_dict: {notify_dict}')
+		
+		elif lsp in enabled or 'All' in enabled:
+			notify_list.append(chat)
+
+	return notify_list
+
+
+# load mute status for chat and launch
+def loadMuteStatus(chat, launch_id, keywords):
+	launch_dir = 'data/launch'
+	conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
+	c = conn.cursor()
+	c.execute("SELECT muted_launches FROM notify WHERE chat = ? AND keyword = ?", (chat, keywords))
+	query_return = c.fetchall()
+
+	if len(query_return) == 0:
+		mute_status = 0
+	else:
+		if query_return[0][0] == None:
+			mute_status = 0
+		elif str(launch_id) in query_return[0][0].split(','):
+			mute_status = 1
+		else:
+			mute_status = 0
+
+	return mute_status
+
+
+# removes all notification settings for a chat from the notify database
+def cleanNotifyDatabase(chat):
+	conn = sqlite3.connect(os.path.join('data/launch', 'notifications.db'))
+	c = conn.cursor()
+	
+	c.execute("DELETE FROM notify WHERE chat = ?", (chat,))
+	conn.commit()
+	conn.close()
+	return
+
+
+# gets a request to send a notification about launch X from launchUpdateCheck()
+def notificationHandler(launch_row, notif_class, NET_slip):
+	# store msg identifiers
+	def storeIdentifiers(id, msg_identifiers):
+		conn = sqlite3.connect(os.path.join(launch_dir, 'sent-notifications.db'))
+		c = conn.cursor()
+
+		try:
+			c.execute("CREATE TABLE identifiers (id INTEGER, msg_identifiers TEXT, PRIMARY KEY (id))")
+			c.execute("CREATE INDEX id_identifiers ON notify (id, identifiers)")
+			if debug_log:
+				logging.info(f'✨ sent-notifications.db created!')
+		except sqlite3.OperationalError:
+			pass
+
+		try:
+			c.execute('''INSERT INTO identifiers (id, msg_identifiers) VALUES (?, ?)''',(launch_id, msg_identifiers))
+		except:
+			c.execute('''UPDATE identifiers SET msg_identifiers = ? WHERE id = ?''', (msg_identifiers, launch_id))
+
 		conn.commit()
 		conn.close()
 		return
@@ -2568,7 +2895,7 @@ def notificationHandler(launch_row, notif_class):
 		else:
 			if silent:
 				silent_info_text = reconstructMessageForMarkdown(
-					'\n\n24h and 12h notifications are now sent silently. Like it? Send feedback with /feedback!')
+					f'\n\n24h and 12h notifications are now sent silently. Like it? Send feedback with /feedback@{bot_username}!')
 				notification += f'_{silent_info_text}_'
 
 		try:
@@ -2583,10 +2910,13 @@ def notificationHandler(launch_row, notif_class):
 						InlineKeyboardButton(text=mute_key, callback_data=f'mute/{keywords}/{launch_id}/{mute_press}')]])
 
 			if silent == True:
-				bot.sendMessage(chat, notification, parse_mode='MarkdownV2', reply_markup=keyboard, disable_notification=True)
+				sent_msg = bot.sendMessage(chat, notification, parse_mode='MarkdownV2', reply_markup=keyboard, disable_notification=True)
 			else:
-				bot.sendMessage(chat, notification, parse_mode='MarkdownV2', reply_markup=keyboard, disable_notification=False)
+				sent_msg = bot.sendMessage(chat, notification, parse_mode='MarkdownV2', reply_markup=keyboard, disable_notification=False)
 
+			# sent message is stored in sent_msg; store in db so we can edit messages
+			msg_identifier = f"{sent_msg['chat']['id']}:{sent_msg['message_id']}"
+			msg_identifiers.append(f'{msg_identifier}')
 			return True
 		
 		except telepot.exception.BotWasBlockedError:
@@ -2621,8 +2951,8 @@ def notificationHandler(launch_row, notif_class):
 
 				return False
 
-		except Exception as caught_exception:
-			return caught_exception
+		#except Exception as caught_exception:
+		#	return caught_exception
 
 
 	''' LSP ID -> name, flag dictionary
@@ -2682,17 +3012,18 @@ def notificationHandler(launch_row, notif_class):
 
 	# parse the input so we can generate the message later
 	launch_name = query_return[0][0]
+	lsp_short = query_return[0][4]
 	vehicle = query_return[0][5]
 	pad = query_return[0][6]
-	info_text = query_return[0][7]
+	info = query_return[0][7]
 
-	if info_text != None:
-		info_text = f'ℹ️ {info_text}'
+	if info is not None:
+		# if the info text is longer than 60 words, pick the first three sentences.
+		if len(info.split(' ')) > 60:
+			info = f'{". ".join(info.split(". ")[0:2])}.'
+		info_text = f'ℹ️ {info}'
 	else:
 		info_text = f'ℹ️ No launch information available'
-
-	if launch_name == 'Starlink 3' or launch_name == ' Starlink 3':
-		info_text = f'ℹ️ Second operational Starlink payload of 2020 and third overall. The Falcon 9 launch vehicle will carry a batch of 60 Starlink satellites that will be insterted into a very low-Earth orbit at an altitude of 290 km (342 mi) and an inclination of 53°. They will then split into three orbital planes and raise their orbits to reach an operational altitude of 550 km (342 mi).'
 	
 	if lsp is None:
 		lsp = query_return[0][3]
@@ -2845,73 +3176,7 @@ def notificationHandler(launch_row, notif_class):
 
 
 	# get chats to send the notification to
-	# pull all with matching keyword (LSP ID), matching country code notification, or an "all" marker (and no exclusion for this ID/country)
-	# Establish connection
-	conn.close()
-	conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
-	c = conn.cursor()
-
-	# pull all where keyword = LSP or "All"
-	c.execute('SELECT * FROM notify WHERE keyword == ? OR keyword == ?',(lsp, 'All'))
-	query_return = c.fetchall()
-
-	# parse for possible mutes
-	parsed_query_return = []
-	muted_chats = []
-	for row in query_return:
-		append = True
-		if row[2] != None:
-			if row[2] != '':
-				split = row[2].split(',')
-				for muted_id in split:
-					if muted_id == str(launch_id):
-						append = False
-						muted_chats.append(row[0])
-
-		if append:
-			if row[0] not in muted_chats:
-				parsed_query_return.append(row)
-
-	query_return = parsed_query_return
-	parsed_query_return = []
-	for row in query_return:
-		if row[0] in muted_chats:
-			if debug_log:
-				logging.info(f'🔇 Not notifying chat {row[0]} due to muted launch')
-			pass
-		else:
-			parsed_query_return.append(row)
-
-	query_return = parsed_query_return
-
-	# parse output
-	notify_dict, notify_list = {}, [] # chat: id: toggle
-	for row in query_return:
-		chat = row[0]
-		if chat not in notify_dict:
-			notify_dict[chat] = {}
-		
-		notify_dict[chat][row[1]] = row[3] # lsp: 0/1, or All: 0/1
-
-	# if All is enabled, and lsp is disabled
-	for chat, val in notify_dict.items(): # chat, dictionary (dict is in the form of LSP: toggle)
-		enabled, disabled = [], []
-		for l, e in val.items(): # lsp, enabled
-			if e == 1:
-				enabled.append(l)
-			else:
-				disabled.append(l)
-
-		if lsp in disabled and 'All' in enabled:
-			if debug_log:
-				logging.info(f'🔕 Not notifying {chat} about {lsp} due to disabled flag. All flag was enabled.')
-				try:
-					logging.info(f'⚠️ notify_dict[chat]: {notify_dict[chat]} | lsp: {lsp} | enabled: {enabled} | disabled: {disabled}')
-				except:
-					logging.info(f'⚠️KeyError getting notify_dict[chat]. notify_dict: {notify_dict}')
-		
-		elif lsp in enabled or 'All' in enabled:
-			notify_list.append(chat)
+	notify_list = getNotifyList(lsp, launch_id)
 
 	if debug_log:
 		logging.info(f'Sending notifications for launch {launch_id} | NET: {launch_unix} | notify_list: {notify_list}')
@@ -2923,7 +3188,8 @@ def notificationHandler(launch_row, notif_class):
 		else:
 			logging.info('🔊 Sending notification with sound')
 
-	reached_people, start_time = 0, timer()
+	global msg_identifiers
+	reached_people, start_time, msg_identifiers = 0, timer(), []
 	for chat in notify_list:
 		ret = sendNotification(chat, launch_str, launch_id, launch_row[3], launch_row[-1], notif_class)
 
@@ -2947,7 +3213,7 @@ def notificationHandler(launch_row, notif_class):
 				ret = True
 
 		try:
-			reached_people += bot.getChatMembersCount(chat)
+			reached_people += bot.getChatMembersCount(chat) - 1
 		except Exception as error:
 			if debug_log:
 				logging.info(f'⚠️ Error getting number of chat members for chat={chat}. Error: {error}')
@@ -2958,6 +3224,10 @@ def notificationHandler(launch_row, notif_class):
 	# update stats for sent notifications
 	conn.close()
 	updateStats({'notifications':len(notify_list)})
+
+	# store msg_identifiers
+	msg_identifiers = ','.join(msg_identifiers)
+	storeIdentifiers(launch_id, msg_identifiers)
 
 	# set notification as sent; if 12 hour sent but 24 hour not sent, disable "higher" ones as well
 	conn.close()
@@ -2985,6 +3255,14 @@ def notificationHandler(launch_row, notif_class):
 
 	conn.commit()
 	conn.close()
+
+	# send adming a message
+	try:
+		msg_text = f'ℹ️ *Notifications sent:* {len(notify_list)} in {((end_time - start_time)):.2f} s, number of people reached: {reached_people}'
+		bot.sendMessage(421341996, msg_text, parse_mode='Markdown')
+	except:
+		pass
+
 	return
 
 
@@ -3048,12 +3326,12 @@ def statistics(msg):
 
 	# get system load average
 	load_avgs = os.getloadavg() # [x, y, z]
-	load_avg_str = 'Load {:.2f} {:.2f} {:.2f}'.format(load_avgs[0], load_avgs[1], load_avgs[2])
+	load_avg_str = f'Load {load_avgs[0]:.2f} {load_avgs[1]:.2f} {load_avgs[2]:.2f}'
 	
 	if updays > 0:
-		up_str = "Uptime {:d} days, {:d} h {:s} min".format(updays,uphours,upmins)
+		up_str = f'Uptime {updays} days, {uphours} h {upmins} min'
 	else:
-		up_str = "Uptime {:d} hours {:s} min".format(uphours,upmins)
+		up_str = f'Uptime {uphours} hours {upmins} min'
 
 	# format data to MB or GB
 	if data / 10**9 >= 1:
@@ -3062,7 +3340,6 @@ def statistics(msg):
 		data, data_size_class = data/10**6, 'MB'
 
 	# get database sizes
-	# get chainStore.db file size
 	try:
 		db_sizes = os.path.getsize(os.path.join('data','launch','launches.db'))
 		db_sizes += os.path.getsize(os.path.join('data','launch','spx-launches.db'))
@@ -3089,7 +3366,7 @@ def statistics(msg):
 			recipients.append(row[0])
 
 	reply_str = f'''
-	🚀 *LaunchBot version {version}*
+	📊 *LaunchBot global statistics*
 	Notifications delivered: {notifs}
 	Notification recipients: {len(recipients)}
 	Commands parsed: {commands}
@@ -3105,6 +3382,7 @@ def statistics(msg):
 	🎛 *Server information*
 	{up_str}
 	{load_avg_str}
+	LaunchBot version *{version}* ✨
 	'''
 
 	bot.sendMessage(chat, inspect.cleandoc(reply_str), parse_mode='Markdown')
@@ -3229,7 +3507,7 @@ def createStatsDatabase():
 
 # if running for the first time
 def firstRun():
-	print("Looks like you're running launchbot for the first time")
+	print("Looks like you're running LaunchBot for the first time")
 	print("Let's start off by creating some folders.")
 	time.sleep(2)
 	
@@ -3240,7 +3518,7 @@ def firstRun():
 
 	time.sleep(1)
 
-	print('To function, launchbot needs a bot API key;')
+	print('To function, LaunchBot needs a bot API key;')
 	print('to get one, send a message to @botfather on Telegram.')
 
 	# create a settings file for the bot; we'll store the API keys here
@@ -3267,7 +3545,7 @@ def updateToken(update_tokens):
 				setting_map = json.load(json_data) # use old .json
 
 	if 'botToken' in update_tokens:
-		token_input = str(input('Enter the bot token for launchBot: '))
+		token_input = str(input('Enter the bot token for LaunchBot: '))
 		while ':' not in token_input:
 			print('Please try again – bot-tokens look like "123456789:ABHMeJViB0RHL..."')
 			token_input = str(input('Enter the bot token for launchbot: '))
@@ -3285,10 +3563,10 @@ def updateToken(update_tokens):
 def main():
 	# some global vars for use in other functions
 	global TOKEN, bot, version, bot_ID, bot_username
-	global debug_log, debug_mode
+	global debug_log
 
 	# current version
-	version = '0.3.6 beta'
+	version = '0.4.0'
 
 	# default
 	start = False
@@ -3312,9 +3590,7 @@ def main():
 	else:
 		update_tokens = []
 		for arg in sys.argv:
-			arg = arg.lower()
-
-			if arg in start_args:
+			if arg.lower() in start_args:
 				start = True
 
 			# update tokens if instructed to
@@ -3354,7 +3630,12 @@ def main():
 	try:
 		bot_settings_path = os.path.join('data','bot-settings.json')
 		with open(bot_settings_path, 'r') as json_data:
-			setting_map = json.load(json_data)
+			try:
+				setting_map = json.load(json_data)
+			except:
+				os.remove(os.path.join('data','bot-settings.json'))
+				firstRun()
+				return
 
 	except FileNotFoundError:
 		firstRun()
@@ -3381,7 +3662,6 @@ def main():
 
 	# valid commands we monitor for
 	global valid_commands, valid_commands_alt
-	
 	valid_commands = [
 	'/start', '/help', 
 	'/next', '/notify',
@@ -3392,7 +3672,7 @@ def main():
 	# generate the "alternate" commands we listen for, as in ones suffixed with the bot's username 
 	valid_commands_alt = []
 	for command in valid_commands:
-		valid_commands_alt.append(command + '@' + bot_username)
+		valid_commands_alt.append(f'{command}@{bot_username}')
 
 	# all the launch providers supported; used in many places, so declared globally here
 	global provider_by_cc
@@ -3456,14 +3736,14 @@ def main():
 		sys.stdout.write('%s\r' % status_msg)
 
 	# schedule regular database updates and NET checks
-	schedule.every(5).minutes.do(getLaunchUpdates, launch_ID=None)
-	schedule.every(5).minutes.do(spxAPIHandler)
+	schedule.every(2).minutes.do(getLaunchUpdates, launch_ID=None)
+	schedule.every(2).minutes.do(spxAPIHandler)
 	schedule.every(30).seconds.do(launchUpdateCheck)
 	
 	# run both scheduled jobs now, so we don't have to sit in the dark for a while
 	getLaunchUpdates(None)
-	launchUpdateCheck()
 	spxAPIHandler()
+	launchUpdateCheck()
 
 	# fancy prints so the user can tell that we're actually doing something
 	if not debug_mode:
