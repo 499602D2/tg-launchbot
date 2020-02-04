@@ -1,5 +1,5 @@
 import os, sys, time, ssl, datetime, logging, math, requests, inspect
-import telepot, sqlite3, cursor, difflib, schedule
+import telepot, sqlite3, cursor, difflib, schedule, profile
 import ujson as json
 
 from uptime import uptime
@@ -23,10 +23,6 @@ Roadmap
 
 0.4 (February)
 	- ✅ Notify users of a launch being postponed if a notification has already been sent
-	- create a copy of the launch databases in memory (c = sqlite3.connect(':memory:')) -> update on disk db update
-		- on startup, create connections for notify-db, launch-db, and spacex-db as global vars
-		- when these databases are updated, update the in-memory db as well
-
 	- add a "more info"/"less info" button
 	- add probability of launch and launch location, separate from mission name etc. with \n\n
 	- handle notification send checks with schedule, instead of polling every 20-30 seconds (i.e. update schedule every time db is updated)
@@ -35,7 +31,6 @@ Roadmap
 	- allow users to set their own timezone
 
 Later versions
-	- notify users of a launch holding? (edit message?)
 	- functionize more of the processes
 		- move callbacks to a function, pass text + tuple + keyboard as args
 
@@ -156,7 +151,7 @@ def handle(msg):
 		return
 	
 	try:
-		command_split = msg['text'].strip().split(" ")
+		command_split = msg['text'].strip().split(' ')
 	except KeyError:
 		pass
 	except Exception as e:
@@ -173,9 +168,10 @@ def handle(msg):
 	
 	# sees a valid command
 	elif content_type == 'text':
-		if command_split[0].lower() in valid_commands or command_split[0].lower() in valid_commands_alt:
+		command_split = [arg.lower() for arg in command_split]
+		if command_split[0] in valid_commands or command_split[0] in valid_commands_alt:
 			# command we saw
-			command = command_split[0].lower()
+			command = command_split[0]
 
 			if '@' in command:
 				command = command.split('@')[0]
@@ -197,12 +193,15 @@ def handle(msg):
 					logging.info(f'✋ {command} called by a non-admin in {chat}, returning.')
 				return
 			else:
-				bot.sendChatAction(chat, action='typing')
+				try:
+					bot.sendChatAction(chat, action='typing')
+				except:
+					return
 
 			# start timer
 			start = timer()
 
-			# /start or /help (1, 2)
+			# /start or /help
 			if command in {'/start', '/help'}:
 				# construct info message
 				reply_msg = f'''🚀 *Hi there!* I'm *LaunchBot*, a launch information and notifications bot!
@@ -231,23 +230,23 @@ def handle(msg):
 					if debug_log:
 						logging.info(f'🌟 Bot added to a new chat! chat_id={chat}. Sent user the new inline keyboard. [2]')
 
-			# /next (3)
+			# /next
 			elif command == '/next':
 				nextFlight(msg, 0, True, None)
 
-			# /notify (4)
+			# /notify
 			elif command == '/notify':
 				notify(msg)
 
-			# /statistics (5)
+			# /statistics
 			elif command == '/statistics':
 				statistics(msg)
 
-			# /schedule (6)
+			# /schedule)
 			elif command == '/schedule':
 				flightSchedule(msg, True)
 
-			# /feedback (7)
+			# /feedback
 			elif command == '/feedback':
 				feedback(msg)
 
@@ -848,11 +847,7 @@ def getUserNotificationsStatus(chat, provider_list):
 			if provider == 'All':
 				all_flag = True
 
-	if not all_flag:
-		notification_statuses['All'] = 0
-	else:
-		notification_statuses['All'] = 1
-
+	notification_statuses['All'] = 1 if all_flag else 0
 	return notification_statuses
 
 
@@ -1634,7 +1629,8 @@ def launchUpdateCheck():
 		NET <= {unix_24h_threshold} AND NET >= {now_timestamp} AND notify24h = 0 OR
 		NET <= {unix_12h_threshold} AND NET >= {now_timestamp} AND notify12h = 0 OR 
 		NET <= {unix_60m_threshold} AND NET >= {now_timestamp} AND notify60min = 0 OR
-		NET <= {unix_5m_threshold} AND NET >= {now_timestamp} AND notify5min = 0''')
+		NET <= {unix_5m_threshold} AND NET >= {now_timestamp} AND notify5min = 0
+		''')
 
 	query_return = c.fetchall()
 	if len(query_return) == 0:
@@ -1697,6 +1693,7 @@ def launchUpdateCheck():
 			if debug_log:
 				logging.info(f'✅ Set {len(notif_class)} notif_classes. Timestamp: {now_timestamp}, flt NET: {NET}')
 
+		# send the notifications
 		notificationHandler(row, notif_class, False)
 
 	return
@@ -1902,7 +1899,11 @@ def spxAPIHandler():
 		return
 
 	# parse all launches one-by-one in the returned json-file
-	launch_json = API_RESPONSE.json()
+	try:
+		launch_json = API_RESPONSE.json()
+	except:
+		return
+
 	multiParse(launch_json, len(launch_json))
 
 	# update stats
@@ -2300,7 +2301,7 @@ def getLaunchUpdates(launch_ID):
 		# launch, id, keywords, countrycode, NET, T-, notify24hour, notify12hour, notify60min, notify5min, success, launched, hold
 		for i in range(0, launch_count):
 			# json of flight i
-			launch_json = API_RESPONSE.json()['launches'][i]
+			launch_json = json['launches'][i]
 
 			# extract stuff
 			launch_name = launch_json['name'].split('|')[1]
@@ -2676,7 +2677,10 @@ def getLaunchUpdates(launch_ID):
 		return
 
 	# pull json, dump for later inspection
-	launch_json = API_RESPONSE.json()
+	try:
+		launch_json = API_RESPONSE.json()
+	except:
+		return
 
 	'''
 	with open(os.path.join('data', 'launch', 'launch-json.json'), 'w') as json_data:
@@ -2961,18 +2965,6 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 	194:	['ExPace', '🇨🇳']
 	}
 
-	'''
-	# agency name -> ID
-	agency_IDs = {
-	'NASA': 44,
-	'ESA': 27,
-	'JAXA': 37, 
-	'ROSCOSMOS': 63,
-	'ISRO': 31,
-	'CNSA': 17
-	}
-	'''
-
 	launch_id = launch_row[1]
 	keywords = int(launch_row[2])
 
@@ -3097,24 +3089,18 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 	if lsp_name == 'SpaceX':
 		if spx_orbit_info != '' and spx_orbit_info != None:
 			orbit_map = {
-			'VLEO': 'Very low-Earth orbit',
-			'SO': 'Sub-orbital',
-			'LEO': 'Low-Earth orbit',
-			'SSO': 'Sun-synchronous',
-			'MEO': 'Medium-Earth orbit',
-			'GEO': 'Geostationary (direct)',
-			'GTO': 'Geostationary (transfer)',
-			'ISS': 'ISS'
-			}
+			'VLEO': 'Very low-Earth orbit', 'SO': 'Sub-orbital', 'LEO': 'Low-Earth orbit',
+			'SSO': 'Sun-synchronous', 'MEO': 'Medium-Earth orbit', 'GEO': 'Geostationary (direct)',
+			'GTO': 'Geostationary (transfer)', 'ISS': 'ISS' }
 
 			if spx_orbit_info in orbit_map.keys():
-				spx_orbit_info = orbit_map[spx_orbit_info]
-				spx_orbit_info = ' '.join("`{}`".format(word) for word in spx_orbit_info.split(' '))
+				spx_orbit_info = ' '.join("`{}`".format(word) for word in orbit_map[spx_orbit_info].split(' '))
 			else:
 				spx_orbit_info = f'`{spx_orbit_info}`'
 
 			message_header += f'\n*Orbit* {spx_orbit_info}'
 
+	# add the footer
 	message_footer = f'*🕓 The launch is scheduled* for `{launch_time}` `UTC`\n'
 	message_footer += f'*🔕 To disable* use /notify@{bot_username}'
 	launch_str = message_header + '\n\n' + info_text + '\n\n' + message_footer
@@ -3549,7 +3535,7 @@ def main():
 	global debug_log
 
 	# current version
-	version = '0.4.2'
+	version = '0.4.3'
 
 	# default
 	start = False
@@ -3745,5 +3731,19 @@ def main():
 			schedule.run_pending()
 			time.sleep(2)
 
+def runMain():
+	try:
+		main()
 
-main()
+	except KeyboardInterrupt:
+		sys.exit(f'\nReceived ctrl+c. Exiting...')
+
+	except Exception as e:
+		if debug_log:
+			logging.critical(f'🛑 Error in main loop: {e}')
+			logging.critical(f'🔄 Attempting a script restart...')
+	
+		runMain()
+		return
+
+runMain()
