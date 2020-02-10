@@ -1,5 +1,5 @@
 import os, sys, time, ssl, datetime, logging, math, requests, inspect
-import telepot, sqlite3, cursor, difflib, schedule, profile
+import telepot, sqlite3, cursor, difflib, schedule
 import ujson as json
 
 from uptime import uptime
@@ -49,8 +49,10 @@ def handle(msg):
 
 	# for admin/private chat checks; also might throw an error when kicked out of a group, so handle that here as well
 	try:
-		sender = bot.getChatMember(chat, msg['from']['id'])
-		chat_type = bot.getChat(chat)['type']
+		try:
+			chat_type = msg['chat']['type']
+		except:
+			chat_type = bot.getChat(chat)['type']
 	
 	except telepot.exception.BotWasKickedError:
 		'''
@@ -136,7 +138,9 @@ def handle(msg):
 		*Note!* Commands are only callable by group admins and moderators
 
 		*Changelog for version 0.4*
+		*Changelog for version {version}*
 		- You now get notified about launches being postponed *(user request)*
+		- Tons of under-the-hood performance improvements and bug fixes
 
 		*LaunchBot* version *{version}* ✨
 		'''
@@ -188,10 +192,18 @@ def handle(msg):
 				return
 
 			# check if sender is an admin/creator, and/or if we're in a public chat
-			if chat_type != 'private' and sender['status'] != 'creator' and sender['status'] != 'administrator':
-				if debug_log:
-					logging.info(f'✋ {command} called by a non-admin in {chat}, returning.')
-				return
+			if chat_type != 'private':
+				try:
+					all_admins = msg['chat']['all_members_are_administrators']
+				except:
+					all_admins = False
+
+				if not all_admins:
+					sender = bot.getChatMember(chat, msg['from']['id'])
+					if sender['status'] != 'creator' and sender['status'] != 'administrator':
+						if debug_log:
+							logging.info(f'✋ {command} called by a non-admin in {chat}, returning.')
+						return
 			else:
 				try:
 					bot.sendChatAction(chat, action='typing')
@@ -215,8 +227,9 @@ def handle(msg):
 
 				*Note!* Commands are only callable by group admins and moderators
 
-				*Changelog for version 0.4*
+				*Changelog for version {version}*
 				- You now get notified about launches being postponed *(user request)*
+				- Tons of under-the-hood performance improvements and bug fixes
 
 				*LaunchBot* version *{version}* ✨
 				'''
@@ -272,18 +285,19 @@ def callbackHandler(msg):
 	def updateMainView(chat, msg, provider_by_cc, text_refresh):
 		# figure out what the text for the "enable all/disable all" button should be
 		providers = set()
-		for key, val in provider_by_cc.items():
+		for val in provider_by_cc.values():
 			for provider in val:
 				providers.add(provider)
 
 		notification_statuses, disabled_count, all_flag = getUserNotificationsStatus(chat, providers), 0, False
-		for key, val in notification_statuses.items():
-			if val == 0:
-				disabled_count += 1
-				break
+		if 0 in notification_statuses.values():
+			disabled_count = 1
 
-			if key == 'All' and val == 1:
+		try:
+			if notification_statuses['All'] == 1:
 				all_flag = True
+		except:
+			pass
 
 		if all_flag:
 			global_text = f'🌍 Press to enable all' if disabled_count != 0 else f'🌍 Press to disable all'
@@ -394,8 +408,7 @@ def callbackHandler(msg):
 		inline_keyboard.append([InlineKeyboardButton(text=f'⏮ Return to menu', callback_data=f'notify/main_menu')])
 
 		keyboard = InlineKeyboardMarkup(
-			inline_keyboard=inline_keyboard
-			)
+			inline_keyboard=inline_keyboard)
 
 		# tuple containing necessary information to edit the message
 		msg_identifier = (msg['message']['chat']['id'],msg['message']['message_id'])
@@ -425,18 +438,30 @@ def callbackHandler(msg):
 	chat = msg['message']['chat']['id']
 
 	# check that the query is from an admin or an owner
-	sender, chat_type = bot.getChatMember(chat, from_id), bot.getChat(chat)['type']
-	if chat_type != 'private' and sender['status'] != 'creator' and sender['status'] != 'administrator':
-		try:
-			bot.answerCallbackQuery(query_id, text="🚨 This button is only callable by administrators!")
-		except Exception as error:
-			if debug_log:
-				logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
+	try:
+		chat_type = msg['message']['chat']['type']
+	except:
+		chat_type = bot.getChat(chat)['type']
 
-		if debug_log:
-			logging.info(f'✋ Callback query called by a non-admin in {chat}, returning | {(1000*(timer() - start)):.0f} ms')
-		
-		return
+	if chat_type != 'private':
+		try:
+			all_admins = msg['message']['chat']['all_members_are_administrators']
+		except:
+			all_admins = False
+
+		if not all_admins:
+			sender = bot.getChatMember(chat, from_id)
+			if sender['status'] != 'creator' and sender['status'] != 'administrator':
+				try:
+					bot.answerCallbackQuery(query_id, text="🚨 This button is only callable by administrators!")
+				except Exception as error:
+					if debug_log:
+						logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
+
+				if debug_log:
+					logging.info(f'✋ Callback query called by a non-admin in {chat}, returning | {(1000*(timer() - start)):.0f} ms')
+				
+				return
 
 	# callbacks only supported for notify at the moment; verify it's a notify command
 	if input_data[0] not in {'notify', 'mute', 'next_flight', 'schedule'}:
@@ -504,7 +529,7 @@ def callbackHandler(msg):
 			def getAllToggleNewStatus(toggle_type, country_code, chat):
 				providers = []
 				if toggle_type == 'all':
-					for key, val in provider_by_cc.items():
+					for val in provider_by_cc.values():
 						for provider in val:
 							providers.append(provider)
 				
@@ -833,19 +858,22 @@ def getUserNotificationsStatus(chat, provider_list):
 	query_return = c.fetchall()
 	conn.close()
 
-	notification_statuses = {}
+	notification_statuses = {'All': 0}
 	for provider in provider_list:
 		notification_statuses[provider] = 0
 
-	all_flag = False
-	if len(query_return) != 0:
-		for row in query_return:
-			provider, enabled_status = row[1], row[3]
-			if enabled_status == 1:
-				notification_statuses[provider] = 1
+	if len(query_return) == 0:
+		return notification_statuses
 
-			if provider == 'All':
-				all_flag = True
+	all_flag = False
+	for row in query_return:
+		provider, enabled_status = row[1], row[3]
+		
+		if enabled_status == 1:
+			notification_statuses[provider] = 1
+
+		if provider == 'All' and enabled_status == 1:
+			all_flag = True
 
 	notification_statuses['All'] = 1 if all_flag else 0
 	return notification_statuses
@@ -860,24 +888,23 @@ def toggleNotification(chat, toggle_type, keyword, all_toggle_new_status):
 
 	# real provider names
 	provider_name_map = {
-		'Rocket Lab': 'Rocket Lab Ltd'
-	}
+		'Rocket Lab': 'Rocket Lab Ltd' }
 
 	# if toggle type is a country code, map the ccode to a list of providers
 	if toggle_type == 'country_code':
 		if keyword in provider_name_map.keys():
 			keyword = provider_name_map[keyword]
 
-		provider_list = provider_by_cc[keyword]
+		provider_list = set(provider_by_cc[keyword])
 	
 	elif toggle_type == 'lsp':
-		provider_list = [keyword]
+		provider_list = {keyword}
 	
 	elif toggle_type == 'all':
-		provider_list = ['All']
-		for key, val in provider_by_cc.items():
+		provider_list = {'All'}
+		for val in provider_by_cc.values():
 			for provider in val:
-				provider_list.append(provider)
+				provider_list.add(provider)
 
 	# toggle each notification
 	if toggle_type == 'lsp':
@@ -994,18 +1021,14 @@ def notify(msg):
 
 	# figure out what the text for the "enable all/disable all" button should be
 	providers = []
-	for key, val in provider_by_cc.items():
+	for val in provider_by_cc.values():
 		for provider in val:
 			providers.append(provider)
 
 	notification_statuses, disabled_count = getUserNotificationsStatus(chat, providers), 0
-	for key, val in notification_statuses.items():
-		if val == 0:
-			disabled_count += 1
-			break
+	disabled_count = 1 if 0 in notification_statuses.values() else 0
 
 	global_text = f'🌍 Press to enable all' if disabled_count != 0 else f'🌍 Press to disable all'
-
 	keyboard = InlineKeyboardMarkup(
 			inline_keyboard = [
 				[InlineKeyboardButton(text=global_text, callback_data=f'notify/toggle/all/all')],
@@ -1059,8 +1082,7 @@ def flightSchedule(msg, command_invoke):
 		chat = msg['message']['chat']['id']
 
 	# open db connection
-	launch_dir = 'data/launch'
-	conn = sqlite3.connect(os.path.join(launch_dir, 'launches.db'))
+	conn = sqlite3.connect(os.path.join('data', 'launch', 'launches.db'))
 	c = conn.cursor()
 
 	# perform the select; if cmd == all, just pull the next launch
@@ -1078,27 +1100,18 @@ def flightSchedule(msg, command_invoke):
 	month_map = {
 		1: 'January', 2: 'February', 3: 'March', 4: 'April',
 		5: 'May', 6: 'June', 7: 'July', 8: 'August',
-		9: 'Septemper', 10: 'October', 11: 'November', 12: 'December'
-	}
+		9: 'Septemper', 10: 'October', 11: 'November', 12: 'December' }
 
 	providers_short = {
-		'RL': 'Rocket Lab'
-	}
+		'RL': 'Rocket Lab' }
 
 	flag_map = {
-		'FR': 	'🇪🇺',
-		'USA': 	'🇺🇸',
-		'EU': 	'🇪🇺',
-		'RUS': 	'🇷🇺',
-		'CHN': 	'🇨🇳',
-		'IND': 	'🇮🇳',
-		'JPN': 	'🇯🇵',
-		'IRN':	'🇮🇷'
-	}
+		'FR': '🇪🇺', 'USA': '🇺🇸', 'EU': '🇪🇺', 'RUS': '🇷🇺',
+		'CHN': '🇨🇳', 'IND': '🇮🇳', 'JPN': '🇯🇵', 'IRN': '🇮🇷',
+		'FRA': '🇪🇺'}
 
 	vehicle_map = {
-		'Falcon 9 Block 5': 'Falcon 9'
-	}
+		'Falcon 9 Block 5': 'Falcon 9' }
 
 	# pick 5 smallest, map into dict with dates
 	sched_dict = {}
@@ -1164,7 +1177,8 @@ def flightSchedule(msg, command_invoke):
 
 	schedule_msg = reconstructMessageForMarkdown(schedule_msg)
 	header = f'📅 *5\-day flight schedule*\n'
-	header_info = '_Dates are subject to change\n\n_'
+	header_note = f'Dates are subject to change. For detailed flight information, use /next@{bot_username}.'
+	header_info = f'_{reconstructMessageForMarkdown(header_note)}\n\n_'
 	schedule_msg = header + header_info + schedule_msg
 
 	inline_keyboard = []
@@ -1219,22 +1233,22 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 	# chat has no enabled notifications; pull from all
 	if len(query_return) == 0:
 		cmd, user_notif_enabled = 'all', False
-		enabled, disabled = set(), set()
+		enabled, disabled = [], []
 
 	else:
 		notif_providers, user_notif_enabled = set(), None
-		enabled, disabled = set(), set()
+		enabled, disabled = [], []
 		for row in query_return:
 			# chat ID - keyword - UNIX timestamp - enabled true/false
 			if row[1].lower() == 'all' and row[3] == 1:
 				all_flag, user_notif_enabled = True, True
-				enabled.add(row[1])
+				enabled.append(row[1])
 
 			else:
 				if row[3] == 1:
-					enabled.add(row[1])
+					enabled.append(row[1])
 				else:
-					disabled.add(row[1])
+					disabled.append(row[1])
 
 		if len(enabled) == 0:
 			user_notif_enabled = False
@@ -1449,6 +1463,7 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 	}
 
 	flag_map = {
+		'FRA':	'🇪🇺',
 		'FR': 	'🇪🇺',
 		'USA': 	'🇺🇸',
 		'EU': 	'🇪🇺',
@@ -1560,8 +1575,7 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 		if current_index != 0:
 			back = True
 			inline_keyboard[0].append(
-					InlineKeyboardButton(text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}/{cmd}')
-					)
+					InlineKeyboardButton(text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}/{cmd}'))
 
 		# if we can go forward, add a next button
 		if current_index+1 < max_index:
@@ -2257,6 +2271,27 @@ def getLaunchUpdates(launch_ID):
 				cleanNotifyDatabase(chat)
 				return True
 
+			elif error.error_code == 403:
+				if 'user is deactivated' in error.description:
+					if debug_log:
+						logging.info(f'⚠️ user {chat} was deactivated – cleaning notify database...')
+						logging.info(f'Error: {error}')
+
+					cleanNotifyDatabase(chat)
+					return True
+
+				elif 'bot was kicked from the supergroup chat' in error.description:
+					if debug_log:
+						logging.info(f'⚠️ bot was kicked from supergroup {chat} – cleaning notify database...')
+						logging.info(f'Error: {error}')
+
+					cleanNotifyDatabase(chat)
+					return True
+
+				else:
+					if debug_log:
+						logging.info(f'⚠️ unhandled 403 telepot.exception.TelegramError in sendNotification: {error}')
+
 			# Rate limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
 			elif error.error_code == 429:
 				if debug_log:
@@ -2707,8 +2742,7 @@ def getLaunchUpdates(launch_ID):
 
 # MarkdownV2 requires some special handling, so parse the link here
 def reconstructLinkForMarkdown(link):
-	link_reconstruct = ''
-	char_set = {')', '\\'}
+	link_reconstruct, char_set = '', {')', '\\'}
 	for char in link:
 		if char in char_set:
 			link_reconstruct += f'\\{char}'
@@ -2877,12 +2911,6 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 		if 'LinkTextGoesHere' in notification:
 			link_text = reconstructLinkForMarkdown(vid_link)
 			notification = notification.replace('LinkTextGoesHere', f'[live\!]({link_text})')
-
-		else:
-			if silent:
-				silent_info_text = reconstructMessageForMarkdown(
-					f'\n\n24h and 12h notifications are now sent silently. Like it? Send feedback with /feedback@{bot_username}!')
-				notification += f'_{silent_info_text}_'
 
 		try:
 			# load mute status, generate keys
@@ -3156,10 +3184,16 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 		else:
 			logging.info('🔊 Sending notification with sound')
 
+	# use proper lsp name
+	if len(launch_row[3]) > len('Virgin Orbit'):
+		cmd_keyword = lsp_short
+	else:
+		cmd_keyword = launch_row[3]
+
 	global msg_identifiers
 	reached_people, start_time, msg_identifiers = 0, timer(), []
 	for chat in notify_list:
-		ret = sendNotification(chat, launch_str, launch_id, launch_row[3], launch_row[-1], notif_class)
+		ret = sendNotification(chat, launch_str, launch_id, cmd_keyword, launch_row[-1], notif_class)
 
 		if ret != True and debug_log:
 			logging.info(f'🛑 Error sending notification to chat={chat}! Exception: {ret}')
@@ -3167,7 +3201,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 		tries = 1
 		while ret != True:
 			time.sleep(2)
-			ret = sendNotification(chat, launch_str, launch_id, launch_row[3], launch_row[-1], notif_class)
+			ret = sendNotification(chat, launch_str, launch_id, cmd_keyword, launch_row[-1], notif_class)
 			tries += 1
 			
 			if ret == True:
@@ -3244,7 +3278,7 @@ def updateStats(stats_update):
 	stats_conn = sqlite3.connect(os.path.join('data', 'statistics.db'))
 	stats_cursor = stats_conn.cursor()
 
-	# Update stats
+	# Update stats with the provided data
 	for stat, val in stats_update.items():
 		stats_cursor.execute(f"UPDATE stats SET {stat} = {stat} + {val}")
 	
@@ -3535,7 +3569,7 @@ def main():
 	global debug_log
 
 	# current version
-	version = '0.4.3'
+	version = '0.4.4'
 
 	# default
 	start = False
@@ -3731,6 +3765,7 @@ def main():
 			schedule.run_pending()
 			time.sleep(2)
 
+
 def runMain():
 	try:
 		main()
@@ -3745,5 +3780,6 @@ def runMain():
 	
 		runMain()
 		return
+
 
 runMain()
