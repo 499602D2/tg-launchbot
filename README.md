@@ -1,4 +1,4 @@
-# LaunchBot – a rocket launch information and notifications bot for Telegram
+# LaunchBot – a rocket launch information and notifications bot for Telegram 🚀
 A rocket launch info & notifications bot for Telegram. Reachable at `@rocketrybot` on Telegram.
 
 APIs used: Launch Library for flights, r/SpaceX API for Falcon booster and recovery information.
