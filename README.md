@@ -1,7 +1,7 @@
 # LaunchBot – a rocket launch information and notifications bot for Telegram
 A rocket launch info & notifications bot for Telegram. Reachable at `@rocketrybot` on Telegram.
 
-APIs used: Launch Library for flights, r/SpaceX API for Falcon 9/Heavy booster and recovery information.
+APIs used: Launch Library for flights, r/SpaceX API for Falcon booster and recovery information.
 
 **Basic instructions**
 
@@ -10,11 +10,12 @@ Install the Python3 dependencies with PIP, using the requirements.txt file found
 After the dependencies are installed, you can run the bot with `python3 launchbot.py -start`. If you need/want logging, add the `-log` flag. For debugging purposes and running with nohup, add `-debug`.
 
 
-**Features**
+**Planned features**
 
-TBW
+- allow users to choose their own timezone
+- allow users to choose which notifications (24h/12h/1h/5m) they want to receive
 
-**Basic data structure**
+**Basic data structures**
 
 The bot creates multiple files, located under `/data`:
 
