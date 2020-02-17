@@ -18,6 +18,7 @@ After the dependencies are installed, you can run the bot with `python3 launchbo
 **Other TODO**
 
 - code cleanup, especially API calls and the json parsing
+- clean up code by not using a billion indices and variable names -> objects (i.e. launch.id instead of launch_id)
 
 **Basic data structures**
 
