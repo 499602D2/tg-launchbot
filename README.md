@@ -15,6 +15,10 @@ After the dependencies are installed, you can run the bot with `python3 launchbo
 - allow users to choose their own timezone
 - allow users to choose which notifications (24h/12h/1h/5m) they want to receive
 
+**Other TODO**
+
+- code cleanup, especially API calls and the json parsing
+
 **Basic data structures**
 
 The bot creates multiple files, located under `/data`:
