@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # /usr/bin/python3
 
-import os, sys, time, ssl, datetime, logging, math, requests, inspect
+import os, sys, time, ssl, datetime, logging, math, requests, inspect, signal
 import telepot, sqlite3, cursor, difflib, schedule
 import ujson as json
 
@@ -10,44 +10,6 @@ from uptime import uptime
 from timeit import default_timer as timer
 from telepot.loop import MessageLoop
 from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
-
-'''
-Roadmap
-0.2 (December):
-	- ✅ implement /next using DB calls
-	- ✅ implement support for SpaceX core information
-
-0.3 (January):
-	- ✅ add "next" and "previous" button(s) to /next command
-	- ✅ add a mute button to notifications
-	- ✅ update /notify to be more user friendly
-	- ✅ implement /feedback
-	- ✅ improve notification handling with the hold flag -> moving NETs and info text regarding them
-	- ✅ change launch database index from tminus to net
-
-0.4.X (February)
-	- ✅ Notify users of a launch being postponed if a notification has already been sent
-	- ✅ disable logging of text messages; how to do feedback? (log feedback messages in a global array?)
-	- add tbd-field to launches, so schedule can only show certain launch dates (filter certain and uncertain with a button)
-	- add location (i.e. state/country) below pad information (Florida, USA etc.)
-
-0.5 (Next feature release)
-	- allow users to disable postpone notifications on a per-launch basis
-	- delete older notification messages when a new one is sent
-	- add a "more info"/"less info" button
-	- add probability of launch and launch location, separate from mission name etc. with \n\n
-	- handle notification send checks with schedule, instead of polling every 20-30 seconds (i.e. update schedule every time db is updated)
-	- unify spx-launch database and launch database into one file with separate tables
-	- allow users to set their own notifications (i.e. 24h/12h/...)
-	- allow users to set their own timezone
-
-Later versions
-	- functionize more of the processes
-		- move callbacks to a function, pass text + tuple + keyboard as args
-
----------------------------------
-Changelog
-'''
 
 # main loop-function for messages with flavor=chat
 def handle(msg):
@@ -104,7 +66,7 @@ def handle(msg):
 			logging.info('✅ Chat data migration complete!')
 
 	# bot removed from chat
-	elif 'left_chat_member' in msg and msg['left_chat_member']['id'] == bot_ID:
+	elif 'left_chat_member' in msg and msg['left_chat_member']['id'] == BOT_ID:
 		# bot kicked; remove corresponding chat IDs from notification database
 		conn = sqlite3.connect(os.path.join('data/launch', 'notifications.db'))
 		c = conn.cursor()
@@ -121,13 +83,13 @@ def handle(msg):
 	elif 'new_chat_members' in msg or 'group_chat_created' in msg:
 		if 'new_chat_member' in msg:
 			try:
-				if bot_ID in msg['new_chat_member']['id']:
+				if BOT_ID in msg['new_chat_member']['id']:
 					pass
 				else:
 					return
 			
 			except TypeError:
-				if msg['new_chat_member']['id'] == bot_ID:
+				if msg['new_chat_member']['id'] == BOT_ID:
 					pass
 				else:
 					return
@@ -148,13 +110,13 @@ def handle(msg):
 
 		⚠️ *Note!* Commands are only callable by group *admins* and *moderators*
 
-		*Changelog* for version *{version}* (March 2020)
+		*Changelog* for version *{VERSION}* (April 2020)
 		- You now get notified about launches being postponed (*user request* ✍️)
 		- Added support for Astra Space, a new 🇺🇸 launch provider
 		- Fix postpone notifications sending despite launch being muted
 		- Tons of under-the-hood performance improvements and bug fixes
 
-		*LaunchBot* version *{version}* ✨
+		*LaunchBot* version *{VERSION}* ✨
 		'''
 		
 		bot.sendMessage(chat, inspect.cleandoc(reply_msg), parse_mode='Markdown')
@@ -180,7 +142,7 @@ def handle(msg):
 	try:
 		if msg['from']['id'] in ignored_users:
 			if debug_log:
-				logging.info(f'😎 Message from blocked user ignored successfully')
+				logging.info(f'😎 Message from spamming user ignored successfully')
 			
 			return
 	except:
@@ -196,19 +158,23 @@ def handle(msg):
 				if sender['status'] == 'creator' or sender['status'] == 'administrator' or chat_type == 'private':
 					bot.sendMessage(chat, f'😄 Thank you for your feedback!', reply_to_message_id=msg['message_id'])
 
-					# remove the original feedback message
-					try:
+					try: # remove the original feedback message
 						bot.deleteMessage((chat, msg['reply_to_message']['message_id']))
 					except Exception as e:
 						if debug_log:
 							logging.info(f'Unable to remove sent feedback message with params chat={chat}, message_id={msg["reply_to_message"]["message_id"]}: {e}')
+
+					if OWNER != 0:
+						bot.sendMessage(OWNER,
+							f'😄 *Received feedback* from `{anonymizeID(msg["from"]["id"])}`:\n{msg["text"]}',
+							parse_mode='MarkdownV2')
 
 		return
 	
 	# sees a valid command
 	if content_type == 'text':
 		command_split = [arg.lower() for arg in command_split]
-		if command_split[0] in valid_commands or command_split[0] in valid_commands_alt:
+		if command_split[0] in VALID_COMMANDS or command_split[0] in VALID_COMMANDS_ALT:
 			# command we saw
 			command = command_split[0]
 
@@ -262,13 +228,13 @@ def handle(msg):
 
 				⚠️ *Note!* Commands are only callable by group *admins* and *moderators*
 
-				*Changelog* for version *{version}* (March 2020)
+				*Changelog* for version *{VERSION}* (April 2020)
 				- You now get notified about launches being postponed (*user request* ✍️)
 				- Added support for Astra Space, a new 🇺🇸 launch provider
 				- Fix postpone notifications sending despite launch being muted
 				- Tons of under-the-hood performance improvements and bug fixes
 
-				*LaunchBot* version *{version}* ✨
+				*LaunchBot* version *{VERSION}* ✨
 				'''
 				
 				bot.sendMessage(chat, inspect.cleandoc(reply_msg), parse_mode='Markdown')
@@ -302,7 +268,7 @@ def handle(msg):
 
 			if debug_log:
 				t_elapsed = timer() - start
-				if anonymizeID(msg['from']['id']) != 'c47be2' and command != '/start':
+				if msg['from']['id'] != OWNER and command != '/start':
 					try:
 						logging.info(f'🕹 {command} called by {anonymizeID(chat)} | args: {command_split[1:]} | {(1000*t_elapsed):.0f} ms')
 					except:
@@ -310,12 +276,10 @@ def handle(msg):
 
 			# store statistics here, so our stats database can't be spammed either
 			updateStats({'commands':1})
-			return
 
 		else:
 			if debug_log:
 				logging.info(f'❔ Unknown command received in chat {anonymizeID(chat)}: {command_split}. Returning.')
-			return
 
 
 def callbackHandler(msg):
@@ -472,7 +436,7 @@ def callbackHandler(msg):
 		# now we have the keyboard; update the previous keyboard
 		bot.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
 
-		if debug_log and anonymizeID(chat) != 'c47be2':
+		if debug_log and chat != OWNER:
 			logging.info(f'🔀 {flag_map[country_code]}-view loaded for {anonymizeID(chat)}')
 
 		return
@@ -577,7 +541,7 @@ def callbackHandler(msg):
 				if debug_log:
 					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-			if debug_log and anonymizeID(chat) != 'c47be2':
+			if debug_log and chat != OWNER:
 				logging.info(f'⏮ {anonymizeID(chat)} (main-view update) | {(1000*(timer() - start)):.0f} ms')
 
 		# user requested to toggle a notification
@@ -643,7 +607,7 @@ def callbackHandler(msg):
 				if debug_log:
 					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-			if debug_log and anonymizeID(chat) != 'c47be2':
+			if debug_log and chat != OWNER:
 				logging.info(f'{anonymizeID(chat)} {reply_text} | {(1000*(timer() - start)):.0f} ms')
 
 			# update list view if an lsp button was pressed
@@ -668,7 +632,7 @@ def callbackHandler(msg):
 			# new text + callback text
 			reply_text = f'✅ All done!'
 			msg_text = f'✅ *All done* — your preferences were saved!\n\n'
-			msg_text += f'ℹ️ If you need to adjust your settings in the future, use /notify@{bot_username} to access these same settings!'
+			msg_text += f'ℹ️ If you need to adjust your settings in the future, use /notify@{BOT_USERNAME} to access these same settings!'
 
 			# now we have the keyboard; update the previous keyboard
 			bot.editMessageText(msg_identifier, text=msg_text, reply_markup=None, parse_mode='Markdown')
@@ -679,7 +643,7 @@ def callbackHandler(msg):
 				if debug_log:
 					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-			if debug_log and anonymizeID(chat) != 'c47be2':
+			if debug_log and chat != OWNER:
 				logging.info(f'💫 {anonymizeID(chat)} finished setting notifications with the "Done" button! | {(1000*(timer() - start)):.0f} ms')
 	
 	elif input_data[0] == 'mute':
@@ -708,7 +672,7 @@ def callbackHandler(msg):
 				if debug_log:
 					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 			
-			if debug_log and anonymizeID(chat) != 'c47be2':
+			if debug_log and chat != OWNER:
 				if new_toggle_state == 0:
 					logging.info(f'🔇 {anonymizeID(chat)} muted a launch for {input_data[1]} (launch_id={input_data[2]}) | {(1000*(timer() - start)):.0f} ms')
 				else:
@@ -748,7 +712,7 @@ def callbackHandler(msg):
 				new_message_text, keyboard = nextFlight(msg, int(current_index), False, cmd)
 			
 			except TypeError:
-				new_message_text = '🔄 No launches found! No launches found! Try enabling notifications for other providers, or searching for all flights.'
+				new_message_text = '🔄 No launches found! Try enabling notifications for other providers, or searching for all flights.'
 				inline_keyboard = []
 				inline_keyboard.append([InlineKeyboardButton(text='🔔 Adjust your notification settings', callback_data=f'notify/main_menu/refresh_text')])
 				inline_keyboard.append([InlineKeyboardButton(text='🔎 Search for all flights', callback_data=f'next_flight/refresh/0/all')])
@@ -780,7 +744,7 @@ def callbackHandler(msg):
 			if debug_log:
 				logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-		if debug_log and anonymizeID(chat) != 'c47be2':
+		if debug_log and chat != OWNER:
 			logging.info(f'{anonymizeID(chat)} pressed "{query_reply_text}" button in /next | {(1000*(timer() - start)):.0f} ms')
 
 	elif input_data[0] == 'schedule':
@@ -933,7 +897,7 @@ def getUserNotificationsStatus(chat, provider_list):
 
 	provider_name_map = {
 		'Rocket Lab': 'Rocket Lab Ltd',
-		'Northrop Grumman': 'Northrop Grumman Innovation Systems' }
+		'Northrop Grumman': 'Northrop Grumman Innovation Systems'}
 
 	notification_statuses = {'All': 0}
 	for provider in provider_list:
@@ -1042,10 +1006,6 @@ def anonymizeID(chat):
 	return sha1(str(chat).encode('utf-8')).hexdigest()[0:6]
 
 
-'''
-CALLED INCORRECTLY:
-- launch_provider is actually the provider ID, not the keyword
-'''
 def toggleLaunchMute(chat, launch_provider, launch_id, toggle):
 	launch_dir = 'data/launch'
 	if not os.path.isfile(os.path.join(launch_dir,'notifications.db')):
@@ -1170,7 +1130,8 @@ def feedback(msg):
 	message_text = f'''
 	✍️ *Hi there!* This is a way of sharing feedback and reporting issues to the developer of the bot. All feedback is anonymous.
 
-	Please note that it is impossible for me to reply to your feedback, but you can be sure I'll read it! Just write your feedback below.
+	Please note that it is impossible for me to reply to your feedback, but you can be sure I'll read it!
+	Just write your feedback *as a reply to this message* (otherwise I won't see it due to the bot's privacy settings)
 	'''
 
 	ret = bot.sendMessage(
@@ -1279,11 +1240,16 @@ def flightSchedule(msg, command_invoke):
 
 			schedule_msg += mission
 
+			if j == 2 and len(val) > 3:
+				upcoming_flight_count = 'flight' if len(val) - 3 == 1 else 'flights'
+				schedule_msg += f'\n+ {len(val)-3} more {upcoming_flight_count}'
+				break
+
 		i += 1
 
 	schedule_msg = reconstructMessageForMarkdown(schedule_msg)
 	header = f'📅 *5\-day flight schedule*\n'
-	header_note = f'Dates are subject to change. For detailed flight information, use /next@{bot_username}.'
+	header_note = f'Dates are subject to change. For detailed flight information, use /next@{BOT_USERNAME}.'
 	header_info = f'_{reconstructMessageForMarkdown(header_note)}\n\n_'
 	schedule_msg = header + header_info + schedule_msg
 
@@ -1605,7 +1571,7 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 	if user_notif_enabled:
 		notify_str = '🔔 You will be notified of this launch!'
 	else:
-		notify_str = f'🔕 You will *not* be notified of this launch.\nℹ️ *To enable:* /notify@{bot_username}'
+		notify_str = f'🔕 You will *not* be notified of this launch.\nℹ️ *To enable:* /notify@{BOT_USERNAME}'
 
 	if info is not None:
 		# if the info text is longer than 60 words, pick the first three sentences.
@@ -2721,7 +2687,7 @@ def getLaunchUpdates(launch_ID):
 						msg_text += f'*{lsp_name}* is now targeting lift-off on *{date_str}* at *{launch_time} UTC*.\n\n'
 						msg_text += f'⏱ {eta_str} until next launch attempt.\n\n'
 						msg_text = reconstructMessageForMarkdown(msg_text)
-						msg_text += f'ℹ️ _You will be re\-notified of this launch\. For detailed info\, use \/next\@{bot_username}\. '
+						msg_text += f'ℹ️ _You will be re\-notified of this launch\. For detailed info\, use \/next\@{BOT_USERNAME}\. '
 						msg_text += 'To disable\, mute this launch with the button below\._'
 
 						LSP_IDs = {
@@ -2818,7 +2784,7 @@ def getLaunchUpdates(launch_ID):
 	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{constructParams(PARAMS)}' #&{fields}
 	
 	# perform the API call
-	headers = {'user-agent': f'telegram-{bot_username}/{version}'}
+	headers = {'user-agent': f'telegram-{BOT_USERNAME}/{VERSION}'}
 
 	try:
 		API_RESPONSE = requests.get(API_CALL, headers=headers)
@@ -3273,7 +3239,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 
 	# add the footer
 	message_footer = f'*🕓 The launch is scheduled* for `{launch_time}` `UTC`\n'
-	message_footer += f'*🔕 To disable* use /notify@{bot_username}'
+	message_footer += f'*🔕 To disable* use /notify@{BOT_USERNAME}'
 	launch_str = message_header + '\n\n' + info_text + '\n\n' + message_footer
 
 	# if NOT a SpaceX launch and we're close to launch, add the video URL
@@ -3528,7 +3494,7 @@ def statistics(msg):
 	🎛 *Server information*
 	{up_str}
 	{load_avg_str}
-	LaunchBot version *{version}* ✨
+	LaunchBot version *{VERSION}* ✨
 	'''
 
 	bot.sendMessage(chat, inspect.cleandoc(reply_str), parse_mode='Markdown')
@@ -3705,23 +3671,29 @@ def updateToken(update_tokens):
 	print('Token update successful!\n')
 
 
-# main
+def sigterm_handler(signal, frame):
+	if debug_log:
+		logging.info(f'✅ Got SIGTERM. Runtime: {datetime.datetime.now() - startup_time}.')
+
+	sys.exit(0)
+
+
 if __name__ == '__main__':
-	# some global vars for use in other functions where data persistence is required
-	# we try to avoid files due to IO
-	global TOKEN, bot, version, bot_ID, bot_username
-	global debug_log
+	# some global vars for use in other functions
+	global TOKEN, OWNER, VERSION, BOT_ID, BOT_USERNAME
+	global bot, debug_log
 
 	# current version
-	version = '0.4.7'
+	VERSION = '0.4.7'
 
-	# default start mode
+	# default start mode, log start time
 	start = debug_log = debug_mode = False
+	startup_time = datetime.datetime.now()
 
 	# list of args the program accepts
-	start_args = {'start', '-start'}
-	debug_args = {'log', '-log', 'debug', '-debug'}
-	bot_token_args = {'newbottoken', '-newbottoken'}
+	start_args = ('start', '-start')
+	debug_args = ('log', '-log', 'debug', '-debug')
+	bot_token_args = ('newbottoken', '-newbottoken')
 
 	if len(sys.argv) == 1:
 		print('Give at least one of the following arguments:')
@@ -3741,6 +3713,7 @@ if __name__ == '__main__':
 			# update tokens if instructed to
 			if arg in bot_token_args:
 				update_tokens.add('botToken')
+			
 			if arg in debug_args:
 				if arg in ('log', '-log'):
 					debug_log = True
@@ -3793,6 +3766,11 @@ if __name__ == '__main__':
 	else:
 		TOKEN = setting_map['botToken']
 
+		try:
+			OWNER = setting_map['owner']
+		except:
+			OWNER = 0
+
 	# create the bot
 	bot = telepot.Bot(TOKEN)
 
@@ -3801,12 +3779,12 @@ if __name__ == '__main__':
 
 	# get the bot's username and id
 	bot_specs = bot.getMe()
-	bot_username = bot_specs['username']
-	bot_ID = bot_specs['id']
+	BOT_USERNAME = bot_specs['username']
+	BOT_ID = bot_specs['id']
 
 	# valid commands we monitor for
-	global valid_commands, valid_commands_alt
-	valid_commands = {
+	global VALID_COMMANDS, VALID_COMMANDS_ALT
+	VALID_COMMANDS = {
 	'/start', '/help', 
 	'/next', '/notify',
 	'/statistics', '/schedule',
@@ -3814,9 +3792,9 @@ if __name__ == '__main__':
 	}
 
 	# generate the "alternate" commands we listen for, as in ones suffixed with the bot's username 
-	valid_commands_alt = set()
-	for command in valid_commands:
-		valid_commands_alt.add(f'{command}@{bot_username.lower()}')
+	VALID_COMMANDS_ALT = set()
+	for command in VALID_COMMANDS:
+		VALID_COMMANDS_ALT.add(f'{command}@{BOT_USERNAME.lower()}')
 
 	# all the launch providers supported; used in many places, so declared globally here
 	global provider_by_cc
@@ -3867,7 +3845,7 @@ if __name__ == '__main__':
 
 	# initialize the timer dict to avoid spam
 	command_cooldowns['commandTimers'] = {}
-	for command in valid_commands:
+	for command in VALID_COMMANDS:
 		command_cooldowns['commandTimers'][command.replace('/','')] = '1'
 
 	# init the feedback store; used to store the message IDs so we can store feedback
@@ -3878,7 +3856,7 @@ if __name__ == '__main__':
 	time.sleep(1)
 
 	if not debug_mode:
-		print(f"| LaunchBot.py version {version}")
+		print(f"| LaunchBot.py version {VERSION}")
 		print(f"| Don't close this window or set the computer to sleep. Quit: ctrl + c.")
 		time.sleep(0.5)
 
@@ -3895,17 +3873,29 @@ if __name__ == '__main__':
 	spxAPIHandler()
 	launchUpdateCheck()
 
+	# handle sigterm
+	signal.signal(signal.SIGTERM, sigterm_handler)
+
 	# fancy prints so the user can tell that we're actually doing something
 	if not debug_mode:
 		cursor.hide()
 		print_map = {0:'|', 1:'/', 2:'—', 3:'\\', 4:'|', 5:'/', 6:'—', 7:'\\'}
-		while True:
-			schedule.run_pending()
-			for i in range(0,8):
-				print_char = print_map[i]
-				sys.stdout.write('%s\r' % print_char)
-				sys.stdout.flush()
-				time.sleep(1)
+		try:
+			while True:
+				schedule.run_pending()
+				for i in range(0,8):
+					print_char = print_map[i]
+					sys.stdout.write('%s\r' % print_char)
+					sys.stdout.flush()
+					time.sleep(1)
+		
+		except KeyboardInterrupt:
+			cursor.show()
+			run_time = datetime.datetime.now() - startup_time
+			if debug_log and run_time.seconds > 3600:
+				logging.info(f'Program ending. Runtime: {run_time}.')
+			
+			sys.exit(f'Program ending... Runtime: {run_time}.')
 
 	else:
 		while True:
