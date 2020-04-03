@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+# /usr/bin/python3
+
 import os, sys, time, ssl, datetime, logging, math, requests, inspect
 import telepot, sqlite3, cursor, difflib, schedule
 import ujson as json
@@ -22,8 +25,15 @@ Roadmap
 	- ✅ improve notification handling with the hold flag -> moving NETs and info text regarding them
 	- ✅ change launch database index from tminus to net
 
-0.4 (February)
+0.4.X (February)
 	- ✅ Notify users of a launch being postponed if a notification has already been sent
+	- ✅ disable logging of text messages; how to do feedback? (log feedback messages in a global array?)
+	- add tbd-field to launches, so schedule can only show certain launch dates (filter certain and uncertain with a button)
+	- add location (i.e. state/country) below pad information (Florida, USA etc.)
+
+0.5 (Next feature release)
+	- allow users to disable postpone notifications on a per-launch basis
+	- delete older notification messages when a new one is sent
 	- add a "more info"/"less info" button
 	- add probability of launch and launch location, separate from mission name etc. with \n\n
 	- handle notification send checks with schedule, instead of polling every 20-30 seconds (i.e. update schedule every time db is updated)
@@ -36,7 +46,7 @@ Later versions
 		- move callbacks to a function, pass text + tuple + keyboard as args
 
 ---------------------------------
-Changelog 0.4.X
+Changelog
 '''
 
 # main loop-function for messages with flavor=chat
@@ -130,17 +140,18 @@ def handle(msg):
 		reply_msg = f'''🚀 *Hi there!* I'm *LaunchBot*, a launch information and notifications bot!
 
 		*List of commands*
-		/notify adjust notification settings
-		/next shows the next launch
-		/schedule displays a simple flight schedule
-		/statistics displays various statistics about the bot
-		/feedback allows you to send feedback and suggestions
+		🔔 /notify adjust notification settings
+		🚀 /next shows the next launches
+		🗓 /schedule displays a simple flight schedule
+		📊 /statistics tells various statistics about the bot
+		✍️ /feedback allows you to send *feedback and suggestions*
 
-		*Note!* Commands are only callable by group admins and moderators
+		⚠️ *Note!* Commands are only callable by group *admins* and *moderators*
 
-		*Changelog for version {version}*
-		- You now get notified about launches being postponed *(user request)*
-		- Added support for Astra Space, a new US launch provider
+		*Changelog* for version *{version}* (March 2020)
+		- You now get notified about launches being postponed (*user request* ✍️)
+		- Added support for Astra Space, a new 🇺🇸 launch provider
+		- Fix postpone notifications sending despite launch being muted
 		- Tons of under-the-hood performance improvements and bug fixes
 
 		*LaunchBot* version *{version}* ✨
@@ -165,14 +176,37 @@ def handle(msg):
 			logging.info(f'msg object: {msg}')
 		return
 
-	# regular text, pass
-	if content_type == 'text' and command_split[0][0] != '/':
-		if debug_log:
-			logging.info(f'❔ Received text, not a command: chat={anonymizeID(chat)}, text: "{msg["text"]}". Returning.')
+	# verify that the user who sent this is not in spammers
+	try:
+		if msg['from']['id'] in ignored_users:
+			if debug_log:
+				logging.info(f'😎 Message from blocked user ignored successfully')
+			
+			return
+	except:
+		pass
+
+	# regular text — check if it's feedback. If not, return.
+	if content_type == 'text' and command_split[0][0] != '/' and debug_log:
+		if 'reply_to_message' in msg:
+			if msg['reply_to_message']['message_id'] in feedback_message_IDs and 'text' in msg:
+				logging.info(f'✍️ Received feedback: {msg["text"]}')
+
+				sender = bot.getChatMember(chat, msg['from']['id'])
+				if sender['status'] == 'creator' or sender['status'] == 'administrator' or chat_type == 'private':
+					bot.sendMessage(chat, f'😄 Thank you for your feedback!', reply_to_message_id=msg['message_id'])
+
+					# remove the original feedback message
+					try:
+						bot.deleteMessage((chat, msg['reply_to_message']['message_id']))
+					except Exception as e:
+						if debug_log:
+							logging.info(f'Unable to remove sent feedback message with params chat={chat}, message_id={msg["reply_to_message"]["message_id"]}: {e}')
+
 		return
 	
 	# sees a valid command
-	elif content_type == 'text':
+	if content_type == 'text':
 		command_split = [arg.lower() for arg in command_split]
 		if command_split[0] in valid_commands or command_split[0] in valid_commands_alt:
 			# command we saw
@@ -220,17 +254,18 @@ def handle(msg):
 				reply_msg = f'''🚀 *Hi there!* I'm *LaunchBot*, a launch information and notifications bot!
 
 				*List of commands*
-				/notify adjusts notification settings
-				/next shows the next launch
-				/schedule displays a simple flight schedule
-				/statistics displays various stats about the bot
-				/feedback allows you to send feedback and suggestions
+				🔔 /notify adjust notification settings
+				🚀 /next shows the next launches
+				🗓 /schedule displays a simple flight schedule
+				📊 /statistics tells various statistics about the bot
+				✍️ /feedback allows you to send *feedback and suggestions*
 
-				*Note!* Commands are only callable by group admins and moderators
+				⚠️ *Note!* Commands are only callable by group *admins* and *moderators*
 
-				*Changelog for version {version}*
-				- You now get notified about launches being postponed *(user request)*
-				- Added support for Astra Space, a new US launch provider
+				*Changelog* for version *{version}* (March 2020)
+				- You now get notified about launches being postponed (*user request* ✍️)
+				- Added support for Astra Space, a new 🇺🇸 launch provider
+				- Fix postpone notifications sending despite launch being muted
 				- Tons of under-the-hood performance improvements and bug fixes
 
 				*LaunchBot* version *{version}* ✨
@@ -279,7 +314,7 @@ def handle(msg):
 
 		else:
 			if debug_log:
-				logging.info(f'❔ Unknown command received in chat {anonymizeID(chat)}: {command}. Returning.')
+				logging.info(f'❔ Unknown command received in chat {anonymizeID(chat)}: {command_split}. Returning.')
 			return
 
 
@@ -633,7 +668,7 @@ def callbackHandler(msg):
 			# new text + callback text
 			reply_text = f'✅ All done!'
 			msg_text = f'✅ *All done* — your preferences were saved!\n\n'
-			msg_text += 'ℹ️ If you need to adjust your settings in the future, use /notify to access these same settings!'
+			msg_text += f'ℹ️ If you need to adjust your settings in the future, use /notify@{bot_username} to access these same settings!'
 
 			# now we have the keyboard; update the previous keyboard
 			bot.editMessageText(msg_identifier, text=msg_text, reply_markup=None, parse_mode='Markdown')
@@ -845,6 +880,10 @@ def timerHandle(command, chat, user):
 					self.spam_times.append(timer())
 					return
 
+				# if continuos offenses, notify user.
+				def offense_delta(self):
+					pass
+
 			spammer_id_list = [spammer.id for spammer in spammers]
 			if user in spammer_id_list:
 				for spammer in spammers:
@@ -854,6 +893,19 @@ def timerHandle(command, chat, user):
 
 				if debug_log:
 					logging.info(f'⚠️ User {anonymizeID(user)} now has {spammer.get_offenses()} spam offenses.')
+
+				if spammer.get_offenses() >= 10:
+					ignored_users.add(user)
+					if debug_log:
+						logging.info(f'⚠️⚠️⚠️ User {anonymizeID(user)} is now ignored due to excessive spam!')
+
+					bot.sendMessage(
+						chat,
+						'⚠️ Please do not spam the bot. Your user ID has been blocked and all commands by you will be ignored for an indefinite amount of time.'
+						)
+
+					return False
+
 			else:
 				spammers.add(Spammer(user))
 				if debug_log:
@@ -964,7 +1016,7 @@ def toggleNotification(chat, toggle_type, keyword, all_toggle_new_status):
 				if len(query_return) == 0:
 					if debug_log:
 						logging.info(f'⚠️ Error getting current status for provider "{provider}" in toggleNotification()')
-					return
+					return None
 				
 				new_status = 0 if query_return[0][3] == 1 else 1
 				c.execute("UPDATE notify SET enabled = ? WHERE chat = ? AND keyword = ?", (new_status, chat, provider))
@@ -990,11 +1042,22 @@ def anonymizeID(chat):
 	return sha1(str(chat).encode('utf-8')).hexdigest()[0:6]
 
 
+'''
+CALLED INCORRECTLY:
+- launch_provider is actually the provider ID, not the keyword
+'''
 def toggleLaunchMute(chat, launch_provider, launch_id, toggle):
 	launch_dir = 'data/launch'
 	if not os.path.isfile(os.path.join(launch_dir,'notifications.db')):
 		createNotifyDatabase()
 
+	try:
+		int(launch_provider)
+		logging.info(f'Integer launch_provider value provided to toggleLaunchMute! launch_provider={launch_provider}, launch_id={launch_id}, toggle={toggle}')
+	except:
+		pass
+
+	# get mute status
 	conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
 	c = conn.cursor()
 	
@@ -1045,7 +1108,6 @@ def toggleLaunchMute(chat, launch_provider, launch_id, toggle):
 
 	conn.commit()
 	conn.close()
-	return
 
 
 def notify(msg):
@@ -1099,8 +1161,6 @@ def notify(msg):
 		reply_markup=keyboard
 		)
 
-	return
-
 
 # receive feedback from users. Mainly as ForceReply and inline-features practice, though.
 def feedback(msg):
@@ -1113,12 +1173,11 @@ def feedback(msg):
 	Please note that it is impossible for me to reply to your feedback, but you can be sure I'll read it! Just write your feedback below.
 	'''
 
-	bot.sendMessage(
+	ret = bot.sendMessage(
 		chat, inspect.cleandoc(message_text), parse_mode='Markdown',
-		reply_markup=ForceReply(selective=True), reply_to_message_id=msg['message_id']
-		)
+		reply_markup=ForceReply(selective=True), reply_to_message_id=msg['message_id'])
 
-	return
+	feedback_message_IDs.add(ret['message_id'])
 
 
 # display a very simple schedule for upcoming flights (all)
@@ -2659,8 +2718,8 @@ def getLaunchUpdates(launch_ID):
 
 						# construct message
 						msg_text = f'📢 *{launch_name}* has been postponed by {postpone_str}. '
-						msg_text += f'{lsp_name} is now targeting lift-off on *{date_str}* at *{launch_time} UTC*.\n\n'
-						msg_text += f'⏱ {eta_str} until next launch attempt.\n'
+						msg_text += f'*{lsp_name}* is now targeting lift-off on *{date_str}* at *{launch_time} UTC*.\n\n'
+						msg_text += f'⏱ {eta_str} until next launch attempt.\n\n'
 						msg_text = reconstructMessageForMarkdown(msg_text)
 						msg_text += f'ℹ️ _You will be re\-notified of this launch\. For detailed info\, use \/next\@{bot_username}\. '
 						msg_text += 'To disable\, mute this launch with the button below\._'
@@ -2687,8 +2746,15 @@ def getLaunchUpdates(launch_ID):
 						else:
 							notify_list = getNotifyList(LSP_IDs[lsp][0], launch_id)
 
-						# send the notifications
+						active_chats, muted_chats = set(), set()
 						for chat in notify_list:
+							if loadMuteStatus(chat, launch_id, lsp) == 0:
+								active_chats.add(chat)
+							else:
+								muted_chats.add(chat)
+
+						# send the notifications
+						for chat in active_chats:
 							ret = sendPostponeNotification(chat, msg_text, launch_id, lsp)
 
 							if ret != True and debug_log:
@@ -2711,10 +2777,11 @@ def getLaunchUpdates(launch_ID):
 									ret = True
 
 						if debug_log:
-							logging.info(f'📢 Notified {len(notify_list)} chats about the postpone ({postpone_str}) of launch {launch_id} by {lsp_name}')
+							logging.info(f'📢 Notified {len(active_chats)} chats about the postpone ({postpone_str}) of launch {launch_id} by {lsp_name}')
+							logging.info(f'🔕 Did NOT notify {len(muted_chats)} chats about the postpone due to mute status.')
 
 						# update stats
-						updateStats({'notifications':len(notify_list)})
+						updateStats({'notifications':len(active_chats)})
 
 						if debug_log:
 							if len(disabled_statuses) > 0:
@@ -2743,7 +2810,7 @@ def getLaunchUpdates(launch_ID):
 
 	# what we're throwing at the API
 	API_REQUEST = f'launch'
-	PARAMS = {'mode': 'verbose', 'limit': 40, 'startdate': today_call}
+	PARAMS = {'mode': 'verbose', 'limit': 500, 'startdate': today_call}
 	API_URL = 'https://launchlibrary.net'
 	API_VERSION = '1.4'
 
@@ -2773,11 +2840,9 @@ def getLaunchUpdates(launch_ID):
 		launch_json = API_RESPONSE.json()
 	except:
 		return
-
-	'''
+	
 	with open(os.path.join('data', 'launch', 'launch-json.json'), 'w') as json_data:
 		json.dump(launch_json, json_data, indent=4)
-	'''
 
 	# if we got nothing in return from the API
 	if len(launch_json['launches']) == 0:
@@ -3424,7 +3489,9 @@ def statistics(msg):
 		db_sizes += os.path.getsize(os.path.join('data','launch','spx-launches.db'))
 		db_sizes += os.path.getsize(os.path.join('data','launch','notifications.db'))
 		db_sizes += os.path.getsize(os.path.join('data','launch','sent-notifications.db'))
+		db_sizes += os.path.getsize(os.path.join('data','bot-settings.json'))
 		db_sizes += os.path.getsize(os.path.join('data','statistics.db'))
+		db_sizes += os.path.getsize(os.path.join('data','log.log'))
 	except:
 		db_sizes = 0.00
 
@@ -3456,7 +3523,6 @@ def statistics(msg):
 	API requests made: {api_reqs}
 
 	💾 *Database statistics*
-	Database updates: {db_updates}
 	Storage used: {db_sizes:.2f} {db_size_class}
 
 	🎛 *Server information*
@@ -3640,18 +3706,17 @@ def updateToken(update_tokens):
 
 
 # main
-def main():
-	# some global vars for use in other functions
+if __name__ == '__main__':
+	# some global vars for use in other functions where data persistence is required
+	# we try to avoid files due to IO
 	global TOKEN, bot, version, bot_ID, bot_username
 	global debug_log
 
 	# current version
-	version = '0.4.5'
+	version = '0.4.7'
 
-	# default
-	start = False
-	debug_log = False
-	debug_mode = False
+	# default start mode
+	start = debug_log = debug_mode = False
 
 	# list of args the program accepts
 	start_args = {'start', '-start'}
@@ -3677,7 +3742,7 @@ def main():
 			if arg in bot_token_args:
 				update_tokens.add('botToken')
 			if arg in debug_args:
-				if arg == 'log' or arg == '-log':
+				if arg in ('log', '-log'):
 					debug_log = True
 					if not os.path.isdir('data'):
 						firstRun()
@@ -3694,7 +3759,7 @@ def main():
 					# start log
 					logging.basicConfig(filename=log,level=logging.DEBUG,format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
 
-				if arg == 'debug' or arg == '-debug':
+				if arg in ('debug', '-debug'):
 					debug_mode = True
 
 		if len(update_tokens) != 0:
@@ -3715,7 +3780,6 @@ def main():
 			except:
 				os.remove(os.path.join('data','bot-settings.json'))
 				firstRun()
-				return
 
 	except FileNotFoundError:
 		firstRun()
@@ -3797,13 +3861,18 @@ def main():
 	}
 
 	# start command timers, store in memory instead of storage to reduce disk writes
-	global command_cooldowns, chat_command_calls, spammers
+	global command_cooldowns, chat_command_calls, spammers, ignored_users
 	command_cooldowns, chat_command_calls, spammers = {}, {}, set()
+	ignored_users = set()
 
 	# initialize the timer dict to avoid spam
 	command_cooldowns['commandTimers'] = {}
 	for command in valid_commands:
 		command_cooldowns['commandTimers'][command.replace('/','')] = '1'
+
+	# init the feedback store; used to store the message IDs so we can store feedback
+	global feedback_message_IDs
+	feedback_message_IDs = set()
 
 	MessageLoop(bot, {'chat': handle, 'callback_query': callbackHandler}).run_as_thread()
 	time.sleep(1)
@@ -3842,22 +3911,3 @@ def main():
 		while True:
 			schedule.run_pending()
 			time.sleep(2)
-
-
-def runMain():
-	try:
-		main()
-
-	except KeyboardInterrupt:
-		sys.exit(f'\nReceived ctrl+c. Exiting...')
-
-	except Exception as e:
-		if debug_log:
-			logging.critical(f'🛑 Error in main loop: {e}')
-			logging.critical(f'🔄 Attempting a script restart...')
-	
-		runMain()
-		return
-
-
-runMain()
