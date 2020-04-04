@@ -842,9 +842,11 @@ def timerHandle(command, chat, user):
 				def add_offense(self):
 					self.offenses += 1
 					self.spam_times.append(timer())
-					return
 
-				# if continuos offenses, notify user.
+				def clear_offenses(self):
+					self.offenses = 0
+					self.spam_times = []
+
 				def offense_delta(self):
 					pass
 
@@ -859,14 +861,19 @@ def timerHandle(command, chat, user):
 					logging.info(f'⚠️ User {anonymizeID(user)} now has {spammer.get_offenses()} spam offenses.')
 
 				if spammer.get_offenses() >= 10:
-					ignored_users.add(user)
-					if debug_log:
-						logging.info(f'⚠️⚠️⚠️ User {anonymizeID(user)} is now ignored due to excessive spam!')
+					run_time = datetime.datetime.now() - STARTUP_TIME
+					if run_time.seconds > 60:
+						ignored_users.add(user)
+						if debug_log:
+							logging.info(f'⚠️⚠️⚠️ User {anonymizeID(user)} is now ignored due to excessive spam!')
 
-					bot.sendMessage(
-						chat,
-						'⚠️ Please do not spam the bot. Your user ID has been blocked and all commands by you will be ignored for an indefinite amount of time.'
-						)
+						bot.sendMessage(
+							chat,
+							'⚠️ Please do not spam the bot. Your user ID has been blocked and all commands by you will be ignored for an indefinite amount of time.')
+					else:
+						logging.info(f'''✅ Successfully avoided blocking a user on bot startup! Run_time was {run_time.seconds} seconds.
+							Spam offenses set to 0 for user {anonymizeID(user)} from original {spammer.get_offenses()}''')
+						spammer.clear_offenses()
 
 					return False
 
@@ -2008,8 +2015,12 @@ def spxAPIHandler():
 	return
 
 
-# constructs an information string for a SpaceX launch with relevant booster & mission information
 def spxInfoStrGen(launch_name, run_count):
+	'''
+	Gets the name of a launch from launches.db and attempts to find the corresponding launch name
+	from spx-launches.db with diffing, then generate the SpaceX launch specific information string.
+	'''
+
 	# open the database connection and check if the launch exists in the database
 	# if not, update
 	launch_dir = 'data/launch'
@@ -2023,6 +2034,12 @@ def spxInfoStrGen(launch_name, run_count):
 
 	# unix time for NET
 	today_unix = time.mktime(datetime.datetime.today().timetuple())
+
+	# manual launch name matching for cases where automatic parsing fails
+	manual_name_matches = {}
+
+	if launch_name.lower() in manual_name_matches.keys():
+		launch_name = manual_name_matches[launch_name.lower()]
 
 	# perform a raw select; if not found, pull all and do some diffing
 	# launch names are stored in lower case
@@ -2045,15 +2062,16 @@ def spxInfoStrGen(launch_name, run_count):
 
 		# diff
 		close_matches = difflib.get_close_matches(launch_name, stripped_keys)
+		if len(close_matches) == 0:
+			alt_matches = difflib.get_close_matches(launch_name, launch_names)
+			if len(alt_matches) != 0:
+				close_matches = alt_matches
 
 		# no matches, use the stripped keys
 		launch_name_stripped = launch_name.replace('(','').replace(')','').lower()
 		if len(close_matches) == 0:
 			close_matches = difflib.get_close_matches(launch_name_stripped, stripped_keys)
 			if len(close_matches) == 1:
-				#if debug_log:
-				#	logging.info(f'Close match found for {launch_name_stripped}: {close_matches}')
-				
 				diff_match = close_matches[0]
 
 			elif len(close_matches) == 0:
@@ -2073,10 +2091,6 @@ def spxInfoStrGen(launch_name, run_count):
 					return None, None
 
 			elif len(close_matches) > 1:
-				#if debug_log:
-				#	logging.info(f'⚠️ More than one close match when attempting to find {launch_name_stripped}; \
-				#	matches: {close_matches}. Parsing manually.')
-
 				manual_matches = []
 				for key in stripped_keys:
 					if launch_name_stripped in key:
@@ -2092,21 +2106,17 @@ def spxInfoStrGen(launch_name, run_count):
 							smallest_net, net_index = row[2], i
 				
 					diff_match = close_matches[net_index]
-				
-				#return None, None
 
-
+		# only one diff match; use it
 		elif len(close_matches) == 1:
 			diff_match = close_matches[0]
 		
+		# if we have more than one diffed match, sort launches by NET
 		elif len(close_matches) > 1:
 			smallest_net, net_index = close_matches[0][2], 0
 			for row, i in zip(close_matches, range(len(close_matches))):
 				if row[2] < smallest_net:
 					smallest_net, net_index = row[2], i
-
-			#if debug_log:
-			#	logging.info(logging.info(f'⚠️ Got more than 1 close_match initially; parse by NET. {launch_name_stripped} -> {close_matches}'))
 
 			diff_match = close_matches[net_index]
 
@@ -2140,12 +2150,26 @@ def spxInfoStrGen(launch_name, run_count):
 	if diff_match != None:
 		c.execute('''SELECT * FROM launches WHERE launch_name = ?''', (diff_match,))
 		query_return = c.fetchall()
+
 		if len(query_return) == 1:
 			db_match = query_return[0]
 		else:
-			if debug_log:
-				logging.info(f'🛑 [spxInfoStrGen] Found {len(query_return)} matches from db... Exiting')
-			return None, None
+			# no match; check launch names that have parantheses
+			close_matches = difflib.get_close_matches(diff_match, launch_names)
+			if len(close_matches) >= 1:
+				diff_match = close_matches[0]
+				c.execute('''SELECT * FROM launches WHERE launch_name = ?''', (diff_match,))
+				query_return = c.fetchall()
+				if len(query_return) == 1:
+					db_match = query_return[0]
+				else:
+					if debug_log:
+						logging.info(f'🛑 [spxInfoStrGen] Found {len(query_return)} matches from db... Exiting')
+					return None, None
+			else:
+				if debug_log:
+					logging.info(f'🛑 [spxInfoStrGen] Found {len(query_return)} matches from db... Exiting')
+				return None, None
 
 	# same found in multiparse
 	# use to extract info from db
@@ -3673,22 +3697,22 @@ def updateToken(update_tokens):
 
 def sigterm_handler(signal, frame):
 	if debug_log:
-		logging.info(f'✅ Got SIGTERM. Runtime: {datetime.datetime.now() - startup_time}.')
+		logging.info(f'✅ Got SIGTERM. Runtime: {datetime.datetime.now() - STARTUP_TIME}.')
 
 	sys.exit(0)
 
 
 if __name__ == '__main__':
 	# some global vars for use in other functions
-	global TOKEN, OWNER, VERSION, BOT_ID, BOT_USERNAME
+	global TOKEN, OWNER, VERSION, BOT_ID, BOT_USERNAME, STARTUP_TIME
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.4.7'
+	VERSION = '0.4.8'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
-	startup_time = datetime.datetime.now()
+	STARTUP_TIME = datetime.datetime.now()
 
 	# list of args the program accepts
 	start_args = ('start', '-start')
@@ -3891,7 +3915,7 @@ if __name__ == '__main__':
 		
 		except KeyboardInterrupt:
 			cursor.show()
-			run_time = datetime.datetime.now() - startup_time
+			run_time = datetime.datetime.now() - STARTUP_TIME
 			if debug_log and run_time.seconds > 3600:
 				logging.info(f'Program ending. Runtime: {run_time}.')
 			
