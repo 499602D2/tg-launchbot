@@ -14,7 +14,7 @@ After the dependencies are installed, you can run the bot with `python3 launchbo
 
 The bot creates multiple files, located under `/data`:
 
-SQLite: `statistics.db`, `launches.db`, `spx-launches.db`, `notifications.db`
+SQLite: `statistics.db`, `launches.db`, `spx-launches.db`, `notifications.db`, `sent-notifications.db`
 
 JSON: `bot_settings.json`
 
