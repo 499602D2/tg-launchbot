@@ -20,6 +20,12 @@ JSON: `bot_settings.json`
 
 You can specify your Telegram user ID in bot_settings.json in the form `owner: your_user_id`. This disabled the logging of commands sent by the owner, as well as sends a notification of new feedback.
 
+**Privacy**
+
+The bot stores every interaction (i.e. command) sent to it if logging is enabled, alongside with a truncated SHA-1 hash of the user ID. No text messages are stored, besides text sent as a reply to a feedback request message. The bot's privacy settings forbid the bot from reading regular text, as in text messages which have not tagged the bot (@botusername) or are not a reply to a message sent by the bot.
+
+Only information stored by the bot is the chat ID, which can also be the user ID of a user in the case of a private chat. This is the only user information stored, which is used to deliver notifications. If no notifications are enabled, no information is stored, aside from an in-memory chat ID for managing spam, which is automatically cleared when the program quits and is thus never stored.
+
 **Bot roadmap**
 
 0.2 (December):
