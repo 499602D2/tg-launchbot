@@ -22,7 +22,7 @@ You can specify your Telegram user ID in bot_settings.json in the form `owner: y
 
 **Privacy**
 
-The bot stores every interaction (i.e. command) sent to it if logging is enabled, alongside with a truncated SHA-1 hash of the user ID. No text messages are stored, aside from text sent as a reply to a feedback request message. The bot's privacy settings forbid the bot from reading regular text, as in text messages which have not tagged the bot (@botusername) or are not a reply to a message sent by the bot (these are not logged, unless they're a reply to a feedback message.)
+The bot stores every interaction (i.e. command) sent to it if logging is enabled, alongside with a truncated, unsalted SHA-1 hash of the user ID. No text messages are stored, aside from text sent as a reply to a feedback request message. The bot's privacy settings forbid the bot from reading regular text, as in text messages which have not tagged the bot (@botusername) or are not a reply to a message sent by the bot (these are not logged, unless they're a reply to a feedback message.)
 
 Only information stored by the bot is the chat ID, which can also be the user ID of a user in the case of a private chat. This is the only user information stored, which is used to deliver notifications. If no notifications are enabled, no information is stored, aside from an in-memory chat ID for managing spam, which is automatically cleared when the program quits and is thus never stored.
 
@@ -58,7 +58,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- add location (i.e. state/country) below pad information (Florida, USA etc.)
 
-0.5 (Next feature release)
+0.5
 	
 	- allow users to disable postpone notifications on a per-launch basis
 	
@@ -75,8 +75,3 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	- allow users to set their own notifications (i.e. 24h/12h/...)
 	
 	- allow users to set their own timezone
-
-Later versions
-	
-	- functionize more of the processes
-		- move callbacks to a function, pass text + tuple + keyboard as args
