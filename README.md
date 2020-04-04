@@ -57,6 +57,8 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	- add tbd-field to launches, so schedule can only show certain launch dates (filter certain and uncertain with a button)
 	
 	- add location (i.e. state/country) below pad information (Florida, USA etc.)
+	
+	- add orbit info to all launches (is this in LL?)
 
 0.5
 	
