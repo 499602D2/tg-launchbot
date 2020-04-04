@@ -950,7 +950,7 @@ def toggleNotification(chat, toggle_type, keyword, all_toggle_new_status):
 		provider_list_mod = set()
 		for key in provider_list:
 			if key in provider_name_map.keys():
-				provider_list_mod.add(provider_name_map[keyword])
+				provider_list_mod.add(provider_name_map[key])
 			else:
 				provider_list_mod.add(key)
 
