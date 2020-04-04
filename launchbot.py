@@ -51,7 +51,8 @@ def handle(msg):
 		new_ID = msg['migrate_to_chat_id']
 
 		if debug_log:
-			logging.info(f'⚠️ Group {old_ID} migrated to {new_ID} - starting database migration...')
+			logging.info(f'⚠️ Group {anonymizeID(old_ID)} migrated to {anonymizeID(new_ID)} - '
+						 f'starting database migration...')
 
 		# Establish connection
 		conn = sqlite3.connect(os.path.join('data/launch', 'notifications.db'))
@@ -871,7 +872,8 @@ def timerHandle(command, chat, user):
 
 						bot.sendMessage(
 							chat,
-							'⚠️ Please do not spam the bot. Your user ID has been blocked and all commands by you will be ignored for an indefinite amount of time.')
+							'⚠️ Please do not spam the bot. Your user ID has been blocked and all commands by '
+							'you will be ignored for an indefinite amount of time.')
 					else:
 						logging.info(f'''✅ Successfully avoided blocking a user on bot startup! Run_time was {run_time.seconds} seconds.
 							Spam offenses set to 0 for user {anonymizeID(user)} from original {spammer.get_offenses()}''')
@@ -1911,7 +1913,7 @@ def spxAPIHandler():
 			# also handle the extremely prevalent NULL cases in the returned .json
 			if cores != None:
 				reuses, serials, landing_intents = '', '', ''
-				for core, i in zip(cores, range(len(cores))):
+				for core, n in zip(cores, range(len(cores))):
 					# serials
 					if core['core_serial'] != None:
 						serials = serials + str(core['core_serial'])
@@ -1939,7 +1941,7 @@ def spxAPIHandler():
 					else:
 						landing_intents = landing_intents + 'Unknown'
 
-					if i < len(cores) - 1:
+					if n < len(cores) - 1:
 						reuses = reuses + ','
 						serials = serials + ','
 						landing_intents = landing_intents + ','
@@ -2298,7 +2300,7 @@ def spxInfoStrGen(launch_name, run_count):
 				if 'Crew' in dragon_info[0] and dragon_crew != 'None':
 					if int(dragon_crew) != 0:
 						for i in range(int(dragon_crew)):
-							crew_str += '👨‍🚀'
+							crew_str += '👨‍'
 					else:
 						crew_str = 'Unmanned'
 				elif 'Crew' in dragon_info[0] and dragon_crew == 'None':
@@ -2313,7 +2315,7 @@ def spxInfoStrGen(launch_name, run_count):
 		except:
 			pass
 
-	''' Uncomment to add fairing information back
+	''' UNCOMMENT TO ADD FAIRING INFORMATION BACK
 	else:
 		try:
 			if int(db_match[8]) == 1 or int(db_match[8]) == 0:
@@ -2865,11 +2867,10 @@ def getLaunchUpdates(launch_ID):
 		return
 
 	# we got something, parse all of it
-	elif len(launch_json['launches']) >= 1:
+	if len(launch_json['launches']) >= 1:
 		multiParse(launch_json, len(launch_json['launches']))
 
 	updateStats({'API_requests':1, 'db_updates':1, 'data':len(API_RESPONSE.content)})
-	return
 
 
 # MarkdownV2 requires some special handling, so parse the link here
@@ -3002,11 +3003,11 @@ def cleanNotifyDatabase(chat):
 	c.execute("DELETE FROM notify WHERE chat = ?", (chat,))
 	conn.commit()
 	conn.close()
-	return
 
 
 def removePreviousNotification(launch_id):
 	''' Before storing the new identifiers, remove the old notification if possible. '''
+	launch_dir = 'data/launch'
 	if not os.path.isfile(os.path.join(launch_dir, 'sent-notifications.db')):
 		return
 
@@ -3046,6 +3047,7 @@ def removePreviousNotification(launch_id):
 
 
 def storeIdentifiers(launch_id, msg_identifiers):
+	launch_dir = 'data/launch'
 	conn = sqlite3.connect(os.path.join(launch_dir, 'sent-notifications.db'))
 	c = conn.cursor()
 
@@ -3091,12 +3093,15 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 			# /mute/$provider/$launch_id/(0/1) | 1=muted (true), 0=not muted
 			keyboard = InlineKeyboardMarkup(
 				inline_keyboard = [[
-						InlineKeyboardButton(text=mute_key, callback_data=f'mute/{keywords}/{launch_id}/{mute_press}')]])
+						InlineKeyboardButton(text=mute_key, callback_data=f'mute/{keywords}/{launch_id}/{mute_press}')
+				]])
 
 			if silent == True:
-				sent_msg = bot.sendMessage(chat, notification, parse_mode='MarkdownV2', reply_markup=keyboard, disable_notification=True)
+				sent_msg = bot.sendMessage(chat, notification, parse_mode='MarkdownV2',
+										   reply_markup=keyboard, disable_notification=True)
 			else:
-				sent_msg = bot.sendMessage(chat, notification, parse_mode='MarkdownV2', reply_markup=keyboard, disable_notification=False)
+				sent_msg = bot.sendMessage(chat, notification, parse_mode='MarkdownV2',
+										   reply_markup=keyboard, disable_notification=False)
 
 			# sent message is stored in sent_msg; store in db so we can edit messages
 			msg_identifier = f"{sent_msg['chat']['id']}:{sent_msg['message_id']}"
@@ -3155,9 +3160,6 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 					logging.info(f'⚠️ unhandled telepot.exception.TelegramError in sendNotification: {error}')
 
 				return False
-
-		#except Exception as caught_exception:
-		#	return caught_exception
 
 
 	''' LSP ID -> name, flag dictionary
@@ -3366,7 +3368,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 	notify_list = getNotifyList(lsp, launch_id)
 
 	if debug_log:
-		logging.info(f'Sending notifications for launch {launch_id} | NET: {launch_unix} | notify_list: {notify_list}')
+		logging.info(f'Sending notifications for launch {launch_id} | NET: {launch_unix}')
 
 	# send early notifications silently
 	if debug_log:
@@ -3458,7 +3460,6 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 
 	conn.commit()
 	conn.close()
-	return
 
 
 # updates our stats with the given input
@@ -3477,7 +3478,6 @@ def updateStats(stats_update):
 	
 	stats_conn.commit()
 	stats_conn.close()
-	return
 
 
 # prints our stats
@@ -3583,7 +3583,6 @@ def statistics(msg):
 	'''
 
 	bot.sendMessage(chat, inspect.cleandoc(reply_str), parse_mode='Markdown')
-	return
 
 
 # creates the spx database
@@ -3640,7 +3639,6 @@ def createNotifyDatabase():
 
 	conn.commit()
 	conn.close()
-	return
 
 
 # creates a launch database
@@ -3676,7 +3674,6 @@ def createLaunchDatabase():
 
 	conn.commit()
 	conn.close()
-	return
 
 
 # creates a statistics database
@@ -3953,7 +3950,7 @@ if __name__ == '__main__':
 	schedule.every(2).minutes.do(spxAPIHandler)
 	schedule.every(30).seconds.do(launchUpdateCheck)
 	
-	# run both scheduled jobs now, so we don't have to sit in the dark for a while
+	# run all scheduled jobs now, so we don't have to sit in the dark for a while
 	getLaunchUpdates(None)
 	spxAPIHandler()
 	launchUpdateCheck()
