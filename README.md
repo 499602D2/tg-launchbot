@@ -62,7 +62,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- allow users to disable postpone notifications on a per-launch basis
 	
-	- delete older notification messages when a new one is sent
+	- ✅ delete older notification messages when a new one is sent
 	
 	- add a "more info"/"less info" button
 	
