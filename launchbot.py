@@ -114,6 +114,7 @@ def handle(msg):
 		- You now get notified about launches being postponed (*user request* ✍️)
 		- Added support for Astra Space, a new 🇺🇸 launch provider
 		- Fix postpone notifications sending despite launch being muted
+		- The bot now automatically removes previously sent notifications (*user request* ✍️)
 		- Tons of under-the-hood performance improvements and bug fixes
 
 		*LaunchBot* version *{VERSION}* ✨
@@ -232,6 +233,7 @@ def handle(msg):
 				- You now get notified about launches being postponed (*user request* ✍️)
 				- Added support for Astra Space, a new 🇺🇸 launch provider
 				- Fix postpone notifications sending despite launch being muted
+				- The bot now automatically removes previously sent notifications (*user request* ✍️)
 				- Tons of under-the-hood performance improvements and bug fixes
 
 				*LaunchBot* version *{VERSION}* ✨
@@ -2355,9 +2357,16 @@ def getLaunchUpdates(launch_ID):
 			# /mute/$provider/$launch_id/(0/1) | 1=muted (true), 0=not muted
 			keyboard = InlineKeyboardMarkup(
 				inline_keyboard = [[
-						InlineKeyboardButton(text=mute_key, callback_data=f'mute/{keywords}/{launch_id}/{mute_press}')]])
+						InlineKeyboardButton(text=mute_key, callback_data=f'mute/{keywords}/{launch_id}/{mute_press}')
+				]]
+			)
 
-			bot.sendMessage(chat, notification, parse_mode='MarkdownV2', reply_markup=keyboard, disable_notification=False)
+			sent_msg = bot.sendMessage(
+				chat, notification, parse_mode='MarkdownV2', reply_markup=keyboard, disable_notification=False)
+
+			# sent message is stored in sent_msg; store in db so we can edit messages
+			msg_identifier = f"{sent_msg['chat']['id']}:{sent_msg['message_id']}"
+			msg_identifiers.append(f'{msg_identifier}')
 			return True
 		
 		except telepot.exception.BotWasBlockedError:
@@ -2396,9 +2405,9 @@ def getLaunchUpdates(launch_ID):
 
 				else:
 					if debug_log:
-						logging.info(f'⚠️ unhandled 403 telepot.exception.TelegramError in sendNotification: {error}')
+						logging.info(f'⚠️ unhandled 403 telepot.exception.TelegramError in sendPostponeNotification: {error}')
 
-			# Rate limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
+			# Rate-limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
 			elif error.error_code == 429:
 				if debug_log:
 					logging.info(f'🚧 Rate-limited (429) - sleeping for 5 seconds and continuing. Error: {error}')
@@ -2428,6 +2437,7 @@ def getLaunchUpdates(launch_ID):
 				i += 1
 
 		return param_url
+
 
 	def multiParse(json, launch_count):
 		# check if db exists
@@ -2744,6 +2754,8 @@ def getLaunchUpdates(launch_ID):
 								muted_chats.add(chat)
 
 						# send the notifications
+						global msg_identifiers
+						msg_identifiers = []
 						for chat in active_chats:
 							ret = sendPostponeNotification(chat, msg_text, launch_id, lsp)
 
@@ -2767,11 +2779,19 @@ def getLaunchUpdates(launch_ID):
 									ret = True
 
 						if debug_log:
-							logging.info(f'📢 Notified {len(active_chats)} chats about the postpone ({postpone_str}) of launch {launch_id} by {lsp_name}')
-							logging.info(f'🔕 Did NOT notify {len(muted_chats)} chats about the postpone due to mute status.')
+							logging.info(f'📢 Notified {len(active_chats)} chats about the postpone ({postpone_str})'
+										 f' of launch {launch_id} by {lsp_name}')
+							logging.info(f'🔕 Did NOT notify {len(muted_chats)} chats about the postpone due to mute'
+										 f' status.')
 
-						# update stats
+						# update stats with sent notifications
 						updateStats({'notifications':len(active_chats)})
+
+						# remove old notifs if possible
+						removePreviousNotification(launch_id)
+
+						# store identifiers
+						storeIdentifiers(launch_id, msg_identifiers)
 
 						if debug_log:
 							if len(disabled_statuses) > 0:
@@ -2985,31 +3005,69 @@ def cleanNotifyDatabase(chat):
 	return
 
 
-# gets a request to send a notification about launch X from launchUpdateCheck()
-def notificationHandler(launch_row, notif_class, NET_slip):
-	# store msg identifiers
-	def storeIdentifiers(id, msg_identifiers):
-		conn = sqlite3.connect(os.path.join(launch_dir, 'sent-notifications.db'))
-		c = conn.cursor()
-
-		try:
-			c.execute("CREATE TABLE identifiers (id INTEGER, msg_identifiers TEXT, PRIMARY KEY (id))")
-			c.execute("CREATE INDEX id_identifiers ON notify (id, identifiers)")
-			if debug_log:
-				logging.info(f'✨ sent-notifications.db created!')
-		except sqlite3.OperationalError:
-			pass
-
-		try:
-			c.execute('''INSERT INTO identifiers (id, msg_identifiers) VALUES (?, ?)''',(launch_id, msg_identifiers))
-		except:
-			c.execute('''UPDATE identifiers SET msg_identifiers = ? WHERE id = ?''', (msg_identifiers, launch_id))
-
-		conn.commit()
-		conn.close()
+def removePreviousNotification(launch_id):
+	''' Before storing the new identifiers, remove the old notification if possible. '''
+	if not os.path.isfile(os.path.join(launch_dir, 'sent-notifications.db')):
 		return
 
+	conn = sqlite3.connect(os.path.join(launch_dir, 'sent-notifications.db'))
+	c = conn.cursor()
 
+	c.execute("SELECT msg_identifiers FROM identifiers WHERE id = ?", (launch_id))
+	query_return = c.fetchall()
+
+	if len(query_return) == 0:
+		if debug_log:
+			logging.info(f'No notifications to remove for launch {launch_id}')
+		return
+
+	if len(query_return) > 1:
+		if debug_log:
+			logging.info(f'⚠️ Error getting launch_id! Got {len(query_return)} launches. Ret: {query_return}')
+		return
+
+	identifiers, success_count = query_return[0].split(','), 0
+	for id_pair in identifiers:
+		id_pair = id_pair.split(':')
+		message_identifier = (id_pair[0], id_pair[1])
+
+		# try removing the message
+		try:
+			ret = bot.deleteMessage(message_identifier)
+			if ret is not False:
+				success_count += 1
+		except Exception as error:
+			if debug_log:
+				logging.info(f'⚠️ Unable to delete previous notification. Unique ID: {message_identifier}.'
+							 f'Got error: {error}')
+
+	if debug_log:
+		logging.info(f'✅ Successfully removed {success_count} previously sent notifications!')
+
+
+def storeIdentifiers(launch_id, msg_identifiers):
+	conn = sqlite3.connect(os.path.join(launch_dir, 'sent-notifications.db'))
+	c = conn.cursor()
+
+	try:
+		c.execute("CREATE TABLE identifiers (id INTEGER, msg_identifiers TEXT, PRIMARY KEY (id))")
+		c.execute("CREATE INDEX id_identifiers ON notify (id, identifiers)")
+		if debug_log:
+			logging.info(f'✨ sent-notifications.db created!')
+	except sqlite3.OperationalError:
+		pass
+
+	try:
+		c.execute('''INSERT INTO identifiers (id, msg_identifiers) VALUES (?, ?)''',(launch_id, msg_identifiers))
+	except:
+		c.execute('''UPDATE identifiers SET msg_identifiers = ? WHERE id = ?''', (msg_identifiers, launch_id))
+
+	conn.commit()
+	conn.close()
+
+
+# gets a request to send a notification about launch X from launchUpdateCheck()
+def notificationHandler(launch_row, notif_class, NET_slip):
 	# handle notification sending; done in a separate function so we can retry more easily and handle exceptions
 	def sendNotification(chat, notification, launch_id, keywords, vid_link, notif_class):
 		# send early notifications silently
@@ -3367,6 +3425,9 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 	conn.close()
 	updateStats({'notifications':len(notify_list)})
 
+	# remove previous notification
+	removePreviousNotification(launch_id)
+
 	# store msg_identifiers
 	msg_identifiers = ','.join(msg_identifiers)
 	storeIdentifiers(launch_id, msg_identifiers)
@@ -3708,7 +3769,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.4.8'
+	VERSION = '0.4.9'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
