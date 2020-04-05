@@ -147,10 +147,13 @@ def handle(msg):
 				logging.info(f'😎 Message from spamming user ignored successfully')
 			
 			return
-	except:
-		if debug_log:
-			logging.info(f'❓ msg object has no from:id property. Object: {msg}')
-		pass
+	except: # all users don't have a user ID, so check for the regular username as well
+		if 'author_signature' in msg:
+			if msg['author_signature'] in ignored_users:
+				if debug_log:
+					logging.info(f'😎 Message from spamming user (no UID) ignored successfully')
+			
+			return
 
 	# regular text — check if it's feedback. If not, return.
 	if content_type == 'text' and command_split[0][0] != '/' and debug_log:
@@ -289,10 +292,6 @@ def handle(msg):
 
 def callbackHandler(msg):
 	def updateMainView(chat, msg, provider_by_cc, text_refresh):
-		provider_name_map = {
-			'Rocket Lab': 'Rocket Lab Ltd',
-			'Northrop Grumman': 'Northrop Grumman Innovation Systems'}
-
 		# figure out what the text for the "enable all/disable all" button should be
 		providers = set()
 		for val in provider_by_cc.values():
@@ -364,10 +363,6 @@ def callbackHandler(msg):
 	def updateListView(msg, chat, provider_list):
 		# get the user's current notification settings for all the providers so we can add the bell emojis
 		notification_statuses = getUserNotificationsStatus(chat, provider_list)
-
-		provider_name_map = {
-			'Rocket Lab': 'Rocket Lab Ltd',
-			'Northrop Grumman': 'Northrop Grumman Innovation Systems'}
 
 		# get status for the "enable all" toggle for the country code
 		providers = []
@@ -908,10 +903,6 @@ def getUserNotificationsStatus(chat, provider_list):
 	query_return = c.fetchall()
 	conn.close()
 
-	provider_name_map = {
-		'Rocket Lab': 'Rocket Lab Ltd',
-		'Northrop Grumman': 'Northrop Grumman Innovation Systems'}
-
 	notification_statuses = {'All': 0}
 	for provider in provider_list:
 		if provider in provider_name_map.keys():
@@ -942,11 +933,6 @@ def toggleNotification(chat, toggle_type, keyword, all_toggle_new_status):
 	launch_dir = 'data/launch'
 	conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
 	c = conn.cursor()
-
-	# real provider names
-	provider_name_map = {
-		'Rocket Lab': 'Rocket Lab Ltd',
-		'Northrop Grumman': 'Northrop Grumman Innovation Systems' }
 
 	# if toggle type is a country code, map the ccode to a list of providers
 	if toggle_type == 'country_code':
@@ -1539,23 +1525,6 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 						eta_str = 'T-0'
 			else:
 				eta_str = f'T- {t_s} {s_suff}'
-
-	LSP_IDs = {
-	121: 	['SpaceX', '🇺🇸'],
-	147: 	['Rocket Lab', '🇺🇸'],
-	99: 	['Northrop Grumman', '🇺🇸'],
-	115: 	['Arianespace', '🇪🇺'],
-	124: 	['ULA', '🇺🇸'],
-	98: 	['Mitsubishi Heavy Industries', '🇯🇵'],
-	88: 	['CASC', '🇨🇳'],
-	190: 	['Antrix Corporation', '🇮🇳'],
-	122: 	['Sea Launch', '🇷🇺'],
-	118: 	['ILS', '🇺🇸🇷🇺'],
-	193: 	['Eurockot', '🇪🇺🇷🇺'],
-	119:	['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'],
-	123:	['Starsem', '🇪🇺🇷🇺'],
-	194:	['ExPace', '🇨🇳']
-	}
 
 	flag_map = {
 		'FRA':	'🇪🇺',
@@ -2728,23 +2697,6 @@ def getLaunchUpdates(launch_ID):
 						msg_text += f'ℹ️ _You will be re\-notified of this launch\. For detailed info\, use \/next\@{BOT_USERNAME}\. '
 						msg_text += 'To disable\, mute this launch with the button below\._'
 
-						LSP_IDs = {
-							121: 	['SpaceX', '🇺🇸'],
-							147: 	['Rocket Lab', '🇺🇸'],
-							99: 	['Northrop Grumman', '🇺🇸'],
-							115: 	['Arianespace', '🇪🇺'],
-							124: 	['ULA', '🇺🇸'],
-							98: 	['Mitsubishi Heavy Industries', '🇯🇵'],
-							88: 	['CASC', '🇨🇳'],
-							190: 	['Antrix Corporation', '🇮🇳'],
-							122: 	['Sea Launch', '🇷🇺'],
-							118: 	['ILS', '🇺🇸🇷🇺'],
-							193: 	['Eurockot', '🇪🇺🇷🇺'],
-							119:	['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'],
-							123:	['Starsem', '🇪🇺🇷🇺'],
-							194:	['ExPace', '🇨🇳']
-							}
-
 						if lsp not in LSP_IDs.keys():
 							notify_list = getNotifyList(lsp_name, launch_id)
 						else:
@@ -3168,31 +3120,6 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 					logging.info(f'⚠️ unhandled telepot.exception.TelegramError in sendNotification: {error}')
 
 				return False
-
-
-	''' LSP ID -> name, flag dictionary
-	Used to shorten the names, so we don't end up with super long messages
-	Also gives us a pretty flag! 
-	
-	This dictionary also maps custom shortened names (Northrop Grumman, Starsem)
-	to their real ID.
-	'''
-	LSP_IDs = {
-	121: 	['SpaceX', '🇺🇸'],
-	147: 	['Rocket Lab', '🇺🇸'],
-	99: 	['Northrop Grumman', '🇺🇸'],
-	115: 	['Arianespace', '🇪🇺'],
-	124: 	['ULA', '🇺🇸'],
-	98: 	['Mitsubishi Heavy Industries', '🇯🇵'],
-	88: 	['CASC', '🇨🇳'],
-	190: 	['Antrix Corporation', '🇮🇳'],
-	122: 	['Sea Launch', '🇷🇺'],
-	118: 	['ILS', '🇺🇸🇷🇺'],
-	193: 	['Eurockot', '🇪🇺🇷🇺'],
-	119:	['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'],
-	123:	['Starsem', '🇪🇺🇷🇺'],
-	194:	['ExPace', '🇨🇳']
-	}
 
 	launch_id = launch_row[1]
 	keywords = int(launch_row[2])
@@ -3774,7 +3701,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.4.9'
+	VERSION = '0.4.11'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
@@ -3917,7 +3844,8 @@ if __name__ == '__main__':
 			'Sea Launch',
 			'Land Launch',
 			'Starsem SA',
-			'International Launch Services'],
+			'International Launch Services',
+			'ROSCOSMOS'],
 		
 		'IND': [
 			'ISRO',
@@ -3926,6 +3854,39 @@ if __name__ == '__main__':
 		'JPN': [
 			'JAXA',
 			'Mitsubishi Heavy Industries']
+	}
+
+	global provider_name_map
+	provider_name_map = {
+		'Rocket Lab': 'Rocket Lab Ltd',
+		'Northrop Grumman': 'Northrop Grumman Innovation Systems',
+		'ROSCOSMOS': 'Russian Federal Space Agency (ROSCOSMOS)'
+	}
+
+	''' LSP ID -> name, flag dictionary
+	Used to shorten the names, so we don't end up with super long messages
+	
+	This dictionary also maps custom shortened names (Northrop Grumman, Starsem)
+	to their real ID. Also used in cases where a weird name is used by LL, like...
+		RFSA for Roscosmos
+	'''
+	global LSP_IDs
+	LSP_IDs = {
+	121: 	['SpaceX', '🇺🇸'],
+	147: 	['Rocket Lab', '🇺🇸'],
+	99: 	['Northrop Grumman', '🇺🇸'],
+	115: 	['Arianespace', '🇪🇺'],
+	124: 	['ULA', '🇺🇸'],
+	98: 	['Mitsubishi Heavy Industries', '🇯🇵'],
+	88: 	['CASC', '🇨🇳'],
+	190: 	['Antrix Corporation', '🇮🇳'],
+	122: 	['Sea Launch', '🇷🇺'],
+	118: 	['ILS', '🇺🇸🇷🇺'],
+	193: 	['Eurockot', '🇪🇺🇷🇺'],
+	119:	['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'],
+	123:	['Starsem', '🇪🇺🇷🇺'],
+	194:	['ExPace', '🇨🇳'],
+	63:		['Roscosmos', '🇷🇺']
 	}
 
 	# start command timers, store in memory instead of storage to reduce disk writes
