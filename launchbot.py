@@ -148,6 +148,8 @@ def handle(msg):
 			
 			return
 	except:
+		if debug_log:
+			logging.info(f'❓ msg object has no from:id property. Object: {msg}')
 		pass
 
 	# regular text — check if it's feedback. If not, return.
@@ -2790,7 +2792,7 @@ def getLaunchUpdates(launch_ID):
 						updateStats({'notifications':len(active_chats)})
 
 						# remove old notifs if possible
-						removePreviousNotification(launch_id)
+						removePreviousNotification(launch_id, lsp_short if len(lsp_name) > len('Virgin Orbit') else lsp_name)
 
 						# store identifiers
 						storeIdentifiers(launch_id, msg_identifiers)
@@ -3005,7 +3007,7 @@ def cleanNotifyDatabase(chat):
 	conn.close()
 
 
-def removePreviousNotification(launch_id):
+def removePreviousNotification(launch_id, keyword):
 	''' Before storing the new identifiers, remove the old notification if possible. '''
 	launch_dir = 'data/launch'
 	if not os.path.isfile(os.path.join(launch_dir, 'sent-notifications.db')):
@@ -3027,23 +3029,29 @@ def removePreviousNotification(launch_id):
 			logging.info(f'⚠️ Error getting launch_id! Got {len(query_return)} launches. Ret: {query_return}')
 		return
 
-	identifiers, success_count = query_return[0].split(','), 0
+	identifiers, success_count, muted_count = query_return[0].split(','), 0, 0
 	for id_pair in identifiers:
 		id_pair = id_pair.split(':')
-		message_identifier = (id_pair[0], id_pair[1])
+		chat_id, message_id = id_pair[0], id_pair[1]
+		message_identifier = (chat_id, message_id)
 
-		# try removing the message
-		try:
-			ret = bot.deleteMessage(message_identifier)
-			if ret is not False:
-				success_count += 1
-		except Exception as error:
+		# try removing the message, if launch has not been muted
+		if loadMuteStatus(chat_id, launch_id, keyword) == 0:
+			try:
+				ret = bot.deleteMessage(message_identifier)
+				if ret is not False:
+					success_count += 1
+			except Exception as error:
+				if debug_log:
+					logging.info(f'⚠️ Unable to delete previous notification. Unique ID: {message_identifier}.'
+								 f'Got error: {error}')
+		else:
+			muted_count += 1
 			if debug_log:
-				logging.info(f'⚠️ Unable to delete previous notification. Unique ID: {message_identifier}.'
-							 f'Got error: {error}')
+				logging.info(f'🔍 Not removing previous notification due to mute status for chat={anonymizeID(chat_id)}')
 
 	if debug_log:
-		logging.info(f'✅ Successfully removed {success_count} previously sent notifications!')
+		logging.info(f'✅ Successfully removed {success_count} previously sent notifications! {muted_count} avoided due to mute status.')
 
 
 def storeIdentifiers(launch_id, msg_identifiers):
@@ -3428,7 +3436,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 	updateStats({'notifications':len(notify_list)})
 
 	# remove previous notification
-	removePreviousNotification(launch_id)
+	removePreviousNotification(launch_id, cmd_keyword)
 
 	# store msg_identifiers
 	msg_identifiers = ','.join(msg_identifiers)
