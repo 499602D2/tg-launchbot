@@ -2998,7 +2998,7 @@ def removePreviousNotification(launch_id, keyword):
 			logging.info(f'⚠️ Error getting launch_id! Got {len(query_return)} launches. Ret: {query_return}')
 		return
 
-	identifiers, success_count, muted_count = query_return[0].split(','), 0, 0
+	identifiers, success_count, muted_count = query_return[0][0].split(','), 0, 0
 	for id_pair in identifiers:
 		id_pair = id_pair.split(':')
 		chat_id, message_id = id_pair[0], id_pair[1]
@@ -3718,7 +3718,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.4.11'
+	VERSION = '0.4.12'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
