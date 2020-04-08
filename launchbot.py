@@ -1168,8 +1168,11 @@ def flightSchedule(msg, command_invoke):
 		5: 'May', 6: 'June', 7: 'July', 8: 'August',
 		9: 'Septemper', 10: 'October', 11: 'November', 12: 'December' }
 
+	# if a shortened name makes no sense, use this
 	providers_short = {
-		'RL': 'Rocket Lab' }
+		'RL': 'Rocket Lab',
+		'RFSA': 'Roscosmos',
+		'VO': 'Virgin Orbit'}
 
 	flag_map = {
 		'FR': '🇪🇺', 'USA': '🇺🇸', 'EU': '🇪🇺', 'RUS': '🇷🇺',
@@ -2456,6 +2459,11 @@ def getLaunchUpdates(launch_ID):
 			
 			if 'Unknown Pad' not in location_name:
 				pad = location_name.split(', ')[0]
+				try:
+					pad_loc = location_name.split(', ')[1]
+					pad = f'{pad}, {pad_loc}'
+				except:
+					pass
 			else:
 				pad = launch_json['location']['name']
 
@@ -2811,6 +2819,15 @@ def getLaunchUpdates(launch_ID):
 		json.dump(launch_json, json_data, indent=4)
 
 	# if we got nothing in return from the API
+	if 'launches' not in launch_json:
+		if debug_log:
+			logging.info(f'🛑 Error in LL API request (2)')
+			logging.info(f'⚠️ Trying again after 3 seconds...')
+
+		time.sleep(3)
+		getLaunchUpdates(None)
+		return
+
 	if len(launch_json['launches']) == 0:
 		if debug_log:
 			if API_RESPONSE.status_code == 404:
@@ -2968,7 +2985,7 @@ def removePreviousNotification(launch_id, keyword):
 	conn = sqlite3.connect(os.path.join(launch_dir, 'sent-notifications.db'))
 	c = conn.cursor()
 
-	c.execute("SELECT msg_identifiers FROM identifiers WHERE id = ?", (launch_id))
+	c.execute("SELECT msg_identifiers FROM identifiers WHERE id = ?", (launch_id,))
 	query_return = c.fetchall()
 
 	if len(query_return) == 0:
@@ -3362,13 +3379,6 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 	conn.close()
 	updateStats({'notifications':len(notify_list)})
 
-	# remove previous notification
-	removePreviousNotification(launch_id, cmd_keyword)
-
-	# store msg_identifiers
-	msg_identifiers = ','.join(msg_identifiers)
-	storeIdentifiers(launch_id, msg_identifiers)
-
 	# set notification as sent; if 12 hour sent but 24 hour not sent, disable "higher" ones as well
 	conn.close()
 	conn = sqlite3.connect(os.path.join(launch_dir, 'launches.db'))
@@ -3395,6 +3405,13 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 
 	conn.commit()
 	conn.close()
+
+	# remove previous notification
+	removePreviousNotification(launch_id, cmd_keyword)
+
+	# store msg_identifiers
+	msg_identifiers = ','.join(msg_identifiers)
+	storeIdentifiers(launch_id, msg_identifiers)
 
 
 # updates our stats with the given input
