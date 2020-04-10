@@ -3450,15 +3450,14 @@ def statistics(msg):
 		if len(query_return) != 0:
 			notifs = query_return[0][0]
 			api_reqs = query_return[0][1]
-			db_updates = query_return[0][2]
 			commands = query_return[0][3]
 			data = query_return[0][4]
 
 		else:
-			commands = notifs = api_reqs = db_updates = data = 0
+			commands = notifs = api_reqs = data = 0
 
 	except sqlite3.OperationalError:
-		commands = notifs = api_reqs = db_updates = data = 0
+		commands = notifs = api_reqs = data = 0
 
 	# get system uptime
 	up = uptime()
@@ -3653,7 +3652,7 @@ def createStatsDatabase():
 
 # if running for the first time
 def firstRun():
-	print("Looks like you're running LaunchBot for the first time")
+	print("Looks like you're running LaunchBot for the first time!")
 	print("Let's start off by creating some folders.")
 	time.sleep(2)
 	
@@ -3908,8 +3907,8 @@ if __name__ == '__main__':
 
 	# start command timers, store in memory instead of storage to reduce disk writes
 	global command_cooldowns, chat_command_calls, spammers, ignored_users
-	command_cooldowns, chat_command_calls, spammers = {}, {}, set()
-	ignored_users = set()
+	command_cooldowns, chat_command_calls = {}, {}
+	spammers, ignored_users = set(), set()
 
 	# initialize the timer dict to avoid spam
 	command_cooldowns['commandTimers'] = {}
@@ -3927,9 +3926,7 @@ if __name__ == '__main__':
 		print(f"| LaunchBot.py version {VERSION}")
 		print(f"| Don't close this window or set the computer to sleep. Quit: ctrl + c.")
 		time.sleep(0.5)
-
-		status_msg = f'  Connected to Telegram! ✅'
-		sys.stdout.write('%s\r' % status_msg)
+		sys.stdout.write('%s\r' % '  Connected to Telegram! ✅')
 
 	# schedule regular database updates and NET checks
 	schedule.every(2).minutes.do(getLaunchUpdates, launch_ID=None)
@@ -3947,25 +3944,20 @@ if __name__ == '__main__':
 	# fancy prints so the user can tell that we're actually doing something
 	if not debug_mode:
 		cursor.hide()
-		print_map = {0:'|', 1:'/', 2:'—', 3:'\\', 4:'|', 5:'/', 6:'—', 7:'\\'}
+		print_map = {0:'|', 1:'/', 2:'—', 3:'\\'}
 		try:
 			while True:
 				schedule.run_pending()
-				for i in range(0,8):
-					print_char = print_map[i]
-					sys.stdout.write('%s\r' % print_char)
+				for i in range(0,4):
+					sys.stdout.write('%s\r' % print_map[i])
 					sys.stdout.flush()
 					time.sleep(1)
 		
 		except KeyboardInterrupt:
 			cursor.show()
-			run_time = datetime.datetime.now() - STARTUP_TIME
-			if debug_log and run_time.seconds > 3600:
-				logging.info(f'Program ending. Runtime: {run_time}.')
-			
-			sys.exit(f'Program ending... Runtime: {run_time}.')
+			sys.exit(f'Program ending... Runtime: {datetime.datetime.now() - STARTUP_TIME}.')
 
 	else:
 		while True:
 			schedule.run_pending()
-			time.sleep(2)
+			time.sleep(3)
