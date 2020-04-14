@@ -111,7 +111,7 @@ def handle(msg):
 
 		⚠️ *Note!* Commands are only callable by group *admins* and *moderators*
 
-		*Changelog* for version *{VERSION}* (April 2020)
+		*Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (April 2020)
 		- You now get notified about launches being postponed (*user request* ✍️)
 		- Added support for Astra Space, a new 🇺🇸 launch provider
 		- Fix postpone notifications sending despite launch being muted
@@ -235,7 +235,7 @@ def handle(msg):
 
 				⚠️ *Note!* Commands are only callable by group *admins* and *moderators*
 
-				*Changelog* for version *{VERSION}* (April 2020)
+				*Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (April 2020)
 				- You now get notified about launches being postponed (*user request* ✍️)
 				- Added support for Astra Space, a new 🇺🇸 launch provider
 				- Fix postpone notifications sending despite launch being muted
@@ -1005,6 +1005,21 @@ def anonymizeID(chat):
 	return sha1(str(chat).encode('utf-8')).hexdigest()[0:6]
 
 
+def name_from_provider_id(provider_id):
+	launch_dir = 'data/launch'
+	conn = sqlite3.connect(os.path.join(launch_dir,'launches.db'))
+	c = conn.cursor()
+
+	# get provider name corresponding to this ID
+	c.execute("SELECT lsp_name FROM launches WHERE keywords = ?",(provider_id,))
+	query_return = c.fetchall()
+
+	if len(query_return) != 0:
+		return query_return[0][0]
+	
+	return provider_id
+
+
 def toggleLaunchMute(chat, launch_provider, launch_id, toggle):
 	launch_dir = 'data/launch'
 	if not os.path.isfile(os.path.join(launch_dir,'notifications.db')):
@@ -1013,6 +1028,8 @@ def toggleLaunchMute(chat, launch_provider, launch_id, toggle):
 	try:
 		int(launch_provider)
 		logging.info(f'Integer launch_provider value provided to toggleLaunchMute! launch_provider={launch_provider}, launch_id={launch_id}, toggle={toggle}')
+		launch_provider = name_from_provider_id(launch_provider)
+		logging.info(f'Related integer value to provider name: {launch_provider}')
 	except:
 		pass
 
@@ -1831,7 +1848,8 @@ def spxAPIHandler():
 						logging.info(f'⚠️ Got KeyError in spxAPIHandler(multiParse()), returning: {error}')
 						logging.info(f'⚠️ range: 0,{launch_count}, i:{i}, launch_json: {launch_json}')
 
-				except:
+				except Exception as error:
+					logging.info(f'Other error in multiParse: {error}')
 					pass
 
 				return
@@ -1981,9 +1999,14 @@ def spxAPIHandler():
 
 	# parse all launches one-by-one in the returned json-file
 	try:
-		launch_json = API_RESPONSE.json()
-	except:
+		#launch_json = API_RESPONSE.json()
+		launch_json = json.loads(API_RESPONSE.text)
+	except Exception as error:
+		if debug_log:
+			logging.info(f'Error reading launch_json in spxAPIHandler: {error}')
+
 		return
+		
 
 	multiParse(launch_json, len(launch_json))
 
@@ -2754,7 +2777,8 @@ def getLaunchUpdates(launch_ID):
 						# remove old notifs if possible
 						removePreviousNotification(launch_id, lsp_short if len(lsp_name) > len('Virgin Orbit') else lsp_name)
 
-						# store identifiers
+						# convert identifiers to string, store
+						msg_identifiers = ','.join(msg_identifiers)
 						storeIdentifiers(launch_id, msg_identifiers)
 
 						if debug_log:
@@ -2784,7 +2808,7 @@ def getLaunchUpdates(launch_ID):
 
 	# what we're throwing at the API
 	API_REQUEST = f'launch'
-	PARAMS = {'mode': 'verbose', 'limit': 500, 'startdate': today_call}
+	PARAMS = {'mode': 'verbose', 'limit': 50, 'startdate': today_call}
 	API_URL = 'https://launchlibrary.net'
 	API_VERSION = '1.4'
 
@@ -2811,8 +2835,9 @@ def getLaunchUpdates(launch_ID):
 
 	# pull json, dump for later inspection
 	try:
-		launch_json = API_RESPONSE.json()
-	except:
+		launch_json = json.loads(API_RESPONSE.text)
+	except Exception as error:
+		logging.info(f'Error reading launch_json: {error}')
 		return
 	
 	with open(os.path.join('data', 'launch', 'launch-json.json'), 'w') as json_data:
@@ -3717,7 +3742,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.4.12'
+	VERSION = '0.4.13'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
