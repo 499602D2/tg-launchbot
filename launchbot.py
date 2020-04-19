@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # /usr/bin/python3
 
-import os, sys, time, ssl, datetime, logging, math, requests, inspect, signal
+import os, sys, time, ssl, datetime, logging, math, requests, inspect, signal, random
 import telepot, sqlite3, cursor, difflib, schedule
 import ujson as json
 
@@ -181,7 +181,7 @@ def handle(msg):
 	# sees a valid command
 	if content_type == 'text':
 		command_split = [arg.lower() for arg in command_split]
-		if command_split[0] in VALID_COMMANDS or command_split[0] in VALID_COMMANDS_ALT:
+		if command_split[0] in VALID_COMMANDS:
 			# command we saw
 			command = command_split[0]
 
@@ -286,8 +286,7 @@ def handle(msg):
 			updateStats({'commands':1})
 
 		else:
-			if debug_log:
-				logging.info(f'❔ Unknown command received in chat {anonymizeID(chat)}: {command_split}. Returning.')
+			return
 
 
 def callbackHandler(msg):
@@ -311,10 +310,12 @@ def callbackHandler(msg):
 		except:
 			pass
 
+		rand_planet = random.choice(('🌍', '🌎', '🌏'))
+
 		if all_flag:
-			global_text = f'🌍 Press to enable all' if disabled_count != 0 else f'🌍 Press to disable all'
+			global_text = f'{rand_planet} Press to enable all' if disabled_count != 0 else f'{rand_planet} Press to disable all'
 		elif not all_flag:
-			global_text = f'🌍 Press to enable all'
+			global_text = f'{rand_planet} Press to enable all'
 
 		keyboard = InlineKeyboardMarkup(
 			inline_keyboard = [
@@ -484,7 +485,7 @@ def callbackHandler(msg):
 				return
 
 	# callbacks only supported for notify at the moment; verify it's a notify command
-	if input_data[0] not in {'notify', 'mute', 'next_flight', 'schedule'}:
+	if input_data[0] not in ('notify', 'mute', 'next_flight', 'schedule', 'prefs'):
 		if debug_log:
 			logging.info(f'⚠️ Incorrect input data in callbackHandler! input_data={input_data} | {(1000*(timer() - start)):.0f} ms')
 
@@ -506,7 +507,7 @@ def callbackHandler(msg):
 	}
 
 	# used to update the message
-	msg_identifier = (msg['message']['chat']['id'],msg['message']['message_id'])
+	msg_identifier = (msg['message']['chat']['id'], msg['message']['message_id'])
 
 	if input_data[0] == 'notify':
 		# user requests a list of launch providers for a country code
@@ -1001,6 +1002,70 @@ def toggleNotification(chat, toggle_type, keyword, all_toggle_new_status):
 		return all_toggle_new_status
 
 
+def get_notif_preference(chat):
+	'''
+	Returns the notification preferences (24,12,1,5) as a tuple of boolean values
+	'''
+	if not os.path.isfile(os.path.join('data', 'preferences.db')):
+		return None
+
+	conn = sqlite3.connect(os.path.join('data', 'preferences.db'))
+	c = conn.cursor()
+
+	c.execute("SELECT notifications FROM preferences WHERE chat = ?",(chat,))
+	query_return = c.fetchall()
+
+	if len(query_return) == 0:
+		return (1, 1, 1, 1)
+
+	notif_preferences = query_return[0][0].split(',')
+	return (
+		notif_preferences[0], notif_preferences[1],
+		notif_preferences[2], notif_preferences[3]
+		)
+
+
+def chat_preferences(chat):
+	'''
+	This function is called when user wants to interact with their preferences.
+	Sends the user an interactive keyboard to view and edit their prefs with.
+	'''
+	if not os.path.isfile(os.path.join('data', 'preferences.db')):
+		conn = sqlite3.connect(os.path.join('data', 'preferences.db'))
+		c = conn.cursor()
+		try:
+			c.execute("CREATE TABLE preferences (chat TEXT, timezone TEXT, notifications TEXT, PRIMARY KEY (chat))")
+			conn.commit()
+		except sqlite3.OperationalError:
+			pass
+
+		conn.close()
+
+
+	message_text = f'''
+	⚙️ This tool allows you to set your timezone and choose the notifications (24h, 12h, 1h, 5m) you receive.
+
+	Your timezone is used when sending notifications to show your local time, instead of the default UTC+0.
+
+	Press the buttons below to get started!
+	'''
+
+	rand_planet = random.choice(('🌍', '🌎', '🌏'))
+	keyboard = InlineKeyboardMarkup(
+				inline_keyboard = [
+					[InlineKeyboardButton(text=f'{rand_planet} Timezone settings', callback_data=f'prefs/timezone')],
+					[InlineKeyboardButton(text='⏰ Notification settings', callback_data=f'prefs/notifs')],
+					[InlineKeyboardButton(text='✅ Exit', callback_data=f'prefs/done')]
+				]
+			)
+
+	bot.sendMessage(
+		chat, inspect.cleandoc(message_text),
+		parse_mode='Markdown',
+		reply_markup=keyboard
+		)
+
+
 def anonymizeID(chat):
 	return sha1(str(chat).encode('utf-8')).hexdigest()[0:6]
 
@@ -1027,9 +1092,10 @@ def toggleLaunchMute(chat, launch_provider, launch_id, toggle):
 
 	try:
 		int(launch_provider)
-		logging.info(f'Integer launch_provider value provided to toggleLaunchMute! launch_provider={launch_provider}, launch_id={launch_id}, toggle={toggle}')
+		logging.info(f'⚠️ Integer launch_provider value provided to toggleLaunchMute! \
+			launch_provider={launch_provider}, launch_id={launch_id}, toggle={toggle}')
 		launch_provider = name_from_provider_id(launch_provider)
-		logging.info(f'Related integer value to provider name: {launch_provider}')
+		logging.info(f'⚙️ Related integer value to provider name: {launch_provider}')
 	except:
 		pass
 
@@ -1113,7 +1179,8 @@ def notify(msg):
 	notification_statuses, disabled_count = getUserNotificationsStatus(chat, providers), 0
 	disabled_count = 1 if 0 in notification_statuses.values() else 0
 
-	global_text = f'🌍 Press to enable all' if disabled_count != 0 else f'🌍 Press to disable all'
+	rand_planet = random.choice(('🌍', '🌎', '🌏'))
+	global_text = f'{rand_planet} Press to enable all' if disabled_count != 0 else f'{rand_planet} Press to disable all'
 	keyboard = InlineKeyboardMarkup(
 			inline_keyboard = [
 				[InlineKeyboardButton(text=global_text, callback_data=f'notify/toggle/all/all')],
@@ -1999,7 +2066,6 @@ def spxAPIHandler():
 
 	# parse all launches one-by-one in the returned json-file
 	try:
-		#launch_json = API_RESPONSE.json()
 		launch_json = json.loads(API_RESPONSE.text)
 	except Exception as error:
 		if debug_log:
@@ -2836,8 +2902,13 @@ def getLaunchUpdates(launch_ID):
 	# pull json, dump for later inspection
 	try:
 		launch_json = json.loads(API_RESPONSE.text)
+		#launch_json = API_RESPONSE.json()
 	except Exception as error:
 		logging.info(f'Error reading launch_json: {error}')
+		with open(os.path.join('data', 'json-parsing-error.txt'), 'w') as error_file:
+			error_file.write(f'Error: {error}')
+			error_file.write(API_RESPONSE.text)
+			
 		return
 	
 	with open(os.path.join('data', 'launch', 'launch-json.json'), 'w') as json_data:
@@ -3742,7 +3813,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.4.13'
+	VERSION = '0.4.14'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
@@ -3841,18 +3912,18 @@ if __name__ == '__main__':
 	BOT_ID = bot_specs['id']
 
 	# valid commands we monitor for
-	global VALID_COMMANDS, VALID_COMMANDS_ALT
+	global VALID_COMMANDS
 	VALID_COMMANDS = {
-	'/start', '/help', 
-	'/next', '/notify',
-	'/statistics', '/schedule',
-	'/feedback'
+		'/start', '/help', '/next', '/notify',
+		'/statistics', '/schedule', '/feedback'
 	}
 
 	# generate the "alternate" commands we listen for, as in ones suffixed with the bot's username 
-	VALID_COMMANDS_ALT = set()
+	alt_commands = set()
 	for command in VALID_COMMANDS:
-		VALID_COMMANDS_ALT.add(f'{command}@{BOT_USERNAME.lower()}')
+		alt_commands.add(f'{command}@{BOT_USERNAME.lower()}')
+
+	VALID_COMMANDS = VALID_COMMANDS.union(alt_commands)
 
 	# all the launch providers supported; used in many places, so declared globally here
 	global provider_by_cc
@@ -3969,15 +4040,15 @@ if __name__ == '__main__':
 	# fancy prints so the user can tell that we're actually doing something
 	if not debug_mode:
 		cursor.hide()
-		print_map = {0:'|', 1:'/', 2:'—', 3:'\\'}
+		
 		try:
 			while True:
 				schedule.run_pending()
-				for i in range(0,4):
-					sys.stdout.write('%s\r' % print_map[i])
+				for char in ('|', '/', '—', '\\'):
+					sys.stdout.write('%s\r' % char)
 					sys.stdout.flush()
 					time.sleep(1)
-		
+
 		except KeyboardInterrupt:
 			cursor.show()
 			sys.exit(f'Program ending... Runtime: {datetime.datetime.now() - STARTUP_TIME}.')
