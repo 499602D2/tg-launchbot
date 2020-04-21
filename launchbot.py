@@ -1029,6 +1029,11 @@ def chat_preferences(chat):
 	'''
 	This function is called when user wants to interact with their preferences.
 	Sends the user an interactive keyboard to view and edit their prefs with.
+
+	Functions:
+	- set timezone
+	- set notification times
+	- allow/disallow regular users to call bot's commands
 	'''
 	if not os.path.isfile(os.path.join('data', 'preferences.db')):
 		conn = sqlite3.connect(os.path.join('data', 'preferences.db'))
@@ -1635,6 +1640,10 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 			lsp_flag = flag_map[country_code]
 		except:
 			lsp_flag = None
+
+	# parse pad to convert common names to shorter ones
+	if 'LC-' not in pad_name:
+		pad_name = pad_name.replace('Space Launch Complex ', 'SLC-').replace('Launch Complex ', 'LC-')
 
 	# inform the user whether they'll be notified or not
 	if user_notif_enabled:
@@ -3260,6 +3269,10 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 	pad = query_return[0][6]
 	info = query_return[0][7]
 
+	# parse pad to convert common names to shorter ones
+	if 'LC-' not in pad:
+		pad = pad.replace('Space Launch Complex ', 'SLC-').replace('Launch Complex ', 'LC-')
+
 	if info is not None:
 		# if the info text is longer than 60 words, pick the first three sentences.
 		if len(info.split(' ')) > 60:
@@ -3359,8 +3372,9 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 		if spx_orbit_info != '' and spx_orbit_info != None:
 			orbit_map = {
 			'VLEO': 'Very low-Earth orbit', 'SO': 'Sub-orbital', 'LEO': 'Low-Earth orbit',
-			'SSO': 'Sun-synchronous', 'MEO': 'Medium-Earth orbit', 'GEO': 'Geostationary (direct)',
-			'GTO': 'Geostationary (transfer)', 'ISS': 'ISS' }
+			'SSO': 'Sun-synchronous (SSO)', 'MEO': 'Medium-Earth orbit', 'GEO': 'Geostationary (direct)',
+			'GTO': 'Geostationary (transfer)', 'ISS': 'International Space Station'
+			}
 
 			if spx_orbit_info in orbit_map.keys():
 				spx_orbit_info = ' '.join("`{}`".format(word) for word in orbit_map[spx_orbit_info].split(' '))
