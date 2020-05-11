@@ -11,6 +11,10 @@ from timeit import default_timer as timer
 from telepot.loop import MessageLoop
 from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
 
+# TODO
+# add "show mission names/show vehicle names" to schedule
+# when parsing json, if launch no-longer found (and NET not passed), remove it from the DB
+
 # main loop-function for messages with flavor=chat
 def handle(msg):
 	try:
@@ -1545,6 +1549,7 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 			min_time = launch_unix.minute
 
 		launch_time = f'{launch_unix.hour}:{min_time}'
+	
 	else:
 		if launch_unix.second < 10:
 			sec_time = f'0{launch_unix.second}'
@@ -1712,6 +1717,13 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 			header += f'\n*Orbit* {spx_orbit_info}'
 
 	time_str = f'📅 {date_str}`,` `{launch_time} UTC`\n⏱ {eta_str}'
+
+	# if close to launch, include video url if possible
+	vid_url = query_return[-1]
+	if vid_url != '' and eta.seconds <= 3600:
+		vid_str = f'🔴 *Watch live* {vid_url}'
+	else:
+		vid_str = None
 	
 	# not a spx launch, or no info available
 	if not spx_str:
@@ -2349,7 +2361,7 @@ def spxInfoStrGen(launch_name, run_count):
 		except:
 			reuses = f'`♻️x?`'
 
-		spx_info = f'*Booster information*\n*Core* `{core_serial}` {reuses}\n{recovery_str}'
+		spx_info = f'*Booster information* 🚀\n*Core* `{core_serial}` {reuses}\n{recovery_str}'
 		if core_serial == 'Unknown':
 			spx_info = f'🚀 No booster information available yet'
 
@@ -2372,7 +2384,7 @@ def spxInfoStrGen(launch_name, run_count):
 				if 'Crew' in dragon_info[0] and dragon_crew != 'None':
 					if int(dragon_crew) != 0:
 						for i in range(int(dragon_crew)):
-							crew_str += '👨‍'
+							crew_str += '👨‍🚀'
 					else:
 						crew_str = 'Unmanned'
 				elif 'Crew' in dragon_info[0] and dragon_crew == 'None':
@@ -2381,7 +2393,7 @@ def spxInfoStrGen(launch_name, run_count):
 					crew_str = 'Cargo mission'
 
 				cap_type = ' '.join("`{}`".format(word) for word in dragon_info[0].split(' '))
-				fairing_info = f'*Dragon information*\n*Type* {cap_type}\n*Serial* `{dragon_serial}` {dragon_reused}\n*Crew* `{crew_str}`'
+				fairing_info = f'*Dragon information* 🐉\n*Type* {cap_type}\n*Serial* `{dragon_serial}` {dragon_reused}\n*Crew* `{crew_str}`'
 				spx_info = spx_info + '\n\n' + fairing_info
 
 		except:
@@ -2628,7 +2640,7 @@ def getLaunchUpdates(launch_ID):
 			
 			except: # launch found
 				# Launch is already found; check if the new NET matches the old NET.
-				c.execute('SELECT NET, notify24h, notify12h, notify60min, notify5min FROM launches WHERE id = ?',(launch_id,))
+				c.execute('SELECT NET, notify24h, notify12h, notify60min, notify5min, launched FROM launches WHERE id = ?',(launch_id,))
 				old_info = c.fetchall()[0]
 				old_NET = old_info[0]
 
@@ -2640,7 +2652,8 @@ def getLaunchUpdates(launch_ID):
 					'24h': old_info[1],
 					'12h': old_info[2],
 					'1h': old_info[3],
-					'5m': old_info[4]}
+					'5m': old_info[4]
+					}
 
 					net_diff = new_NET - old_NET
 
@@ -2649,7 +2662,7 @@ def getLaunchUpdates(launch_ID):
 							logging.info(f'🕑 NET for launch {launch_id} moved left. Old NET: {old_NET}, new NET: {new_NET}, diff: {net_diff}')
 
 					# at least 1 notification has already been sent
-					if 1 in notification_statuses.values() and net_diff >= 5*60:
+					if 1 in notification_statuses.values() and net_diff >= 5*60 and launched != 1:
 						disabled_statuses = set()
 						for key, status in notification_statuses.items():
 							if key == '24h' and status == 1:
@@ -2883,7 +2896,7 @@ def getLaunchUpdates(launch_ID):
 
 	# what we're throwing at the API
 	API_REQUEST = f'launch'
-	PARAMS = {'mode': 'verbose', 'limit': 50, 'startdate': today_call}
+	PARAMS = {'mode': 'verbose', 'limit': 250, 'startdate': today_call}
 	API_URL = 'https://launchlibrary.net'
 	API_VERSION = '1.4'
 
@@ -3827,7 +3840,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.4.14'
+	VERSION = '0.4.15'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
