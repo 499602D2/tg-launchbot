@@ -111,16 +111,18 @@ def handle(msg):
 		🚀 /next shows the next launches
 		🗓 /schedule displays a simple flight schedule
 		📊 /statistics tells various statistics about the bot
+		⚙️ /preferences allows you to edit your preferences.
 		✍️ /feedback allows you to send *feedback and suggestions*
 
 		⚠️ *Note!* Commands are only callable by group *admins* and *moderators*
 
-		*Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (April 2020)
-		- You now get notified about launches being postponed (*user request* ✍️)
-		- Added support for Astra Space, a new 🇺🇸 launch provider
-		- Fix postpone notifications sending despite launch being muted
-		- The bot now automatically removes previously sent notifications (*user request* ✍️)
-		- Tons of under-the-hood performance improvements and bug fixes
+		*Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (May 2020)
+		- You can now choose which notifications you receive (24 hours before, etc.) (*user request* ✍️)
+		- Fix postpone notifications being sent after a launch has happened
+
+		*Coming soon*
+		🌎 Timezone support
+		🛰 Command permissions support
 
 		*LaunchBot* version *{VERSION}* ✨
 		'''
@@ -235,16 +237,18 @@ def handle(msg):
 				🚀 /next shows the next launches
 				🗓 /schedule displays a simple flight schedule
 				📊 /statistics tells various statistics about the bot
+				⚙️ /preferences allows you to edit your preferences.
 				✍️ /feedback allows you to send *feedback and suggestions*
 
 				⚠️ *Note!* Commands are only callable by group *admins* and *moderators*
 
-				*Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (April 2020)
-				- You now get notified about launches being postponed (*user request* ✍️)
-				- Added support for Astra Space, a new 🇺🇸 launch provider
-				- Fix postpone notifications sending despite launch being muted
-				- The bot now automatically removes previously sent notifications (*user request* ✍️)
-				- Tons of under-the-hood performance improvements and bug fixes
+				*Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (May 2020)
+				- You can now choose which notifications you receive (24 hours before, etc.) (*user request* ✍️)
+				- Fix postpone notifications being sent after a launch has happened
+
+				*Coming soon*
+				🌎 Timezone support
+				🛰 Command permissions support
 
 				*LaunchBot* version *{VERSION}* ✨
 				'''
@@ -277,6 +281,10 @@ def handle(msg):
 			# /feedback
 			elif command == '/feedback':
 				feedback(msg)
+
+			# /preferences: edit chat preferences
+			elif command == '/preferences':
+				chat_preferences(chat)
 
 			if debug_log:
 				t_elapsed = timer() - start
@@ -778,6 +786,88 @@ def callbackHandler(msg):
 				if debug_log:
 					logging.info(f'⚠️ TelegramError updating message text: {exception}')
 
+	elif input_data[0] == 'prefs':
+		if input_data[1] not in ('timezone', 'notifs', 'cmds', 'done', 'main_menu'):
+			return
+
+		if input_data[1] == 'done':
+			bot.answerCallbackQuery(query_id, text=f'✅ All done!')
+			message_text = f'💫 Your preferences were saved!'
+			bot.editMessageText(msg_identifier, text=message_text, reply_markup=None, parse_mode='Markdown')
+
+		elif input_data[1] == 'main_menu':
+			rand_planet = random.choice(('🌍', '🌎', '🌏'))
+			bot.answerCallbackQuery(query_id, text=f'⏮ Main menu')
+			message_text = f'''
+			⚙️ *This tool* allows you to edit your chat's preferences.
+
+			These include...
+			⏰ Launch notification types (24 hour/12 hour etc.)
+			{rand_planet} Your timezone
+			🛰 Command permissions
+
+			Your timezone is used when sending notifications to show your local time, instead of the default UTC+0.
+			
+			Note: timezone and command permission support is coming later.
+			'''
+
+			keyboard = InlineKeyboardMarkup(
+							inline_keyboard = [
+								[InlineKeyboardButton(text='⏰ Notification settings', callback_data=f'prefs/notifs')],
+								[InlineKeyboardButton(text='✅ Exit', callback_data=f'prefs/done')]
+							]
+						)
+
+			'''
+			keyboard = InlineKeyboardMarkup(
+						inline_keyboard = [
+							[InlineKeyboardButton(text=f'{rand_planet} Timezone settings', callback_data=f'prefs/timezone')],
+							[InlineKeyboardButton(text='⏰ Notification settings', callback_data=f'prefs/notifs')],
+							[InlineKeyboardButton(text='🛰 Command settings', callback_data=f'prefs/cmds')],
+							[InlineKeyboardButton(text='✅ Exit', callback_data=f'prefs/done')]
+						]
+					)
+			'''
+
+			bot.editMessageText(msg_identifier, text=inspect.cleandoc(message_text), reply_markup=keyboard, parse_mode='Markdown')
+
+		elif input_data[1] == 'notifs':
+			if len(input_data) == 3:
+				if input_data[2] in ('24h', '12h', '1h', '5m'):
+					new_state = update_notif_preference(chat, input_data[2])
+					query_reply_text = f'{input_data[2]} notifications '
+					query_reply_text = query_reply_text.replace('h', ' hour') if 'h' in query_reply_text else query_reply_text.replace('m', ' minute')
+					query_reply_text += 'enabled 🔔' if new_state == 1 else 'disabled 🔕'
+					
+					bot.answerCallbackQuery(query_id, text=query_reply_text, show_alert=True)
+
+			# load notification preferences for chat, and map to emoji
+			notif_prefs = get_notif_preference(chat)
+			bell_dict = {1: '🔔', 0: '🔕'}
+
+			new_prefs_text = f'''
+			⏰ *Notification settings*
+
+			By default, notifications are sent 24h, 12h, 1h, and 5 minutes before a launch. You can change this behavior here.
+
+			Note that these settings apply to all launches. If you'd like to disable notifications, use /notify@{BOT_USERNAME} instead.
+
+			🔔 = currently enabled
+			🔕 = *not* enabled
+			'''
+
+			keyboard = InlineKeyboardMarkup(
+				inline_keyboard = [
+					[InlineKeyboardButton(text=f'24 hours before {bell_dict[notif_prefs[0]]}', callback_data=f'prefs/notifs/24h')],
+					[InlineKeyboardButton(text=f'12 hours before {bell_dict[notif_prefs[1]]}', callback_data=f'prefs/notifs/12h')],
+					[InlineKeyboardButton(text=f'1 hour before {bell_dict[notif_prefs[2]]}', callback_data=f'prefs/notifs/1h')],
+					[InlineKeyboardButton(text=f'5 minutes before {bell_dict[notif_prefs[3]]}', callback_data=f'prefs/notifs/5m')],
+					[InlineKeyboardButton(text='⏮ Return to menu', callback_data=f'prefs/main_menu')]
+				]
+			)
+
+			bot.editMessageText(msg_identifier, text=inspect.cleandoc(new_prefs_text), reply_markup=keyboard, parse_mode='Markdown')
+
 	updateStats({'commands':1})
 	return
 
@@ -1006,13 +1096,34 @@ def toggleNotification(chat, toggle_type, keyword, all_toggle_new_status):
 		return all_toggle_new_status
 
 
+def update_notif_preference(chat, notification_type):
+	# get current status
+	old_preferences = list(get_notif_preference(chat))
+
+	update_index = {'24h': 0, '12h': 1, '1h': 2, '5m': 3}[notification_type]
+	new_state = 1 if old_preferences[update_index] == 0 else 0
+
+	old_preferences[update_index] = new_state
+	new_preferences = ','.join(str(val) for val in old_preferences)
+
+	conn = sqlite3.connect(os.path.join('data', 'preferences.db'))
+	c = conn.cursor()
+
+	# preferences (chat TEXT, notifications TEXT, timezone TEXT, postpone INTEGER, commands TEXT, PRIMARY KEY (chat))
+	try:
+		c.execute("INSERT INTO preferences (chat, notifications, timezone, postpone, commands) VALUES (?, ?, ?, ?, ?)", (chat, new_preferences, None, 1, None))
+	except:
+		c.execute("UPDATE preferences SET notifications = ? WHERE chat = ?", (new_preferences, chat))
+
+	conn.commit()
+	conn.close()
+	return new_state
+
+
 def get_notif_preference(chat):
 	'''
-	Returns the notification preferences (24,12,1,5) as a tuple of boolean values
+	Returns the notification preferences (24h,12h,1h,5m) as a tuple of boolean values
 	'''
-	if not os.path.isfile(os.path.join('data', 'preferences.db')):
-		return None
-
 	conn = sqlite3.connect(os.path.join('data', 'preferences.db'))
 	c = conn.cursor()
 
@@ -1024,8 +1135,8 @@ def get_notif_preference(chat):
 
 	notif_preferences = query_return[0][0].split(',')
 	return (
-		notif_preferences[0], notif_preferences[1],
-		notif_preferences[2], notif_preferences[3]
+		int(notif_preferences[0]), int(notif_preferences[1]),
+		int(notif_preferences[2]), int(notif_preferences[3])
 		)
 
 
@@ -1043,26 +1154,41 @@ def chat_preferences(chat):
 		conn = sqlite3.connect(os.path.join('data', 'preferences.db'))
 		c = conn.cursor()
 		try:
-			c.execute("CREATE TABLE preferences (chat TEXT, timezone TEXT, notifications TEXT, PRIMARY KEY (chat))")
+			# chat - notififcations - postpone - timezone - commands
+			c.execute("CREATE TABLE preferences (chat TEXT, notifications TEXT, timezone TEXT, postpone INTEGER, commands TEXT, PRIMARY KEY (chat))")
 			conn.commit()
 		except sqlite3.OperationalError:
 			pass
 
 		conn.close()
 
-
+	rand_planet = random.choice(('🌍', '🌎', '🌏'))
 	message_text = f'''
-	⚙️ This tool allows you to set your timezone and choose the notifications (24h, 12h, 1h, 5m) you receive.
+	⚙️ *This tool* allows you to edit your chat's preferences.
+
+	These include...
+	⏰ Launch notification types (24 hour/12 hour etc.)
+	{rand_planet} Your timezone
+	🛰 Command permissions
 
 	Your timezone is used when sending notifications to show your local time, instead of the default UTC+0.
-
-	Press the buttons below to get started!
+	
+	Note: timezone and command permission support is coming later.
 	'''
 
-	rand_planet = random.choice(('🌍', '🌎', '🌏'))
+	'''
 	keyboard = InlineKeyboardMarkup(
 				inline_keyboard = [
 					[InlineKeyboardButton(text=f'{rand_planet} Timezone settings', callback_data=f'prefs/timezone')],
+					[InlineKeyboardButton(text='⏰ Notification settings', callback_data=f'prefs/notifs')],
+					[InlineKeyboardButton(text='🛰 Command settings', callback_data=f'prefs/cmds')],
+					[InlineKeyboardButton(text='✅ Exit', callback_data=f'prefs/done')]
+				]
+			)
+	'''
+
+	keyboard = InlineKeyboardMarkup(
+				inline_keyboard = [
 					[InlineKeyboardButton(text='⏰ Notification settings', callback_data=f'prefs/notifs')],
 					[InlineKeyboardButton(text='✅ Exit', callback_data=f'prefs/done')]
 				]
@@ -2987,7 +3113,7 @@ def reconstructMessageForMarkdown(message):
 	return message_reconstruct
 
 
-def getNotifyList(lsp, launch_id):
+def getNotifyList(lsp, launch_id, notif_class):
 	# pull all with matching keyword (LSP ID), matching country code notification, or an "all" marker (and no exclusion for this ID/country)
 	# Establish connection
 	launch_dir = 'data/launch'
@@ -3060,7 +3186,19 @@ def getNotifyList(lsp, launch_id):
 		elif lsp in enabled or 'All' in enabled:
 			notify_list.add(chat)
 
-	return notify_list
+	# parse for chats which have possibly disabled this notification type
+	final_list, ignored_due_to_pref = set(), set()
+	index = {'24h': 0, '12h': 1, '1h': 2, '5m': 3}[notif_class]
+	for chat in notify_list:
+		if list(get_notif_preference(chat))[index] == 1:
+			final_list.add(chat)
+		else:
+			ignored_due_to_pref.add(chat)
+
+	if debug_log:
+		logging.info(f'🔕 Not notifying {len(ignored_due_to_pref)} chat(s) due to preferences.')
+
+	return final_list
 
 
 # load mute status for chat and launch
@@ -3440,7 +3578,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 
 
 	# get chats to send the notification to
-	notify_list = getNotifyList(lsp, launch_id)
+	notify_list = getNotifyList(lsp, launch_id, notif_class)
 
 	if debug_log:
 		logging.info(f'Sending notifications for launch {launch_id} | NET: {launch_unix}')
@@ -3770,7 +3908,6 @@ def createStatsDatabase():
 
 	conn.commit()
 	conn.close()
-	return
 
 
 # if running for the first time
@@ -3840,7 +3977,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.4.15'
+	VERSION = '0.5.0'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
@@ -3942,7 +4079,8 @@ if __name__ == '__main__':
 	global VALID_COMMANDS
 	VALID_COMMANDS = {
 		'/start', '/help', '/next', '/notify',
-		'/statistics', '/schedule', '/feedback'
+		'/statistics', '/schedule', '/feedback',
+		'/preferences'
 	}
 
 	# generate the "alternate" commands we listen for, as in ones suffixed with the bot's username 
