@@ -272,7 +272,7 @@ def handle(msg):
 
 			# /statistics
 			elif command == '/statistics':
-				statistics(msg)
+				statistics(chat, 'cmd')
 
 			# /schedule)
 			elif command == '/schedule':
@@ -497,7 +497,7 @@ def callbackHandler(msg):
 				return
 
 	# callbacks only supported for notify at the moment; verify it's a notify command
-	if input_data[0] not in ('notify', 'mute', 'next_flight', 'schedule', 'prefs'):
+	if input_data[0] not in ('notify', 'mute', 'next_flight', 'schedule', 'prefs', 'stats'):
 		if debug_log:
 			logging.info(f'⚠️ Incorrect input data in callbackHandler! input_data={input_data} | {(1000*(timer() - start)):.0f} ms')
 
@@ -868,8 +868,23 @@ def callbackHandler(msg):
 
 			bot.editMessageText(msg_identifier, text=inspect.cleandoc(new_prefs_text), reply_markup=keyboard, parse_mode='Markdown')
 
-	updateStats({'commands':1})
-	return
+	elif input_data[0] == 'stats':
+		if input_data[1] == 'refresh':
+			new_text = inspect.cleandoc(statistics(chat, 'refresh'))
+			if msg['message']['text'] == new_text.replace('*',''):
+				bot.answerCallbackQuery(query_id, text=f'🔄 Statistics are up to date!')
+				return
+
+			keyboard = InlineKeyboardMarkup(
+				inline_keyboard=[[InlineKeyboardButton(
+					text='🔄 Refresh statistics', callback_data=f'stats/refresh')]])
+
+			bot.editMessageText(msg_identifier, text=new_text, reply_markup=keyboard, parse_mode='Markdown')
+			bot.answerCallbackQuery(query_id, text=f'🔄 Statistics refreshed!')
+
+	# update stats, except if command was a stats refresh
+	if input_data[0] != 'stats':
+		updateStats({'commands':1})
 
 
 # restrict command send frequency to avoid spam
@@ -2215,8 +2230,8 @@ def spxAPIHandler():
 	try:
 		launch_json = json.loads(API_RESPONSE.text)
 	except Exception as error:
-		if debug_log:
-			logging.info(f'Error reading launch_json in spxAPIHandler: {error}')
+		#if debug_log:
+			#logging.info(f'Error reading launch_json in spxAPIHandler: {error}')
 
 		return
 		
@@ -3052,7 +3067,7 @@ def getLaunchUpdates(launch_ID):
 		launch_json = json.loads(API_RESPONSE.text)
 		#launch_json = API_RESPONSE.json()
 	except Exception as error:
-		logging.info(f'Error reading launch_json: {error}')
+		#logging.info(f'Error reading launch_json: {error}')
 		with open(os.path.join('data', 'json-parsing-error.txt'), 'w') as error_file:
 			error_file.write(f'Error: {error}')
 			error_file.write(API_RESPONSE.text)
@@ -3694,10 +3709,7 @@ def updateStats(stats_update):
 
 
 # prints our stats
-def statistics(msg):
-	# chat to send the message to
-	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
-
+def statistics(chat, mode):
 	# read stats db
 	stats_conn = sqlite3.connect(os.path.join('data','statistics.db'))
 	stats_cursor = stats_conn.cursor()
@@ -3794,7 +3806,15 @@ def statistics(msg):
 	LaunchBot version *{VERSION}* ✨
 	'''
 
-	bot.sendMessage(chat, inspect.cleandoc(reply_str), parse_mode='Markdown')
+	if mode == 'refresh':
+		return inspect.cleandoc(reply_str)
+
+	# add a keyboard for refreshing
+	keyboard = InlineKeyboardMarkup(
+		inline_keyboard=[[InlineKeyboardButton(
+			text='🔄 Refresh statistics', callback_data=f'stats/refresh')]])
+
+	bot.sendMessage(chat, inspect.cleandoc(reply_str), reply_markup=keyboard, parse_mode='Markdown')
 
 
 # creates the spx database
@@ -3977,7 +3997,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.0'
+	VERSION = '0.5.1'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
