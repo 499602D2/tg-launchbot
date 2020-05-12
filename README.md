@@ -72,6 +72,6 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- unify spx-launch database and launch database into one file with separate tables
 	
-	- allow users to set their own notifications (i.e. 24h/12h/...)
+	- ✅ allow users to set their own notifications (i.e. 24h/12h/...)
 	
 	- allow users to set their own timezone
