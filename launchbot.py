@@ -111,14 +111,14 @@ def handle(msg):
 		🚀 /next shows the next launches
 		🗓 /schedule displays a simple flight schedule
 		📊 /statistics tells various statistics about the bot
-		⚙️ /preferences allows you to edit your preferences.
 		✍️ /feedback allows you to send *feedback and suggestions*
 
 		⚠️ *Note!* Commands are only callable by group *admins* and *moderators*
 
 		*Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (May 2020)
-		- You can now choose which notifications you receive (24 hours before, etc.) (*user request* ✍️)
-		- Fix postpone notifications being sent after a launch has happened
+		- Added preferences to /notify@{BOT_USERNAME} ⚙️
+		- You can now choose which notifications you receive (24h/12h etc.) *user request* ✍️
+		- Updates to the schedule command
 
 		*Coming soon*
 		🌎 Timezone support
@@ -237,14 +237,14 @@ def handle(msg):
 				🚀 /next shows the next launches
 				🗓 /schedule displays a simple flight schedule
 				📊 /statistics tells various statistics about the bot
-				⚙️ /preferences allows you to edit your preferences.
 				✍️ /feedback allows you to send *feedback and suggestions*
 
 				⚠️ *Note!* Commands are only callable by group *admins* and *moderators*
 
 				*Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (May 2020)
-				- You can now choose which notifications you receive (24 hours before, etc.) (*user request* ✍️)
-				- Fix postpone notifications being sent after a launch has happened
+				- Added preferences to /notify@{BOT_USERNAME} ⚙️
+				- You can now choose which notifications you receive (24h/12h etc.) *user request* ✍️
+				- Updates to the schedule command
 
 				*Coming soon*
 				🌎 Timezone support
@@ -276,15 +276,11 @@ def handle(msg):
 
 			# /schedule)
 			elif command == '/schedule':
-				flightSchedule(msg, True)
+				flight_schedule(msg, True, 'vehicle')
 
 			# /feedback
 			elif command == '/feedback':
 				feedback(msg)
-
-			# /preferences: edit chat preferences
-			elif command == '/preferences':
-				chat_preferences(chat)
 
 			if debug_log:
 				t_elapsed = timer() - start
@@ -341,6 +337,8 @@ def callbackHandler(msg):
 
 				[InlineKeyboardButton(text='🇮🇳 India', callback_data=f'notify/list/IND'),
 				InlineKeyboardButton(text='🇯🇵 Japan', callback_data=f'notify/list/JPN')],
+
+				[InlineKeyboardButton(text='⚙️ Edit your preferences', callback_data=f'prefs/main_menu')],
 				
 				[InlineKeyboardButton(text='✅ Save and exit', callback_data=f'notify/done')]
 			]
@@ -644,7 +642,7 @@ def callbackHandler(msg):
 		elif input_data[1] == 'done':
 			# new text + callback text
 			reply_text = f'✅ All done!'
-			msg_text = f'✅ *All done* — your preferences were saved!\n\n'
+			msg_text = f'✅ *All done!* Your preferences were saved!\n\n'
 			msg_text += f'ℹ️ If you need to adjust your settings in the future, use /notify@{BOT_USERNAME} to access these same settings!'
 
 			# now we have the keyboard; update the previous keyboard
@@ -762,15 +760,26 @@ def callbackHandler(msg):
 
 	elif input_data[0] == 'schedule':
 		#schedule/refresh
-		if input_data[1] != 'refresh':
+		if input_data[1] not in ('refresh', 'vehicle', 'mission'):
 			return
 
 		# pull new text and the keyboard
-		new_schedule_msg, keyboard = flightSchedule(msg, False)
+		if input_data[1] == 'refresh':
+			try:
+				new_schedule_msg, keyboard = flight_schedule(msg, False, input_data[2])
+			except IndexError: # let's not break """legacy""" compatibility
+				new_schedule_msg, keyboard = flight_schedule(msg, False, 'vehicle')
+		else:
+			new_schedule_msg, keyboard = flight_schedule(msg, False, input_data[1])
 
 		try:
 			bot.editMessageText(msg_identifier, text=new_schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
-			query_reply_text = f'🔄 Schedule updated!'
+
+			if input_data[1] == 'refresh':
+				query_reply_text = f'🔄 Schedule updated!'
+			else:
+				query_reply_text = '🚀 Vehicle schedule loaded!' if input_data[1] == 'vehicle' else '🛰 Mission schedule loaded!'
+
 			bot.answerCallbackQuery(query_id, text=query_reply_text)
 		
 		except telepot.exception.TelegramError as exception:
@@ -808,13 +817,13 @@ def callbackHandler(msg):
 
 			Your timezone is used when sending notifications to show your local time, instead of the default UTC+0.
 			
-			Note: timezone and command permission support is coming later.
+			*Note:* timezone and command permission support is coming later.
 			'''
 
 			keyboard = InlineKeyboardMarkup(
 							inline_keyboard = [
 								[InlineKeyboardButton(text='⏰ Notification settings', callback_data=f'prefs/notifs')],
-								[InlineKeyboardButton(text='✅ Exit', callback_data=f'prefs/done')]
+								[InlineKeyboardButton(text='⏮ Back to main menu', callback_data=f'notify/main_menu/refresh_text')]
 							]
 						)
 
@@ -848,9 +857,9 @@ def callbackHandler(msg):
 			new_prefs_text = f'''
 			⏰ *Notification settings*
 
-			By default, notifications are sent 24h, 12h, 1h, and 5 minutes before a launch. You can change this behavior here.
+			By default, notifications are sent 24h, 12h, 1h, and 5 minutes before a launch. 
 
-			Note that these settings apply to all launches. If you'd like to disable notifications, use /notify@{BOT_USERNAME} instead.
+			You can change this behavior here.
 
 			🔔 = currently enabled
 			🔕 = *not* enabled
@@ -870,6 +879,9 @@ def callbackHandler(msg):
 
 	elif input_data[0] == 'stats':
 		if input_data[1] == 'refresh':
+			if debug_log and chat != OWNER:
+				logging.info(f'🔄 {anonymizeID(chat)} refreshed statistics')
+
 			new_text = inspect.cleandoc(statistics(chat, 'refresh'))
 			if msg['message']['text'] == new_text.replace('*',''):
 				bot.answerCallbackQuery(query_id, text=f'🔄 Statistics are up to date!')
@@ -1132,6 +1144,10 @@ def update_notif_preference(chat, notification_type):
 
 	conn.commit()
 	conn.close()
+
+	if debug_log and chat != OWNER:
+		logging.info(f'📩 {anonymizeID(chat)} {"enabled (🔔)" if new_state == 1 else "disabled (🔕)"} {notification_type} notification')
+
 	return new_state
 
 
@@ -1316,6 +1332,8 @@ def notify(msg):
 
 	You can search for launch providers, like SpaceX (🇺🇸) or ISRO (🇮🇳), using the flags, or simply enable all!
 
+	⚙️ With preferences you can choose which notifications you receive (e.g. 24 hours before a launch)
+
 	🔔 = *currently enabled*
 	🔕 = *currently disabled*
 	'''
@@ -1343,6 +1361,8 @@ def notify(msg):
 
 				[InlineKeyboardButton(text='🇮🇳 India', callback_data=f'notify/list/IND'),
 				InlineKeyboardButton(text='🇯🇵 Japan', callback_data=f'notify/list/JPN')],
+
+				[InlineKeyboardButton(text='⚙️ Edit your preferences', callback_data=f'prefs/main_menu')],
 				
 				[InlineKeyboardButton(text='✅ Save and exit', callback_data=f'notify/done')]
 			]
@@ -1375,7 +1395,7 @@ def feedback(msg):
 
 
 # display a very simple schedule for upcoming flights (all)
-def flightSchedule(msg, command_invoke):
+def flight_schedule(msg, command_invoke, call_type):
 	if command_invoke:
 		content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
 	else:
@@ -1414,13 +1434,20 @@ def flightSchedule(msg, command_invoke):
 		'FRA': '🇪🇺'}
 
 	vehicle_map = {
-		'Falcon 9 Block 5': 'Falcon 9' }
+		'Falcon 9 Block 5': 'Falcon 9 B5' }
 
 	# pick 5 smallest, map into dict with dates
 	sched_dict = {}
 	for row, i in zip(query_return, range(len(query_return))):
 		launch_unix = datetime.datetime.utcfromtimestamp(row[9])
 		provider = row[3] if len(row[3]) <= len('Arianespace') else row[4]
+		mission = row[0]
+
+		if mission[0] == ' ':
+			mission = mission[1:]
+
+		if '(' in mission:
+			mission = mission[0:mission.index('(')]
 
 		if provider in providers_short.keys():
 			provider = providers_short[provider]
@@ -1438,11 +1465,14 @@ def flightSchedule(msg, command_invoke):
 		# shorten monospaced text length
 		provider = ' '.join("`{}`".format(word) for word in provider.split(' '))
 		vehicle = ' '.join("`{}`".format(word) for word in vehicle.split(' '))
+		mission = ' '.join("`{}`".format(word) for word in mission.split(' '))
 
-		if flag != None:
-			flt_str = f'{flag} {provider} {vehicle}'
-		else:
-			flt_str = f'{provider} {vehicle}'
+		flt_str = flag if flag != None else ''
+		if call_type == 'vehicle':
+			flt_str += f' {provider} {vehicle}'
+
+		elif call_type == 'mission':
+			flt_str += f' {mission}'
 
 		utc_str = f'{launch_unix.year}-{launch_unix.month}-{launch_unix.day}'
 
@@ -1454,7 +1484,7 @@ def flightSchedule(msg, command_invoke):
 		else:
 			sched_dict[utc_str].append(flt_str)
 
-	schedule_msg, i = '', 0
+	schedule_msg, i, today = '', 0, datetime.datetime.today()
 	for key, val in sched_dict.items():
 		if i != 0:
 			schedule_msg += '\n\n'
@@ -1469,7 +1499,23 @@ def flightSchedule(msg, command_invoke):
 		except:
 			suffix = 'th'
 
-		schedule_msg += f'*{month_map[int(ymd_split[1])]} {ymd_split[2]}{suffix}*\n'
+		# calc how many days until this date
+		launch_date = datetime.datetime.strptime(key, '%Y-%m-%d')
+		time_delta = launch_date - today
+
+		if time_delta.days <= 1:
+			eta_days = 'today' if time_delta.days == 0 else 'tomorrow'
+		elif time_delta.days < 7 and time_delta.days > 1:
+			eta_days = f"in {time_delta.days} days"
+		elif time_delta.days > 7 and time_delta.days < 30:
+			eta_days = f"in {int(time_delta.days/7)} {'week' if int(time_delta.days/7) == 1 else 'weeks'}"
+		elif time_delta.days >= 30:
+			if launch_date.month != today.month:
+				eta_days = f"next month"
+			else:
+				eta_days = f'later this month'
+
+		schedule_msg += f'*{month_map[int(ymd_split[1])]} {ymd_split[2]}{suffix}* {eta_days}\n'
 		for mission, j in zip(val, range(len(val))):
 			if j != 0:
 				schedule_msg += '\n'
@@ -1489,8 +1535,15 @@ def flightSchedule(msg, command_invoke):
 	header_info = f'_{reconstructMessageForMarkdown(header_note)}\n\n_'
 	schedule_msg = header + header_info + schedule_msg
 
+	# call change button
+	switch_text = '🚀 Vehicles' if call_type == 'mission' else '🛰 Missions'
+
 	inline_keyboard = []
-	inline_keyboard.append([InlineKeyboardButton(text='🔄 Refresh schedule', callback_data=f'schedule/refresh')])
+	inline_keyboard.append([
+		InlineKeyboardButton(text='🔄 Refresh', callback_data=f'schedule/refresh/{call_type}'),
+		InlineKeyboardButton(text=switch_text, callback_data=f"schedule/{'mission' if call_type == 'vehicle' else 'vehicle'}")]
+		)
+
 	keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 	if not command_invoke:
@@ -3997,7 +4050,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.1'
+	VERSION = '0.5.4'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
@@ -4099,8 +4152,7 @@ if __name__ == '__main__':
 	global VALID_COMMANDS
 	VALID_COMMANDS = {
 		'/start', '/help', '/next', '/notify',
-		'/statistics', '/schedule', '/feedback',
-		'/preferences'
+		'/statistics', '/schedule', '/feedback'
 	}
 
 	# generate the "alternate" commands we listen for, as in ones suffixed with the bot's username 
