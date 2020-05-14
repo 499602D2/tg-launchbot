@@ -991,8 +991,8 @@ def timerHandle(command, chat, user):
 
 						bot.sendMessage(
 							chat,
-							'⚠️ Please do not spam the bot. Your user ID has been blocked and all commands by '
-							'you will be ignored for an indefinite amount of time.')
+							'⚠️ *Please do not spam the bot.* Your user ID has been blocked and all commands by you will be ignored for an indefinite amount of time.',
+							parse_mode='Markdown')
 					else:
 						logging.info(f'''✅ Successfully avoided blocking a user on bot startup! Run_time was {run_time.seconds} seconds.
 							Spam offenses set to 0 for user {anonymizeID(user)} from original {spammer.get_offenses()}''')
@@ -1484,7 +1484,7 @@ def flight_schedule(msg, command_invoke, call_type):
 		else:
 			sched_dict[utc_str].append(flt_str)
 
-	schedule_msg, i, today = '', 0, datetime.datetime.today()
+	schedule_msg, i, today = '', 0, datetime.datetime.utcnow()
 	for key, val in sched_dict.items():
 		if i != 0:
 			schedule_msg += '\n\n'
@@ -1501,19 +1501,18 @@ def flight_schedule(msg, command_invoke, call_type):
 
 		# calc how many days until this date
 		launch_date = datetime.datetime.strptime(key, '%Y-%m-%d')
-		time_delta = launch_date - today
+		#time_delta = launch_date - today
 
-		if time_delta.days <= 1:
-			eta_days = 'today' if time_delta.days == 0 else 'tomorrow'
-		elif time_delta.days < 7 and time_delta.days > 1:
-			eta_days = f"in {time_delta.days} days"
-		elif time_delta.days > 7 and time_delta.days < 30:
-			eta_days = f"in {int(time_delta.days/7)} {'week' if int(time_delta.days/7) == 1 else 'weeks'}"
-		elif time_delta.days >= 30:
-			if launch_date.month != today.month:
-				eta_days = f"next month"
+		if (launch_date.day, launch_date.month) == (today.day, today.month):
+			eta_days = 'today'
+
+		else:
+			if launch_date.day - today.day == 1:
+				eta_days = 'tomorrow'
 			else:
-				eta_days = f'later this month'
+				eta_days = f'in {launch_date.day - today.day} days'
+
+		eta_days = provider = ' '.join("`{}`".format(word) for word in eta_days.split(' '))
 
 		schedule_msg += f'*{month_map[int(ymd_split[1])]} {ymd_split[2]}{suffix}* {eta_days}\n'
 		for mission, j in zip(val, range(len(val))):
@@ -3347,6 +3346,7 @@ def removePreviousNotification(launch_id, keyword):
 		logging.info(f'✅ Successfully removed {success_count} previously sent notifications! {muted_count} avoided due to mute status.')
 
 
+# store identifiers for sent messages so they can be removed later
 def storeIdentifiers(launch_id, msg_identifiers):
 	launch_dir = 'data/launch'
 	conn = sqlite3.connect(os.path.join(launch_dir, 'sent-notifications.db'))
@@ -3612,12 +3612,12 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 		# a different kind of message for 60m and 5m messages, which contain the video url (if one is available)
 		if notif_class in {'1h', '5m'} and launch_row[-1] != '': # if we're close to launch, add the video URL
 			vid_str = f'🔴 *Watch the launch* LinkTextGoesHere'
-			launch_str = message_header + '\n\n' + vid_str + '\n\n' + info_text + '\n\n' + message_footer
+			launch_str = message_header + '\n\n' + info_text + '\n\n' + vid_str + '\n' + message_footer
 
 		# no video provided, probably a Chinese launch
 		elif notif_class == '5m' and launch_row[-1] == '':
-			vid_str = '🔇 *No live video* available for this launch.'
-			launch_str = message_header + '\n\n' + vid_str + '\n\n' + info_text + '\n\n' + message_footer
+			vid_str = '🔇 *No live video* available.'
+			launch_str = message_header + '\n\n' + info_text + '\n\n' + vid_str + '\n' + message_footer
 
 		else:
 			launch_str = message_header + '\n\n' + info_text + '\n\n' + message_footer			
@@ -3633,9 +3633,9 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 			vid_str = f'🔴 *Watch the launch* LinkTextGoesHere'
 
 			if spx_str:
-				launch_str = message_header + '\n\n' + spx_info_str + '\n\n' + vid_str + '\n\n' + info_text + '\n\n' + message_footer
+				launch_str = message_header + '\n\n' + spx_info_str + '\n\n' + info_text + '\n\n' + vid_str + '\n' + message_footer
 			else:
-				launch_str = message_header + '\n\n' + vid_str + '\n\n' + info_text + '\n\n' + message_footer
+				launch_str = message_header + '\n\n' + info_text + '\n\n' + vid_str + '\n' + message_footer
 		
 		# handle whatever fuckiness there might be with the video URLs; i.e. no URL
 		else:
@@ -4050,7 +4050,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.4'
+	VERSION = '0.5.5'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
