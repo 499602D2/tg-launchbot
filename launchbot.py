@@ -3689,12 +3689,12 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 	# if NOT a SpaceX launch and we're close to launch, add the video URL
 	if lsp_name != 'SpaceX':
 		# a different kind of message for 60m and 5m messages, which contain the video url (if one is available)
-		if notif_class in {'1h', '5m'} and launch_row[-1] != '': # if we're close to launch, add the video URL
+		if notif_class in {'1h', '5m'} and launch_row[19] != '': # if we're close to launch, add the video URL
 			vid_str = f'🔴 *Watch the launch* LinkTextGoesHere'
 			launch_str = message_header + '\n\n' + info_text + '\n\n' + vid_str + '\n' + message_footer
 
 		# no video provided, probably a Chinese launch
-		elif notif_class == '5m' and launch_row[-1] == '':
+		elif notif_class == '5m' and launch_row[19] == '':
 			vid_str = '🔇 *No live video* available.'
 			launch_str = message_header + '\n\n' + info_text + '\n\n' + vid_str + '\n' + message_footer
 
@@ -3708,7 +3708,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 				launch_str = message_header + '\n\n' + spx_info_str + '\n\n' + info_text + '\n\n' + message_footer
 
 		# we're close to the launch, send the video URL
-		elif notif_class in {'1h', '5m'} and launch_row[-1] != '':
+		elif notif_class in {'1h', '5m'} and launch_row[19] != '':
 			vid_str = f'🔴 *Watch the launch* LinkTextGoesHere'
 
 			if spx_str:
@@ -3746,7 +3746,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 	global msg_identifiers
 	reached_people, start_time, msg_identifiers = 0, timer(), []
 	for chat in notify_list:
-		ret = sendNotification(chat, launch_str, launch_id, cmd_keyword, launch_row[-1], notif_class)
+		ret = sendNotification(chat, launch_str, launch_id, cmd_keyword, launch_row[19], notif_class)
 
 		if ret == True:
 			success = True
@@ -3759,7 +3759,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 		tries = 1
 		while ret != True:
 			time.sleep(2)
-			ret = sendNotification(chat, launch_str, launch_id, cmd_keyword, launch_row[-1], notif_class)
+			ret = sendNotification(chat, launch_str, launch_id, cmd_keyword, launch_row[19], notif_class)
 			tries += 1
 			
 			if ret == True:
