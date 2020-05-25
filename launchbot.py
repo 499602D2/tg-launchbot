@@ -218,12 +218,14 @@ def handle(msg):
 						if debug_log:
 							logging.info(f'✋ {command} called by a non-admin in {anonymizeID(chat)}, returning.')
 						return
+			'''
 			else:
 				try:
 					bot.sendChatAction(chat, action='typing')
 				except:
 					return
-
+			'''
+			
 			# start timer
 			start = timer()
 
@@ -1010,6 +1012,11 @@ def timerHandle(command, chat, user):
 	return True
 
 
+# load the current status of the permissions into memory
+def load_permissions_status():
+	return
+
+
 def getUserNotificationsStatus(chat, provider_list):
 	'''
 	The function takes a list of provider strings as input, and returns a dictionary containing
@@ -1501,16 +1508,19 @@ def flight_schedule(msg, command_invoke, call_type):
 
 		# calc how many days until this date
 		launch_date = datetime.datetime.strptime(key, '%Y-%m-%d')
-		#time_delta = launch_date - today
+		time_delta = launch_date - today
 
 		if (launch_date.day, launch_date.month) == (today.day, today.month):
 			eta_days = 'today'
 
 		else:
-			if launch_date.day - today.day == 1:
-				eta_days = 'tomorrow'
+			if launch_date.month == today.month:
+				if launch_date.day - today.day == 1:
+					eta_days = 'tomorrow'
+				else:
+					eta_days = f'in {launch_date.day - today.day} days'
 			else:
-				eta_days = f'in {launch_date.day - today.day} days'
+				eta_days = f'in {math.floor(time_delta.seconds/(3600*24))} days'
 
 		eta_days = provider = ' '.join("`{}`".format(word) for word in eta_days.split(' '))
 
@@ -1696,6 +1706,16 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 	info = query_return[7]
 	country_code = query_return[8]
 
+	# new info
+	tbd_date = query_return[20]
+	tbd_time = query_return[21]
+	launch_prob = query_return[22]
+	in_hold = query_return[18]
+
+	tbd_date = True if tbd_date == 1 else False
+	tbd_time = True if tbd_time == 1 else False
+	in_hold = True if in_hold == 1 else False
+
 	if lsp_name == 'SpaceX':
 		spx_info_str, spx_orbit_info = spxInfoStrGen(mission_name, 0)
 		if spx_info_str != None:
@@ -1755,6 +1775,9 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 			min_time = launch_unix.minute
 
 		launch_time = f'{launch_unix.hour}:{min_time}.{sec_time}'
+
+	if tbd_time is True:
+		launch_time = f'launch time TBD'
 
 	net_stamp = datetime.datetime.fromtimestamp(query_return[9])
 	eta = abs(datetime.datetime.today() - net_stamp)
@@ -1853,6 +1876,11 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 		# if the info text is longer than 60 words, pick the first three sentences.
 		if len(info.split(' ')) > 60:
 			info = f'{". ".join(info.split(". ")[0:2])}.'
+
+		if 'DM2' in mission_name:
+			info = 'A new era of human spaceflight is set to begin as 🇺🇸-astronauts once again launch to orbit on a 🇺🇸-rocket from 🇺🇸-soil, almost a decade after the retirement of the Space Shuttle fleet back in 2011. \n\nDemo-2 will launch mission commander Doug Hurley and joint operations commander Bob Behnken to the ISS on the third overall flight of the Crew Dragon, after the two successful unmanned test-flights, Demo-1 and IFA.'
+			mission_name = 'SpX-DM2'
+
 		info_msg = f'ℹ️ {info}'
 	else:
 		info_msg = None
@@ -1909,10 +1937,39 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 
 			header += f'\n*Orbit* {spx_orbit_info}'
 
-	time_str = f'📅 {date_str}`,` `{launch_time} UTC`\n⏱ {eta_str}'
+	if tbd_date is False: # verified launch date
+		if tbd_time is False: # verified launch time
+			time_str = f'📅 {date_str}`,` `{launch_time} UTC`\n⏱ {eta_str}'
+		else: # unverified launch time
+			launch_time = ' '.join("`{}`".format(word) for word in launch_time.split(' '))
+			time_str = f'📅 {date_str}`,` {launch_time}\n⏱ {eta_str}'
+
+	else: # unverified launch date
+		time_str = f'🗓 `Not` `` `before` `` {date_str}\n⏱ {eta_str}'
+
+	# add probability if found
+	if launch_prob != -1 and launch_prob != None:
+		if launch_prob >= 80:
+			prob_str = f'☀️ {launch_prob} % launch probability'
+		elif launch_prob >= 60:
+			prob_str = f'🌤 {launch_prob} % launch probability'
+		elif launch_prob >= 40:
+			prob_str = f'🌥 {launch_prob} % launch probability'
+		elif launch_prob >= 20:
+			prob_str = f'☁️ {launch_prob} % launch probability'
+		else:
+			prob_str = f'🌪 {launch_prob} % launch probability'
+
+		prob_str = ' '.join("`{}`".format(word) for word in prob_str.split(' '))
+		time_str += f'\n{prob_str}'
+
+	elif in_hold:
+		prob_str = f'🔶 Countdown on hold'
+		prob_str = ' '.join("`{}`".format(word) for word in prob_str.split(' '))
+		time_str += f'\n{prob_str}'
 
 	# if close to launch, include video url if possible
-	vid_url = query_return[-1]
+	vid_url = query_return[19]
 	if vid_url != '' and eta.seconds <= 3600:
 		vid_str = f'🔴 *Watch live* {vid_url}'
 	else:
@@ -2585,6 +2642,10 @@ def spxInfoStrGen(launch_name, run_count):
 				elif 'Crew' not in dragon_info[0]:
 					crew_str = 'Cargo mission'
 
+				# force text for DM-2
+				if db_match[1] == 'cctcap demo mission 2':
+					crew_str = '👨‍🚀👨‍🚀 Hurley & Behnken'
+
 				cap_type = ' '.join("`{}`".format(word) for word in dragon_info[0].split(' '))
 				fairing_info = f'*Dragon information* 🐉\n*Type* {cap_type}\n*Serial* `{dragon_serial}` {dragon_reused}\n*Crew* `{crew_str}`'
 				spx_info = spx_info + '\n\n' + fairing_info
@@ -2743,6 +2804,12 @@ def getLaunchUpdates(launch_ID):
 			lsp_short = launch_json['lsp']['abbrev']
 			vehicle = launch_json['rocket']['name']
 			location_name = launch_json['location']['pads'][0]['name']
+
+			# NEW (2020): launch probability + tbdtime/tbddate
+			tbd_date = launch_json['tbddate']
+			tbd_time = launch_json['tbdtime']
+			launch_prob = launch_json['probability']
+			in_hold_bool = launch_json['inhold'] # used for launch status: ♦️🔸🚀
 			
 			# find a video url, preferably a youtube link
 			try:
@@ -2824,12 +2891,14 @@ def getLaunchUpdates(launch_ID):
 			# update if launch ID found, insert if id not found
 			# launch, id, keywords, lsp_name, vehicle, pad, info, countrycode, NET, Tminus
 			# notify24h, notify12h, notify60min, notify5min, notifylaunch, success, launched, hold
+			# NEW: tbd_date tbd_time launch_prob in_hold_bool
 			try: # launch not found, insert as new
 				c.execute('''INSERT INTO launches
 					(launch, id, keywords, lsp_name, lsp_short, vehicle, pad, info, countrycode, NET, Tminus,
-					notify24h, notify12h, notify60min, notify5min, notifylaunch, success, launched, hold, vid)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?, ?)''',
-					(launch_name, launch_id, lsp, lsp_name, lsp_short, vehicle, pad, mission_text, countrycode, net_unix, Tminus, success, launched, holding, vid_url))
+					notify24h, notify12h, notify60min, notify5min, notifylaunch, success, launched, hold, vid, tbd_date, tbd_time, launch_prob, in_hold)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?)''',
+					(launch_name, launch_id, lsp, lsp_name, lsp_short, vehicle, pad, mission_text, countrycode, net_unix, Tminus, success, launched, holding, vid_url,
+						tbd_date, tbd_time, launch_prob, in_hold_bool))
 			
 			except: # launch found
 				# Launch is already found; check if the new NET matches the old NET.
@@ -2850,9 +2919,10 @@ def getLaunchUpdates(launch_ID):
 
 					net_diff = new_NET - old_NET
 
-					if net_diff < 0:
-						if debug_log:
-							logging.info(f'🕑 NET for launch {launch_id} moved left. Old NET: {old_NET}, new NET: {new_NET}, diff: {net_diff}')
+					#if net_diff < 0:
+					#	if debug_log:
+					#		if net_diff <- 1:
+					#			logging.info(f'🕑 NET for launch {launch_id} moved left. Old NET: {old_NET}, new NET: {new_NET}, diff: {net_diff}')
 
 					# at least 1 notification has already been sent
 					if 1 in notification_statuses.values() and net_diff >= 5*60 and launched != 1:
@@ -3010,9 +3080,9 @@ def getLaunchUpdates(launch_ID):
 						msg_text += 'To disable\, mute this launch with the button below\._'
 
 						if lsp not in LSP_IDs.keys():
-							notify_list = getNotifyList(lsp_name, launch_id)
+							notify_list = getNotifyList(lsp_name, launch_id, None)
 						else:
-							notify_list = getNotifyList(LSP_IDs[lsp][0], launch_id)
+							notify_list = getNotifyList(LSP_IDs[lsp][0], launch_id, None)
 
 						active_chats, muted_chats = set(), set()
 						for chat in notify_list:
@@ -3069,15 +3139,16 @@ def getLaunchUpdates(launch_ID):
 
 					c.execute('''UPDATE launches
 						SET NET = ?, Tminus = ?, success = ?, launched = ?, hold = ?, info = ?, pad = ?,
-						vid = ?, notify24h = ?, notify12h = ?, notify60min = ?, notify5min = ?
+						vid = ?, notify24h = ?, notify12h = ?, notify60min = ?, notify5min = ?, tbd_date = ?, tbd_time = ?, launch_prob = ?, in_hold = ?
 						WHERE id = ?''', (
 							net_unix, Tminus, success, launched, holding, mission_text, pad, vid_url,
-							notification_statuses['24h'], notification_statuses['12h'], notification_statuses['1h'], notification_statuses['5m'], launch_id))
+							notification_statuses['24h'], notification_statuses['12h'], notification_statuses['1h'], notification_statuses['5m'],
+							tbd_date, tbd_time, launch_prob, in_hold_bool, launch_id))
 
 				else:
 					c.execute('''UPDATE launches
-						SET NET = ?, Tminus = ?, success = ?, launched = ?, hold = ?, info = ?, pad = ?, vid = ?
-						WHERE id = ?''', (net_unix, Tminus, success, launched, holding, mission_text, pad, vid_url, launch_id))
+						SET NET = ?, Tminus = ?, success = ?, launched = ?, hold = ?, info = ?, pad = ?, vid = ?, tbd_date = ?, tbd_time = ?, launch_prob = ?, in_hold = ?
+						WHERE id = ?''', (net_unix, Tminus, success, launched, holding, mission_text, pad, vid_url, tbd_date, tbd_time, launch_prob, in_hold_bool, launch_id))
 
 		conn.commit()
 		conn.close()
@@ -3253,17 +3324,20 @@ def getNotifyList(lsp, launch_id, notif_class):
 		elif lsp in enabled or 'All' in enabled:
 			notify_list.add(chat)
 
-	# parse for chats which have possibly disabled this notification type
-	final_list, ignored_due_to_pref = set(), set()
-	index = {'24h': 0, '12h': 1, '1h': 2, '5m': 3}[notif_class]
-	for chat in notify_list:
-		if list(get_notif_preference(chat))[index] == 1:
-			final_list.add(chat)
-		else:
-			ignored_due_to_pref.add(chat)
+	if notif_class is not None:
+		# parse for chats which have possibly disabled this notification type
+		final_list, ignored_due_to_pref = set(), set()
+		index = {'24h': 0, '12h': 1, '1h': 2, '5m': 3}[notif_class]
+		for chat in notify_list:
+			if list(get_notif_preference(chat))[index] == 1:
+				final_list.add(chat)
+			else:
+				ignored_due_to_pref.add(chat)
 
-	if debug_log:
-		logging.info(f'🔕 Not notifying {len(ignored_due_to_pref)} chat(s) due to preferences.')
+		if debug_log:
+			logging.info(f'🔕 Not notifying {len(ignored_due_to_pref)} chat(s) due to notification preferences.')
+	else:
+		final_list = notify_list
 
 	return final_list
 
@@ -3496,6 +3570,11 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 		# if the info text is longer than 60 words, pick the first three sentences.
 		if len(info.split(' ')) > 60:
 			info = f'{". ".join(info.split(". ")[0:2])}.'
+		
+		if 'DM2' in launch_name:
+			info = 'A new era of human spaceflight is set to begin as 🇺🇸-astronauts once again launch to orbit on a 🇺🇸-rocket from 🇺🇸-soil, almost a decade after the retirement of the Space Shuttle fleet back in 2011. \n\nDemo-2 will launch mission commander Doug Hurley and joint operations commander Bob Behnken to the ISS on the third overall flight of the Crew Dragon, after the two successful unmanned test-flights, Demo-1 and IFA.'
+			launch_name = 'SpX-DM2'
+		
 		info_text = f'ℹ️ {info}'
 	else:
 		info_text = f'ℹ️ No launch information available'
@@ -4050,7 +4129,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.5'
+	VERSION = '0.5.8'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
