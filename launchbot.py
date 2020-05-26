@@ -46,7 +46,7 @@ def handle(msg):
 		conn.close()
 
 		if debug_log:
-			logging.info(f'⚠️ Bot removed from chat {anonymizeID(chat)} – notifications database cleaned [1]')
+			logging.info(f'⚠️ Bot removed from chat {anonymize_id(chat)} – notifications database cleaned [1]')
 		return
 
 	# group upgraded to a supergroup; migrate data
@@ -55,7 +55,7 @@ def handle(msg):
 		new_ID = msg['migrate_to_chat_id']
 
 		if debug_log:
-			logging.info(f'⚠️ Group {anonymizeID(old_ID)} migrated to {anonymizeID(new_ID)} - '
+			logging.info(f'⚠️ Group {anonymize_id(old_ID)} migrated to {anonymize_id(new_ID)} - '
 						 f'starting database migration...')
 
 		# Establish connection
@@ -81,7 +81,7 @@ def handle(msg):
 		conn.close()
 
 		if debug_log:
-			logging.info(f'⚠️ Bot removed from chat {anonymizeID(chat)} – notifications database cleaned [2]')
+			logging.info(f'⚠️ Bot removed from chat {anonymize_id(chat)} – notifications database cleaned [2]')
 		return
 
 	# detect if bot added to a new chat
@@ -134,7 +134,7 @@ def handle(msg):
 		notify(msg)
 
 		if debug_log:
-			logging.info(f'🌟 Bot added to a new chat! chat_id={anonymizeID(chat)}. Sent user the new inline keyboard. [1]')
+			logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat)}. Sent user the new inline keyboard. [1]')
 
 		return
 	
@@ -181,7 +181,7 @@ def handle(msg):
 
 					if OWNER != 0:
 						bot.sendMessage(OWNER,
-							f'😄 *Received feedback* from `{anonymizeID(msg["from"]["id"])}`:\n{msg["text"]}',
+							f'😄 *Received feedback* from `{anonymize_id(msg["from"]["id"])}`:\n{msg["text"]}',
 							parse_mode='MarkdownV2')
 
 		return
@@ -202,9 +202,9 @@ def handle(msg):
 				sent_by = 0
 
 			# check timers
-			if not timerHandle(command, chat, sent_by):
+			if not timer_handle(command, chat, sent_by):
 				if debug_log:
-					logging.info(f'✋ Spam prevented from chat {anonymizeID(chat)}. Command: {command}, returning.')
+					logging.info(f'✋ Spam prevented from chat {anonymize_id(chat)}. Command: {command}, returning.')
 				return
 
 			# check if sender is an admin/creator, and/or if we're in a public chat
@@ -218,7 +218,7 @@ def handle(msg):
 					sender = bot.getChatMember(chat, msg['from']['id'])
 					if sender['status'] != 'creator' and sender['status'] != 'administrator':
 						if debug_log:
-							logging.info(f'✋ {command} called by a non-admin in {anonymizeID(chat)}, returning.')
+							logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)}, returning.')
 						return
 			'''
 			else:
@@ -266,11 +266,11 @@ def handle(msg):
 					notify(msg)
 
 					if debug_log:
-						logging.info(f'🌟 Bot added to a new chat! chat_id={anonymizeID(chat)}. Sent user the new inline keyboard. [2]')
+						logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat)}. Sent user the new inline keyboard. [2]')
 
 			# /next
 			elif command == '/next':
-				nextFlight(msg, 0, True, None)
+				next_flight(msg, 0, True, None)
 
 			# /notify
 			elif command == '/notify':
@@ -292,9 +292,9 @@ def handle(msg):
 				t_elapsed = timer() - start
 				if msg['from']['id'] != OWNER and command != '/start':
 					try:
-						logging.info(f'🕹 {command} called by {anonymizeID(chat)} | args: {command_split[1:]} | {(1000*t_elapsed):.0f} ms')
+						logging.info(f'🕹 {command} called by {anonymize_id(chat)} | args: {command_split[1:]} | {(1000*t_elapsed):.0f} ms')
 					except:
-						logging.info(f'🕹 {command} called by {anonymizeID(chat)} | args: [] | {(1000*t_elapsed):.0f} ms')
+						logging.info(f'🕹 {command} called by {anonymize_id(chat)} | args: [] | {(1000*t_elapsed):.0f} ms')
 
 			# store statistics here, so our stats database can't be spammed either
 			updateStats({'commands':1})
@@ -303,8 +303,8 @@ def handle(msg):
 			return
 
 
-def callbackHandler(msg):
-	def updateMainView(chat, msg, provider_by_cc, text_refresh):
+def callback_handler(msg):
+	def update_main_view(chat, msg, provider_by_cc, text_refresh):
 		# figure out what the text for the "enable all/disable all" button should be
 		providers = set()
 		for val in provider_by_cc.values():
@@ -314,7 +314,7 @@ def callbackHandler(msg):
 				else:
 					providers.add(provider)
 
-		notification_statuses, disabled_count, all_flag = getUserNotificationsStatus(chat, providers), 0, False
+		notification_statuses, disabled_count, all_flag = get_user_notifications_status(chat, providers), 0, False
 		if 0 in notification_statuses.values():
 			disabled_count = 1
 
@@ -377,9 +377,9 @@ def callbackHandler(msg):
 		return
 
 
-	def updateListView(msg, chat, provider_list):
+	def update_list_view(msg, chat, provider_list):
 		# get the user's current notification settings for all the providers so we can add the bell emojis
-		notification_statuses = getUserNotificationsStatus(chat, provider_list)
+		notification_statuses = get_user_notifications_status(chat, provider_list)
 
 		# get status for the "enable all" toggle for the country code
 		providers = []
@@ -389,7 +389,7 @@ def callbackHandler(msg):
 			else:
 				providers.append(provider)
 
-		notification_statuses, disabled_count = getUserNotificationsStatus(chat, providers), 0
+		notification_statuses, disabled_count = get_user_notifications_status(chat, providers), 0
 		for key, val in notification_statuses.items():
 			if val == 0 and key != 'All':
 				disabled_count += 1
@@ -454,7 +454,7 @@ def callbackHandler(msg):
 		bot.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
 
 		if debug_log and chat != OWNER:
-			logging.info(f'🔀 {flag_map[country_code]}-view loaded for {anonymizeID(chat)}')
+			logging.info(f'🔀 {flag_map[country_code]}-view loaded for {anonymize_id(chat)}')
 
 		return
 
@@ -463,7 +463,7 @@ def callbackHandler(msg):
 	
 	except Exception as caught_exception:
 		if debug_log:
-			logging.info(f'⚠️ Exception in callbackHandler: {caught_exception}')
+			logging.info(f'⚠️ Exception in callback_handler: {caught_exception}')
 
 		return
 
@@ -496,21 +496,21 @@ def callbackHandler(msg):
 						logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 				if debug_log:
-					logging.info(f'✋ Callback query called by a non-admin in {anonymizeID(chat)}, returning | {(1000*(timer() - start)):.0f} ms')
+					logging.info(f'✋ Callback query called by a non-admin in {anonymize_id(chat)}, returning | {(1000*(timer() - start)):.0f} ms')
 				
 				return
 
 	# callbacks only supported for notify at the moment; verify it's a notify command
 	if input_data[0] not in ('notify', 'mute', 'next_flight', 'schedule', 'prefs', 'stats'):
 		if debug_log:
-			logging.info(f'⚠️ Incorrect input data in callbackHandler! input_data={input_data} | {(1000*(timer() - start)):.0f} ms')
+			logging.info(f'⚠️ Incorrect input data in callback_handler! input_data={input_data} | {(1000*(timer() - start)):.0f} ms')
 
 		return
 
 	# check if notification database exists
 	launch_dir = 'data/launch'
 	if not os.path.isfile(os.path.join(launch_dir,'notifications.db')):
-		createNotifyDatabase()
+		create_notify_database()
 
 	flag_map = {
 		'USA': '🇺🇸',
@@ -536,7 +536,7 @@ def callbackHandler(msg):
 					logging.info(f'Error finding country code {country_code} from provider_by_cc!')
 				return
 
-			updateListView(msg, chat, provider_list)
+			update_list_view(msg, chat, provider_list)
 
 			try:
 				bot.answerCallbackQuery(query_id, text=f'{flag_map[country_code]}')
@@ -548,9 +548,9 @@ def callbackHandler(msg):
 		elif input_data[1] == 'main_menu':
 			try:
 				if input_data[2] == 'refresh_text':
-					updateMainView(chat, msg, provider_by_cc, True)
+					update_main_view(chat, msg, provider_by_cc, True)
 			except:
-				updateMainView(chat, msg, provider_by_cc, False)
+				update_main_view(chat, msg, provider_by_cc, False)
 
 			try:
 				bot.answerCallbackQuery(query_id, text='⏮ Returned to main menu')
@@ -559,11 +559,11 @@ def callbackHandler(msg):
 					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 			if debug_log and chat != OWNER:
-				logging.info(f'⏮ {anonymizeID(chat)} (main-view update) | {(1000*(timer() - start)):.0f} ms')
+				logging.info(f'⏮ {anonymize_id(chat)} (main-view update) | {(1000*(timer() - start)):.0f} ms')
 
 		# user requested to toggle a notification
 		elif input_data[1] == 'toggle':
-			def getAllToggleNewStatus(toggle_type, country_code, chat):
+			def get_all_toggle_new_status(toggle_type, country_code, chat):
 				providers = []
 				if toggle_type == 'all':
 					for val in provider_by_cc.values():
@@ -574,7 +574,7 @@ def callbackHandler(msg):
 					for provider in provider_by_cc[country_code]:
 						providers.append(provider)
 
-				notification_statuses, disabled_count = getUserNotificationsStatus(chat, providers), 0
+				notification_statuses, disabled_count = get_user_notifications_status(chat, providers), 0
 				for key, val in notification_statuses.items():
 					if toggle_type == 'country_code' and key != 'All':
 						if val == 0:
@@ -592,17 +592,17 @@ def callbackHandler(msg):
 				return
 
 			if input_data[2] == 'all':
-				all_toggle_new_status = getAllToggleNewStatus('all', None, chat)
+				all_toggle_new_status = get_all_toggle_new_status('all', None, chat)
 
 			else:
 				country_code = input_data[3]
 				if input_data[2] == 'country_code':
-					all_toggle_new_status = getAllToggleNewStatus('country_code', country_code, chat)			
+					all_toggle_new_status = get_all_toggle_new_status('country_code', country_code, chat)			
 				else:
 					all_toggle_new_status = 0
 
 			# chat, type, keyword
-			new_status = toggleNotification(chat, input_data[2], input_data[3], all_toggle_new_status)
+			new_status = toggle_notification(chat, input_data[2], input_data[3], all_toggle_new_status)
 
 			if input_data[2] == 'lsp':
 				reply_text = {
@@ -625,7 +625,7 @@ def callbackHandler(msg):
 					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 			if debug_log and chat != OWNER:
-				logging.info(f'{anonymizeID(chat)} {reply_text} | {(1000*(timer() - start)):.0f} ms')
+				logging.info(f'{anonymize_id(chat)} {reply_text} | {(1000*(timer() - start)):.0f} ms')
 
 			# update list view if an lsp button was pressed
 			if input_data[2] != 'all':
@@ -638,11 +638,11 @@ def callbackHandler(msg):
 					return
 
 				# update keyboard list view
-				updateListView(msg, chat, provider_list)
+				update_list_view(msg, chat, provider_list)
 			
 			# update main view if "enable all" button was pressed, as in this case we're in the main view
 			else:
-				updateMainView(chat, msg, provider_by_cc, False)
+				update_main_view(chat, msg, provider_by_cc, False)
 
 		# user is done; remove the keyboard
 		elif input_data[1] == 'done':
@@ -661,7 +661,7 @@ def callbackHandler(msg):
 					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 			if debug_log and chat != OWNER:
-				logging.info(f'💫 {anonymizeID(chat)} finished setting notifications with the "Done" button! | {(1000*(timer() - start)):.0f} ms')
+				logging.info(f'💫 {anonymize_id(chat)} finished setting notifications with the "Done" button! | {(1000*(timer() - start)):.0f} ms')
 	
 	elif input_data[0] == 'mute':
 		# user wants to mute a launch from notification inline keyboard
@@ -691,9 +691,9 @@ def callbackHandler(msg):
 			
 			if debug_log and chat != OWNER:
 				if new_toggle_state == 0:
-					logging.info(f'🔇 {anonymizeID(chat)} muted a launch for {input_data[1]} (launch_id={input_data[2]}) | {(1000*(timer() - start)):.0f} ms')
+					logging.info(f'🔇 {anonymize_id(chat)} muted a launch for {input_data[1]} (launch_id={input_data[2]}) | {(1000*(timer() - start)):.0f} ms')
 				else:
-					logging.info(f'🔊 {anonymizeID(chat)} unmuted a launch for {input_data[1]} (launch_id={input_data[2]}) | {(1000*(timer() - start)):.0f} ms')
+					logging.info(f'🔊 {anonymize_id(chat)} unmuted a launch for {input_data[1]} (launch_id={input_data[2]}) | {(1000*(timer() - start)):.0f} ms')
 
 		except Exception as exception:
 			if debug_log:
@@ -706,27 +706,27 @@ def callbackHandler(msg):
 					logging.info(f'🛑 Ran into an error sending the mute/unmute message to chat={chat}! {exception}')
 
 		# toggle the mute here, so we can give more responsive feedback
-		toggleLaunchMute(chat, input_data[1], input_data[2], input_data[3])	
+		toggle_launch_mute(chat, input_data[1], input_data[2], input_data[3])	
 
 	elif input_data[0] == 'next_flight':
-		# nextFlight(msg, current_index, command_invoke, cmd):
+		# next_flight(msg, current_index, command_invoke, cmd):
 		# next_flight/{next/prev}/{current_index}/{cmd}
 		# next_flight/refresh/0/{cmd}'
 		if input_data[1] not in {'next', 'prev', 'refresh'}:
 			if debug_log:
-				logging.info(f'⚠️ Error with callbackHandler input_data[1] for next_flight. input_data={input_data}')
+				logging.info(f'⚠️ Error with callback_handler input_data[1] for next_flight. input_data={input_data}')
 			return
 
 		current_index, cmd = input_data[2], input_data[3]
 		if input_data[1] == 'next':
-			new_message_text, keyboard = nextFlight(msg, int(current_index)+1, False, cmd)
+			new_message_text, keyboard = next_flight(msg, int(current_index)+1, False, cmd)
 
 		elif input_data[1] == 'prev':
-			new_message_text, keyboard = nextFlight(msg, int(current_index)-1, False, cmd)
+			new_message_text, keyboard = next_flight(msg, int(current_index)-1, False, cmd)
 
 		elif input_data[1] == 'refresh':
 			try:
-				new_message_text, keyboard = nextFlight(msg, int(current_index), False, cmd)
+				new_message_text, keyboard = next_flight(msg, int(current_index), False, cmd)
 			
 			except TypeError:
 				new_message_text = '🔄 No launches found! Try enabling notifications for other providers, or searching for all flights.'
@@ -747,7 +747,7 @@ def callbackHandler(msg):
 
 		# now we have the keyboard; update the previous keyboard
 		try:
-			bot.editMessageText(msg_identifier, text=new_message_text, reply_markup=keyboard, parse_mode='Markdown')
+			bot.editMessageText(msg_identifier, text=new_message_text, reply_markup=keyboard, parse_mode='MarkdownV2')
 		except telepot.exception.TelegramError as exception:
 			if exception.error_code == 400 and 'Bad Request: message is not modified' in exception.description:
 				pass
@@ -762,7 +762,7 @@ def callbackHandler(msg):
 				logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 		if debug_log and chat != OWNER:
-			logging.info(f'{anonymizeID(chat)} pressed "{query_reply_text}" button in /next | {(1000*(timer() - start)):.0f} ms')
+			logging.info(f'{anonymize_id(chat)} pressed "{query_reply_text}" button in /next | {(1000*(timer() - start)):.0f} ms')
 
 	elif input_data[0] == 'schedule':
 		#schedule/refresh
@@ -886,7 +886,7 @@ def callbackHandler(msg):
 	elif input_data[0] == 'stats':
 		if input_data[1] == 'refresh':
 			if debug_log and chat != OWNER:
-				logging.info(f'🔄 {anonymizeID(chat)} refreshed statistics')
+				logging.info(f'🔄 {anonymize_id(chat)} refreshed statistics')
 
 			new_text = inspect.cleandoc(statistics(chat, 'refresh'))
 			if msg['message']['text'] == new_text.replace('*',''):
@@ -906,7 +906,7 @@ def callbackHandler(msg):
 
 
 # restrict command send frequency to avoid spam
-def timerHandle(command, chat, user):
+def timer_handle(command, chat, user):
 	# remove the '/' command prefix
 	command = command.strip('/')
 	chat = str(chat)
@@ -986,14 +986,14 @@ def timerHandle(command, chat, user):
 						break
 
 				if debug_log:
-					logging.info(f'⚠️ User {anonymizeID(user)} now has {spammer.get_offenses()} spam offenses.')
+					logging.info(f'⚠️ User {anonymize_id(user)} now has {spammer.get_offenses()} spam offenses.')
 
 				if spammer.get_offenses() >= 10:
 					run_time = datetime.datetime.now() - STARTUP_TIME
 					if run_time.seconds > 60:
 						ignored_users.add(user)
 						if debug_log:
-							logging.info(f'⚠️⚠️⚠️ User {anonymizeID(user)} is now ignored due to excessive spam!')
+							logging.info(f'⚠️⚠️⚠️ User {anonymize_id(user)} is now ignored due to excessive spam!')
 
 						bot.sendMessage(
 							chat,
@@ -1001,7 +1001,7 @@ def timerHandle(command, chat, user):
 							parse_mode='Markdown')
 					else:
 						logging.info(f'''✅ Successfully avoided blocking a user on bot startup! Run_time was {run_time.seconds} seconds.
-							Spam offenses set to 0 for user {anonymizeID(user)} from original {spammer.get_offenses()}''')
+							Spam offenses set to 0 for user {anonymize_id(user)} from original {spammer.get_offenses()}''')
 						spammer.clear_offenses()
 
 					return False
@@ -1009,7 +1009,7 @@ def timerHandle(command, chat, user):
 			else:
 				spammers.add(Spammer(user))
 				if debug_log:
-					logging.info(f'⚠️ Added user {anonymizeID(user)} to spammers.')
+					logging.info(f'⚠️ Added user {anonymize_id(user)} to spammers.')
 
 			return False
 
@@ -1021,7 +1021,7 @@ def load_permissions_status():
 	return
 
 
-def getUserNotificationsStatus(chat, provider_list):
+def get_user_notifications_status(chat, provider_list):
 	'''
 	The function takes a list of provider strings as input, and returns a dictionary containing
 	the notification status for all of the providers for a given chat.
@@ -1061,7 +1061,7 @@ def getUserNotificationsStatus(chat, provider_list):
 
 
 # toggle a notification for chat of type (toggle_type, keyword) with the value keyword
-def toggleNotification(chat, toggle_type, keyword, all_toggle_new_status):
+def toggle_notification(chat, toggle_type, keyword, all_toggle_new_status):
 	# Establish connection
 	launch_dir = 'data/launch'
 	conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
@@ -1111,7 +1111,7 @@ def toggleNotification(chat, toggle_type, keyword, all_toggle_new_status):
 
 				if len(query_return) == 0:
 					if debug_log:
-						logging.info(f'⚠️ Error getting current status for provider "{provider}" in toggleNotification()')
+						logging.info(f'⚠️ Error getting current status for provider "{provider}" in toggle_notification()')
 					return None
 				
 				new_status = 0 if query_return[0][3] == 1 else 1
@@ -1157,7 +1157,7 @@ def update_notif_preference(chat, notification_type):
 	conn.close()
 
 	if debug_log and chat != OWNER:
-		logging.info(f'📩 {anonymizeID(chat)} {"enabled (🔔)" if new_state == 1 else "disabled (🔕)"} {notification_type} notification')
+		logging.info(f'📩 {anonymize_id(chat)} {"enabled (🔔)" if new_state == 1 else "disabled (🔕)"} {notification_type} notification')
 
 	return new_state
 
@@ -1243,7 +1243,7 @@ def chat_preferences(chat):
 		)
 
 
-def anonymizeID(chat):
+def anonymize_id(chat):
 	return sha1(str(chat).encode('utf-8')).hexdigest()[0:6]
 
 
@@ -1262,14 +1262,14 @@ def name_from_provider_id(provider_id):
 	return provider_id
 
 
-def toggleLaunchMute(chat, launch_provider, launch_id, toggle):
+def toggle_launch_mute(chat, launch_provider, launch_id, toggle):
 	launch_dir = 'data/launch'
 	if not os.path.isfile(os.path.join(launch_dir,'notifications.db')):
-		createNotifyDatabase()
+		create_notify_database()
 
 	try:
 		int(launch_provider)
-		logging.info(f'⚠️ Integer launch_provider value provided to toggleLaunchMute! \
+		logging.info(f'⚠️ Integer launch_provider value provided to toggle_launch_mute! \
 			launch_provider={launch_provider}, launch_id={launch_id}, toggle={toggle}')
 		launch_provider = name_from_provider_id(launch_provider)
 		logging.info(f'⚙️ Related integer value to provider name: {launch_provider}')
@@ -1335,7 +1335,7 @@ def notify(msg):
 
 	# check if notification database exists
 	if not os.path.isfile(os.path.join(launch_dir,'notifications.db')):
-		createNotifyDatabase()
+		create_notify_database()
 
 	# send the user the base keyboard where we start working up from.
 	message_text = f'''
@@ -1355,7 +1355,7 @@ def notify(msg):
 		for provider in val:
 			providers.append(provider)
 
-	notification_statuses, disabled_count = getUserNotificationsStatus(chat, providers), 0
+	notification_statuses, disabled_count = get_user_notifications_status(chat, providers), 0
 	disabled_count = 1 if 0 in notification_statuses.values() else 0
 
 	rand_planet = random.choice(('🌍', '🌎', '🌏'))
@@ -1445,14 +1445,17 @@ def flight_schedule(msg, command_invoke, call_type):
 		'FRA': '🇪🇺'}
 
 	vehicle_map = {
-		'Falcon 9 Block 5': 'Falcon 9 B5' }
+		'Falcon 9 Block 5': 'Falcon 9 B5'}
 
-	# pick 5 smallest, map into dict with dates
+	# pick 5 dates, map missions into dict with dates
 	sched_dict = {}
 	for row, i in zip(query_return, range(len(query_return))):
 		launch_unix = datetime.datetime.utcfromtimestamp(row[9])
 		provider = row[3] if len(row[3]) <= len('Arianespace') else row[4]
 		mission = row[0]
+
+		verified_date = True if row[20] == 0 else False
+		verified_time = True if row[21] == 0 else False
 
 		if mission[0] == ' ':
 			mission = mission[1:]
@@ -1478,7 +1481,15 @@ def flight_schedule(msg, command_invoke, call_type):
 		vehicle = ' '.join("`{}`".format(word) for word in vehicle.split(' '))
 		mission = ' '.join("`{}`".format(word) for word in mission.split(' '))
 
+		# start the string with the flag of the provider's country
 		flt_str = flag if flag != None else ''
+
+		# add a button indicating the status of the launch
+		if verified_date and verified_time:
+			flt_str += '🟢'
+		else:
+			flt_str += '🟡'
+
 		if call_type == 'vehicle':
 			flt_str += f' {provider} {vehicle}'
 
@@ -1552,8 +1563,10 @@ def flight_schedule(msg, command_invoke, call_type):
 	schedule_msg = reconstructMessageForMarkdown(schedule_msg)
 	header = f'📅 *5\-day flight schedule*\n'
 	header_note = f'Dates are subject to change. For detailed flight information, use /next@{BOT_USERNAME}.'
+	footer_note = '\n\n🟢 = verified launch date\n🟡 = exact time to be determined'
+	footer = f'_{reconstructMessageForMarkdown(footer_note)}_'
 	header_info = f'_{reconstructMessageForMarkdown(header_note)}\n\n_'
-	schedule_msg = header + header_info + schedule_msg
+	schedule_msg = header + header_info + schedule_msg + footer
 
 	# call change button
 	switch_text = '🚀 Vehicles' if call_type == 'mission' else '🛰 Missions'
@@ -1574,7 +1587,7 @@ def flight_schedule(msg, command_invoke, call_type):
 
 
 # handles /next by polling the launch database
-def nextFlight(msg, current_index, command_invoke, cmd):
+def next_flight(msg, current_index, command_invoke, cmd):
 	launch_dir = 'data/launch'
 	if command_invoke == True:
 		content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
@@ -1961,45 +1974,62 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 	# add probability if found
 	if launch_prob != -1 and launch_prob != None:
 		if launch_prob >= 80:
-			prob_str = f'☀️ {launch_prob} % launch probability'
+			prob_str = f'☀️ {launch_prob} % probability of launch'
 		elif launch_prob >= 60:
-			prob_str = f'🌤 {launch_prob} % launch probability'
+			prob_str = f'🌤 {launch_prob} % probability of launch'
 		elif launch_prob >= 40:
-			prob_str = f'🌥 {launch_prob} % launch probability'
+			prob_str = f'🌥 {launch_prob} % probability of launch'
 		elif launch_prob >= 20:
-			prob_str = f'☁️ {launch_prob} % launch probability'
+			prob_str = f'☁️ {launch_prob} % probability of launch'
 		else:
-			prob_str = f'🌪 {launch_prob} % launch probability'
+			prob_str = f'🌪 {launch_prob} % probability of launch'
 
 		prob_str = ' '.join("`{}`".format(word) for word in prob_str.split(' '))
 		time_str += f'\n{prob_str}'
 
 	elif in_hold:
-		prob_str = f'🔶 Countdown on hold'
+		prob_str = f'🟡 Countdown on hold'
 		prob_str = ' '.join("`{}`".format(word) for word in prob_str.split(' '))
 		time_str += f'\n{prob_str}'
 
 	# if close to launch, include video url if possible
 	vid_url = query_return[19]
-	if vid_url != '' and eta.seconds <= 3600:
-		vid_str = f'🔴 *Watch live* {vid_url}'
+	if vid_url != '' and eta.seconds <= 3600 and eta.days == 0:
+		vid_str = f'🔴 Watch the launch LinkTextGoesHere'
+	elif vid_url != '' and eta.seconds <= 3600*4 and 'DM2' in mission_name and eta.days == 0:
+		vid_str = f'🔴 Watch the launch LinkTextGoesHere'
 	else:
 		vid_str = None
 	
 	# not a spx launch, or no info available
 	if not spx_str:
 		if info_msg is not None:
-			msg_text = f'{header}\n\n{time_str}\n\n{info_msg}\n\n{notify_str}'
+			msg_text = f'{header}\n\n{time_str}\n\n{info_msg}\n'
 		else:
-			msg_text = f'{header}\n\n{time_str}\n\n{notify_str}'
+			msg_text = f'{header}\n\n{time_str}\n'
 	
 	# spx info string provided
 	else:
 		if info_msg is not None:
-			msg_text = f'{header}\n\n{time_str}\n\n{spx_info_str}\n\n{info_msg}\n\n{notify_str}'
+			msg_text = f'{header}\n\n{time_str}\n\n{spx_info_str}\n\n{info_msg}\n'
 		
 		else:
-			msg_text = f'{header}\n\n{time_str}\n\n{spx_info_str}\n\n{notify_str}'
+			msg_text = f'{header}\n\n{time_str}\n\n{spx_info_str}\n'
+
+	# add vid_str if needed
+	if vid_str is not None:
+		msg_text += f'\n{vid_str}'
+	
+	# add notify str
+	msg_text += f'\n{notify_str}'
+
+	# reconstruct
+	msg_text = reconstructMessageForMarkdown(msg_text)
+
+	# add proper URL, format for MarkdownV2
+	if vid_str is not None:
+		link_text = reconstructLinkForMarkdown(vid_url)
+		msg_text = msg_text.replace('LinkTextGoesHere', f'[live\!]({link_text})')
 
 	if max_index > 1:
 		inline_keyboard = [[]]
@@ -2035,9 +2065,9 @@ def nextFlight(msg, current_index, command_invoke, cmd):
 
 	if current_index == 0 and command_invoke == True:
 		if max_index > 1:
-			bot.sendMessage(chat, msg_text, parse_mode='Markdown', reply_markup=keyboard)
+			bot.sendMessage(chat, msg_text, parse_mode='MarkdownV2', reply_markup=keyboard)
 		else:
-			bot.sendMessage(chat, msg_text, parse_mode='Markdown')
+			bot.sendMessage(chat, msg_text, parse_mode='MarkdownV2')
 	else:
 		return msg_text, keyboard
 
@@ -2051,7 +2081,7 @@ def launchUpdateCheck():
 
 	launch_dir = 'data/launch'
 	if not os.path.isfile(os.path.join(launch_dir, 'launches.db')):
-		createLaunchDatabase()
+		create_launch_database()
 		getLaunchUpdates(None)
 
 	# Establish connection to the launch database
@@ -2586,11 +2616,19 @@ def spxInfoStrGen(launch_name, run_count):
 
 		# recovery
 		landing_intents = db_match[7]
+
+		if 'OCISLY' in landing_intents:
+			landing_intents = 'OCISLY (Atlantic Ocean)'
+		elif 'LZ-1' in landing_intents:
+			landing_intents = 'LZ-1 (RTLS)'
+
+		landing_intents = ' '.join("`{}`".format(word) for word in landing_intents.split(' '))
+
 		if landing_intents != 'expend':
 			if 'None' in landing_intents:
 				recovery_str = '*Recovery* `Unknown`'
 			else:
-				recovery_str = f"*Recovery* `{landing_intents}`"
+				recovery_str = f"*Recovery* {landing_intents}"
 		else:
 			recovery_str = f'*No recovery* `godspeed,` `{core_serial}` 💫'
 
@@ -2614,11 +2652,35 @@ def spxInfoStrGen(launch_name, run_count):
 	elif db_match[4] == 'F9':
 		reuses = db_match[6]
 		try:
-			int(reuses)
-			if int(reuses) > 0:
-				reuses = f"`♻️x{int(reuses)}`"
+			reuses = int(reuses)
+			if reuses < 10:
+				reuse_count = {
+					0: 'first',
+					1: 'second',
+					2: 'third',
+					3: 'fourth',
+					4: 'fifth',
+					5: 'sixth',
+					6: 'seventh',
+					7: 'eighth',
+					8: 'ninth',
+					9: 'tenth'
+				}[reuses]
+
 			else:
-				reuses = f'✨ `New`'
+				try:
+					if reuses in {11, 12, 13}:
+						suffix = 'th'
+					else:
+						suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(reuses)[-1])]
+				except:
+					suffix = 'th'
+
+				reuse_count = f'{reuses}{suffix}'
+				
+			reuses = '(' + reuse_count + ' flight ✨)' if reuses == 0 else '(' + reuse_count + ' flight ♻️)'
+			reuses = ' '.join("`{}`".format(word) for word in reuses.split(' '))
+
 		except:
 			reuses = f'`♻️x?`'
 
@@ -2638,7 +2700,7 @@ def spxInfoStrGen(launch_name, run_count):
 			if 'Dragon' in db_match[8]: # check if it's a Dragon flight
 				dragon_info = db_match[8].split('/')
 				dragon_serial = 'Unknown' if dragon_info[1] == 'None' else dragon_info[1]
-				dragon_reused = '♻️ `Reused`' if dragon_info[2] == 'True' else '✨ `New`'
+				dragon_reused = '♻️ `Reused`' if dragon_info[2] == 'True' else ' '.join("`{}`".format(word) for word in '(first flight ✨)'.split(' '))
 				dragon_crew = dragon_info[3]
 				
 				crew_str = ''
@@ -2722,7 +2784,7 @@ def getLaunchUpdates(launch_ID):
 		
 		except telepot.exception.BotWasBlockedError:
 			if debug_log:
-				logging.info(f'⚠️ Bot was blocked by {anonymizeID(chat)} – cleaning notify database...')
+				logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat)} – cleaning notify database...')
 
 			cleanNotifyDatabase(chat)
 			return True
@@ -2731,7 +2793,7 @@ def getLaunchUpdates(launch_ID):
 			# Bad Request: chat not found
 			if error.error_code == 400 and 'not found' in error.description:
 				if debug_log:
-					logging.info(f'⚠️ chat {anonymizeID(chat)} not found – cleaning notify database...')
+					logging.info(f'⚠️ chat {anonymize_id(chat)} not found – cleaning notify database...')
 					logging.info(f'Error: {error}')
 
 				cleanNotifyDatabase(chat)
@@ -2740,7 +2802,7 @@ def getLaunchUpdates(launch_ID):
 			elif error.error_code == 403:
 				if 'user is deactivated' in error.description:
 					if debug_log:
-						logging.info(f'⚠️ user {anonymizeID(chat)} was deactivated – cleaning notify database...')
+						logging.info(f'⚠️ user {anonymize_id(chat)} was deactivated – cleaning notify database...')
 						logging.info(f'Error: {error}')
 
 					cleanNotifyDatabase(chat)
@@ -2748,7 +2810,7 @@ def getLaunchUpdates(launch_ID):
 
 				elif 'bot was kicked from the supergroup chat' in error.description:
 					if debug_log:
-						logging.info(f'⚠️ bot was kicked from supergroup {anonymizeID(chat)} – cleaning notify database...')
+						logging.info(f'⚠️ bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database...')
 						logging.info(f'Error: {error}')
 
 					cleanNotifyDatabase(chat)
@@ -2794,7 +2856,7 @@ def getLaunchUpdates(launch_ID):
 		# check if db exists
 		launch_dir = 'data/launch'
 		if not os.path.isfile(os.path.join(launch_dir, 'launches.db')):
-			createLaunchDatabase()
+			create_launch_database()
 
 		# open connection
 		conn = sqlite3.connect(os.path.join(launch_dir, 'launches.db'))
@@ -2816,11 +2878,10 @@ def getLaunchUpdates(launch_ID):
 			vehicle = launch_json['rocket']['name']
 			location_name = launch_json['location']['pads'][0]['name']
 
-			# NEW (2020): launch probability + tbdtime/tbddate
+			# NEW (2020): probability of launch + tbdtime/tbddate
 			tbd_date = launch_json['tbddate']
 			tbd_time = launch_json['tbdtime']
 			launch_prob = launch_json['probability']
-			in_hold_bool = launch_json['inhold'] # used for launch status: ♦️🔸🚀
 			
 			# find a video url, preferably a youtube link
 			try:
@@ -2902,14 +2963,14 @@ def getLaunchUpdates(launch_ID):
 			# update if launch ID found, insert if id not found
 			# launch, id, keywords, lsp_name, vehicle, pad, info, countrycode, NET, Tminus
 			# notify24h, notify12h, notify60min, notify5min, notifylaunch, success, launched, hold
-			# NEW: tbd_date tbd_time launch_prob in_hold_bool
+			# NEW: tbd_date tbd_time launch_prob
 			try: # launch not found, insert as new
 				c.execute('''INSERT INTO launches
 					(launch, id, keywords, lsp_name, lsp_short, vehicle, pad, info, countrycode, NET, Tminus,
-					notify24h, notify12h, notify60min, notify5min, notifylaunch, success, launched, hold, vid, tbd_date, tbd_time, launch_prob, in_hold)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?)''',
+					notify24h, notify12h, notify60min, notify5min, notifylaunch, success, launched, hold, vid, tbd_date, tbd_time, launch_prob)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?)''',
 					(launch_name, launch_id, lsp, lsp_name, lsp_short, vehicle, pad, mission_text, countrycode, net_unix, Tminus, success, launched, holding, vid_url,
-						tbd_date, tbd_time, launch_prob, in_hold_bool))
+						tbd_date, tbd_time, launch_prob))
 			
 			except: # launch found
 				# Launch is already found; check if the new NET matches the old NET.
@@ -3109,7 +3170,7 @@ def getLaunchUpdates(launch_ID):
 							ret = sendPostponeNotification(chat, msg_text, launch_id, lsp)
 
 							if ret != True and debug_log:
-								logging.info(f'🛑 Error sending notification to chat={anonymizeID(chat)}! Exception: {ret}')
+								logging.info(f'🛑 Error sending notification to chat={anonymize_id(chat)}! Exception: {ret}')
 
 							tries = 1
 							while ret != True:
@@ -3119,11 +3180,11 @@ def getLaunchUpdates(launch_ID):
 								
 								if ret == True:
 									if debug_log:
-										logging.info(f'✅ Notification sent successfully to chat={anonymizeID(chat)}! Took {tries} tries.')
+										logging.info(f'✅ Notification sent successfully to chat={anonymize_id(chat)}! Took {tries} tries.')
 
 								elif ret != True and tries > 5:
 									if debug_log:
-										logging.info(f'⚠️ Tried to send notification to {anonymizeID(chat)} {tries} times – passing.')
+										logging.info(f'⚠️ Tried to send notification to {anonymize_id(chat)} {tries} times – passing.')
 										
 									ret = True
 
@@ -3150,16 +3211,16 @@ def getLaunchUpdates(launch_ID):
 
 					c.execute('''UPDATE launches
 						SET NET = ?, Tminus = ?, success = ?, launched = ?, hold = ?, info = ?, pad = ?,
-						vid = ?, notify24h = ?, notify12h = ?, notify60min = ?, notify5min = ?, tbd_date = ?, tbd_time = ?, launch_prob = ?, in_hold = ?
+						vid = ?, notify24h = ?, notify12h = ?, notify60min = ?, notify5min = ?, tbd_date = ?, tbd_time = ?, launch_prob = ?
 						WHERE id = ?''', (
 							net_unix, Tminus, success, launched, holding, mission_text, pad, vid_url,
 							notification_statuses['24h'], notification_statuses['12h'], notification_statuses['1h'], notification_statuses['5m'],
-							tbd_date, tbd_time, launch_prob, in_hold_bool, launch_id))
+							tbd_date, tbd_time, launch_prob, launch_id))
 
 				else:
 					c.execute('''UPDATE launches
-						SET NET = ?, Tminus = ?, success = ?, launched = ?, hold = ?, info = ?, pad = ?, vid = ?, tbd_date = ?, tbd_time = ?, launch_prob = ?, in_hold = ?
-						WHERE id = ?''', (net_unix, Tminus, success, launched, holding, mission_text, pad, vid_url, tbd_date, tbd_time, launch_prob, in_hold_bool, launch_id))
+						SET NET = ?, Tminus = ?, success = ?, launched = ?, hold = ?, info = ?, pad = ?, vid = ?, tbd_date = ?, tbd_time = ?, launch_prob = ?
+						WHERE id = ?''', (net_unix, Tminus, success, launched, holding, mission_text, pad, vid_url, tbd_date, tbd_time, launch_prob, launch_id))
 
 		conn.commit()
 		conn.close()
@@ -3267,7 +3328,7 @@ def getNotifyList(lsp, launch_id, notif_class):
 	# Establish connection
 	launch_dir = 'data/launch'
 	if not os.path.isfile(os.path.join(launch_dir,'notifications.db')):
-		createNotifyDatabase()
+		create_notify_database()
 
 	conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
 	c = conn.cursor()
@@ -3326,9 +3387,9 @@ def getNotifyList(lsp, launch_id, notif_class):
 
 		if lsp in disabled and 'All' in enabled:
 			if debug_log:
-				logging.info(f'🔕 Not notifying {anonymizeID(chat)} about {lsp} due to disabled flag. All flag was enabled.')
+				logging.info(f'🔕 Not notifying {anonymize_id(chat)} about {lsp} due to disabled flag. All flag was enabled.')
 				try:
-					logging.info(f'ℹ️ notify_dict[{anonymizeID(chat)}]: {notify_dict[chat]} | lsp: {lsp} | enabled: {enabled} | disabled: {disabled}')
+					logging.info(f'ℹ️ notify_dict[{anonymize_id(chat)}]: {notify_dict[chat]} | lsp: {lsp} | enabled: {enabled} | disabled: {disabled}')
 				except:
 					logging.info(f'⚠️ KeyError getting notify_dict[chat]. notify_dict: {notify_dict}')
 		
@@ -3425,7 +3486,7 @@ def removePreviousNotification(launch_id, keyword):
 		else:
 			muted_count += 1
 			if debug_log:
-				logging.info(f'🔍 Not removing previous notification due to mute status for chat={anonymizeID(chat_id)}')
+				logging.info(f'🔍 Not removing previous notification due to mute status for chat={anonymize_id(chat_id)}')
 
 	if debug_log:
 		logging.info(f'✅ Successfully removed {success_count} previously sent notifications! {muted_count} avoided due to mute status.')
@@ -3496,7 +3557,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 		
 		except telepot.exception.BotWasBlockedError:
 			if debug_log:
-				logging.info(f'⚠️ Bot was blocked by {anonymizeID(chat)} – cleaning notify database...')
+				logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat)} – cleaning notify database...')
 
 			cleanNotifyDatabase(chat)
 			return True
@@ -3505,7 +3566,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 			# Bad Request: chat not found
 			if error.error_code == 400 and 'not found' in error.description:
 				if debug_log:
-					logging.info(f'⚠️ chat {anonymizeID(chat)} not found – cleaning notify database...')
+					logging.info(f'⚠️ chat {anonymize_id(chat)} not found – cleaning notify database...')
 					logging.info(f'Error: {error}')
 
 				cleanNotifyDatabase(chat)
@@ -3514,7 +3575,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 			elif error.error_code == 403:
 				if 'user is deactivated' in error.description:
 					if debug_log:
-						logging.info(f'⚠️ user {anonymizeID(chat)} was deactivated – cleaning notify database...')
+						logging.info(f'⚠️ user {anonymize_id(chat)} was deactivated – cleaning notify database...')
 						logging.info(f'Error: {error}')
 
 					cleanNotifyDatabase(chat)
@@ -3522,7 +3583,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 
 				elif 'bot was kicked from the supergroup chat' in error.description:
 					if debug_log:
-						logging.info(f'⚠️ bot was kicked from supergroup {anonymizeID(chat)} – cleaning notify database...')
+						logging.info(f'⚠️ bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database...')
 						logging.info(f'Error: {error}')
 
 					cleanNotifyDatabase(chat)
@@ -3690,7 +3751,8 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 			else:
 				spx_orbit_info = f'`{spx_orbit_info}`'
 
-			message_header += f'\n*Orbit* {spx_orbit_info}'
+			if 'ISS' not in spx_orbit_info:
+				message_header += f'\n*Orbit* {spx_orbit_info}'
 
 	# add the footer
 	message_footer = f'*🕓 The launch is scheduled* for `{launch_time}` `UTC`\n'
@@ -3764,7 +3826,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 		else:
 			success = False
 			if debug_log:
-				logging.info(f'🛑 Error sending notification to chat={anonymizeID(chat)}! Exception: {ret}')
+				logging.info(f'🛑 Error sending notification to chat={anonymize_id(chat)}! Exception: {ret}')
 
 
 		tries = 1
@@ -3776,11 +3838,11 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 			if ret == True:
 				success = True
 				if debug_log:
-					logging.info(f'✅ Notification sent successfully to chat={anonymizeID(chat)}! Took {tries} tries.')
+					logging.info(f'✅ Notification sent successfully to chat={anonymize_id(chat)}! Took {tries} tries.')
 
 			elif ret != True and tries > 5:
 				if debug_log:
-					logging.info(f'⚠️ Tried to send notification to {anonymizeID(chat)} {tries} times – passing.')
+					logging.info(f'⚠️ Tried to send notification to {anonymize_id(chat)} {tries} times – passing.')
 					
 				ret = True
 
@@ -3789,7 +3851,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 				reached_people += bot.getChatMembersCount(chat) - 1
 			except Exception as error:
 				if debug_log:
-					logging.info(f'⚠️ Error getting number of chat members for chat={anonymizeID(chat)}. Error: {error}')
+					logging.info(f'⚠️ Error getting number of chat members for chat={anonymize_id(chat)}. Error: {error}')
 
 	# log end time
 	end_time = timer()
@@ -3837,7 +3899,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 def updateStats(stats_update):
 	# check if the db exists
 	if not os.path.isfile(os.path.join('data', 'statistics.db')):
-		createStatsDatabase()
+		create_stats_database()
 
 	# Establish connection
 	stats_conn = sqlite3.connect(os.path.join('data', 'statistics.db'))
@@ -3946,7 +4008,7 @@ def statistics(chat, mode):
 	🎛 *Server information*
 	{up_str}
 	{load_avg_str}
-	LaunchBot version *{VERSION}* ✨
+	LaunchBot version {VERSION}
 	'''
 
 	if mode == 'refresh':
@@ -3989,11 +4051,10 @@ def createSPXDatabase():
 
 	conn.commit()
 	conn.close()
-	return
 
 
 # creates a new notifications database, if one doesn't exist
-def createNotifyDatabase():
+def create_notify_database():
 	launch_dir = 'data/launch'
 	if not os.path.isdir(launch_dir):
 		if not os.path.isdir('data'):
@@ -4017,7 +4078,7 @@ def createNotifyDatabase():
 
 
 # creates a launch database
-def createLaunchDatabase():
+def create_launch_database():
 	launch_dir = 'data/launch'
 	if not os.path.isdir(launch_dir):
 		if not os.path.isdir('data'):
@@ -4038,13 +4099,14 @@ def createLaunchDatabase():
 			countrycode TEXT, NET INTEGER, Tminus INTEGER, notify24h BOOLEAN, notify12h BOOLEAN,
 			notify60min BOOLEAN, notify5min BOOLEAN, notifylaunch BOOLEAN,
 			success BOOLEAN, launched BOOLEAN, hold BOOLEAN, vid TEXT,
+			tbd_date INTEGER, tbd_time INTEGER, launch_prob INTEGER,
 			PRIMARY KEY (id))''')
 		
 		c.execute("CREATE INDEX keywordtminus ON launches (id, NET)")
 	
 	except sqlite3.OperationalError as e:
 		if debug_log:
-			logging.info(f'Error in createLaunchDatabase: {e}')
+			logging.info(f'Error in create_launch_database: {e}')
 		pass
 
 	conn.commit()
@@ -4052,7 +4114,7 @@ def createLaunchDatabase():
 
 
 # creates a statistics database
-def createStatsDatabase():
+def create_stats_database():
 	data_dir = 'data'
 	if not os.path.isdir('data'):
 		os.mkdir('data')
@@ -4074,7 +4136,7 @@ def createStatsDatabase():
 
 
 # if running for the first time
-def firstRun():
+def first_run():
 	print("Looks like you're running LaunchBot for the first time!")
 	print("Let's start off by creating some folders.")
 	time.sleep(2)
@@ -4094,16 +4156,16 @@ def firstRun():
 		if not os.path.isdir('data'):
 			os.mkdir('data')
 
-		updateToken(['botToken'])
+		update_token(['botToken'])
 		time.sleep(2)
 		print('\n')
 
 
 # update bot token
-def updateToken(update_tokens):
+def update_token(update_tokens):
 	# create /data and /chats
 	if not os.path.isdir('data'):
-		firstRun()
+		first_run()
 
 	if not os.path.isfile('data' + '/bot-settings.json'):
 		with open('data/bot-settings.json', 'w') as json_data:
@@ -4140,7 +4202,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.10'
+	VERSION = '0.5.13'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
@@ -4174,7 +4236,7 @@ if __name__ == '__main__':
 				if arg in ('log', '-log'):
 					debug_log = True
 					if not os.path.isdir('data'):
-						firstRun()
+						first_run()
 					
 					log = 'data/log.log'
 
@@ -4192,14 +4254,14 @@ if __name__ == '__main__':
 					debug_mode = True
 
 		if len(update_tokens) != 0:
-			updateToken(update_tokens)
+			update_token(update_tokens)
 
 		if start is False:
 			sys.exit('No start command given – exiting. To start the bot, include -start in startup options.')
 
 	# if data folder isn't found, we haven't run before (or someone pressed the wrong button)
 	if not os.path.isdir('data'):
-		firstRun()
+		first_run()
 
 	try:
 		bot_settings_path = os.path.join('data','bot-settings.json')
@@ -4208,17 +4270,17 @@ if __name__ == '__main__':
 				setting_map = json.load(json_data)
 			except:
 				os.remove(os.path.join('data','bot-settings.json'))
-				firstRun()
+				first_run()
 
 	except FileNotFoundError:
-		firstRun()
+		first_run()
 
 		with open(bot_settings_path, 'r') as json_data:
 			setting_map = json.load(json_data)
 
 	# token for the Telegram API; get from args or as a text file
 	if len(setting_map['botToken']) == 0 or ':' not in setting_map['botToken']:
-		firstRun()
+		first_run()
 	else:
 		TOKEN = setting_map['botToken']
 
@@ -4342,7 +4404,7 @@ if __name__ == '__main__':
 	global feedback_message_IDs
 	feedback_message_IDs = set()
 
-	MessageLoop(bot, {'chat': handle, 'callback_query': callbackHandler}).run_as_thread()
+	MessageLoop(bot, {'chat': handle, 'callback_query': callback_handler}).run_as_thread()
 	time.sleep(1)
 
 	if not debug_mode:
