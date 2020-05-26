@@ -1902,7 +1902,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 			info = f'{". ".join(info.split(". ")[0:2])}.'
 
 		if 'DM2' in mission_name:
-			info = 'A new era of human spaceflight is set to begin as 🇺🇸-astronauts once again launch to orbit on a 🇺🇸-rocket from 🇺🇸-soil, almost a decade after the retirement of the Space Shuttle fleet back in 2011. \n\nDemo-2 will launch mission commander Doug Hurley and joint operations commander Bob Behnken to the ISS on the third overall flight of the Crew Dragon, after the two successful unmanned test-flights, Demo-1 and IFA.'
+			info = 'A new era of human spaceflight is set to begin as 🇺🇸-astronauts once again launch to orbit on a 🇺🇸-rocket from 🇺🇸-soil, almost a decade after the retirement of the Space Shuttle fleet back in 2011. \n\nDemo-2 will launch mission commander Doug Hurley and joint operations commander Bob Behnken to the ISS on the third overall flight of the Crew Dragon. Demo-2 follows the two previous successful unmanned test-flights, Demo-1 and IFA, and will be the last test-flight of the Dragon 2 system before it enters operational service later this year with the Crew-1 mission.'
 			mission_name = 'SpX-DM2'
 
 		info_msg = f'ℹ️ {info}'
@@ -3644,7 +3644,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 			info = f'{". ".join(info.split(". ")[0:2])}.'
 		
 		if 'DM2' in launch_name:
-			info = 'A new era of human spaceflight is set to begin as 🇺🇸-astronauts once again launch to orbit on a 🇺🇸-rocket from 🇺🇸-soil, almost a decade after the retirement of the Space Shuttle fleet back in 2011. \n\nDemo-2 will launch mission commander Doug Hurley and joint operations commander Bob Behnken to the ISS on the third overall flight of the Crew Dragon, after the two successful unmanned test-flights, Demo-1 and IFA.'
+			info = 'A new era of human spaceflight is set to begin as 🇺🇸-astronauts once again launch to orbit on a 🇺🇸-rocket from 🇺🇸-soil, almost a decade after the retirement of the Space Shuttle fleet back in 2011. \n\nDemo-2 will launch mission commander Doug Hurley and joint operations commander Bob Behnken to the ISS on the third overall flight of the Crew Dragon. Demo-2 follows the two previous successful unmanned test-flights, Demo-1 and IFA, and will be the last test-flight of the Dragon 2 system before it enters operational service later this year with the Crew-1 mission.'
 			launch_name = 'SpX-DM2'
 		
 		info_text = f'ℹ️ {info}'
@@ -3733,6 +3733,11 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 	vehicle_name = ' '.join("`{}`".format(word) for word in vehicle.split(' '))
 	pad_name = ' '.join("`{}`".format(word) for word in pad.split(' '))
 
+	if 'DM2' in launch_name:
+		launch_name = 'SpX-DM2'
+		if time_format == 'minutes':
+			info_text += ' Godspeed Behnken & Hurley.'
+
 	# construct the "base" message
 	message_header = f'🚀 *{launch_name}* is launching in *{t_minus} {time_format}*\n'
 	message_header += f'*Launch provider* {lsp_str} {lsp_flag}\n*Vehicle* {vehicle_name}\n*Pad* {pad_name}'
@@ -3754,8 +3759,28 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 			if 'ISS' not in spx_orbit_info:
 				message_header += f'\n*Orbit* {spx_orbit_info}'
 
+
+	# launch probability
+	launch_prob = query_return[0][22]
+	if launch_prob != -1 and launch_prob != None:
+		if launch_prob >= 80:
+			prob_str = f'☀️ *{launch_prob} %* probability of launch'
+		elif launch_prob >= 60:
+			prob_str = f'🌤 *{launch_prob} %* probability of launch'
+		elif launch_prob >= 40:
+			prob_str = f'🌥 *{launch_prob} %* probability of launch'
+		elif launch_prob >= 20:
+			prob_str = f'☁️ *{launch_prob} %* probability of launch'
+		else:
+			prob_str = f'🌪 *{launch_prob} %* probability of launch'
+
+		prob_str += '\n'
+		message_footer = prob_str
+	else:
+		message_footer = ''
+
 	# add the footer
-	message_footer = f'*🕓 The launch is scheduled* for `{launch_time}` `UTC`\n'
+	message_footer += f'*🕓 The launch is scheduled* for `{launch_time}` `UTC`\n'
 	message_footer += f'*🔕 To disable* use /notify@{BOT_USERNAME}'
 	launch_str = message_header + '\n\n' + info_text + '\n\n' + message_footer
 
@@ -4008,7 +4033,7 @@ def statistics(chat, mode):
 	🎛 *Server information*
 	{up_str}
 	{load_avg_str}
-	LaunchBot version {VERSION}
+	LaunchBot version *{VERSION}* 🚀
 	'''
 
 	if mode == 'refresh':
@@ -4202,7 +4227,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.13'
+	VERSION = '0.5.14'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
