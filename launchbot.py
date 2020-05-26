@@ -117,8 +117,10 @@ def handle(msg):
 
 		*Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (May 2020)
 		- Added preferences to /notify@{BOT_USERNAME} ⚙️
-		- You can now choose which notifications you receive (24h/12h etc.) *user request* ✍️
+		- You can now choose when you receive notifications (24h/12h/etc.)
 		- Updates to the schedule command
+		- Added probability of launch to /next@{BOT_USERNAME}
+		- /next@{BOT_USERNAME} now indicates if a launch countdown is on hold
 
 		*Coming soon*
 		🌎 Timezone support
@@ -245,8 +247,10 @@ def handle(msg):
 
 				*Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (May 2020)
 				- Added preferences to /notify@{BOT_USERNAME} ⚙️
-				- You can now choose which notifications you receive (24h/12h etc.) *user request* ✍️
+				- You can now choose when you receive notifications (24h/12h/etc.)
 				- Updates to the schedule command
+				- Added probability of launch to /next@{BOT_USERNAME}
+				- /next@{BOT_USERNAME} now indicates if a launch countdown is on hold
 
 				*Coming soon*
 				🌎 Timezone support
@@ -1508,7 +1512,7 @@ def flight_schedule(msg, command_invoke, call_type):
 
 		# calc how many days until this date
 		launch_date = datetime.datetime.strptime(key, '%Y-%m-%d')
-		time_delta = launch_date - today
+		time_delta = abs(launch_date - today)
 
 		if (launch_date.day, launch_date.month) == (today.day, today.month):
 			eta_days = 'today'
@@ -1520,7 +1524,14 @@ def flight_schedule(msg, command_invoke, call_type):
 				else:
 					eta_days = f'in {launch_date.day - today.day} days'
 			else:
-				eta_days = f'in {math.floor(time_delta.seconds/(3600*24))} days'
+				sec_time = time_delta.seconds + time_delta.days * 3600 * 24
+				days = math.floor(sec_time/(3600*24))
+				hours = (sec_time/(3600) - math.floor(sec_time/(3600*24))*24)
+				
+				if today.hour + hours >= 24:
+					days += 1
+				
+				eta_days = f'in {days+1} days'
 
 		eta_days = provider = ' '.join("`{}`".format(word) for word in eta_days.split(' '))
 
@@ -4129,7 +4140,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.8'
+	VERSION = '0.5.10'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
