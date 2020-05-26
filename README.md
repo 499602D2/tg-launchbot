@@ -54,7 +54,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ disable logging of text messages; how to do feedback? (log feedback messages in a global array?)
 	
-	- add tbd-field to launches, so schedule can only show certain launch dates (filter certain and uncertain with a button)
+	- ✅ add tbd-field to launches, so schedule can only show certain launch dates (filter certain and uncertain with a button)
 	
 	- ✅ add location (i.e. state/country) below pad information (Florida, USA etc.)
 
@@ -66,7 +66,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- add a "more info"/"less info" button
 	
-	- add probability of launch and launch location, separate from mission name etc. with \n\n
+	- ✅ add probability of launch and launch location, separate from mission name etc. with \n\n
 	
 	- handle notification send checks with schedule, instead of polling every 20-30 seconds (i.e. update schedule every time db is updated)
 	
