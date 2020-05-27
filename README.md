@@ -28,13 +28,13 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 
 **Bot roadmap**
 
-0.2 (December):
+0.2: basic features (December)
 
 	- ✅ implement /next using DB calls
 	
 	- ✅ implement support for SpaceX core information
 
-0.3 (January):
+0.3: user-facing features (January)
 	
 	- ✅ add "next" and "previous" button(s) to /next command
 	
@@ -48,7 +48,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ change launch database index from tminus to net
 
-0.4.X (February ->)
+0.4: basic improvements (February ->)
 
 	- ✅ Notify users of a launch being postponed if a notification has already been sent
 	
@@ -58,7 +58,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ add location (i.e. state/country) below pad information (Florida, USA etc.)
 
-0.5
+0.5: user-facing features
 	
 	- allow users to disable postpone notifications on a per-launch basis
 	
@@ -75,3 +75,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	- ✅ allow users to set their own notifications (i.e. 24h/12h/...)
 	
 	- allow users to set their own timezone
+	
+0.6: back-end improvements
+
+	- improve json-parsing performance by using pooling
