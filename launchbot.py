@@ -11,9 +11,6 @@ from timeit import default_timer as timer
 from telepot.loop import MessageLoop
 from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
 
-# TODO
-# add "show mission names/show vehicle names" to schedule
-# when parsing json, if launch no-longer found (and NET not passed), remove it from the DB
 
 # main loop-function for messages with flavor=chat
 def handle(msg):
@@ -297,7 +294,7 @@ def handle(msg):
 						logging.info(f'🕹 {command} called by {anonymize_id(chat)} | args: [] | {(1000*t_elapsed):.0f} ms')
 
 			# store statistics here, so our stats database can't be spammed either
-			updateStats({'commands':1})
+			update_statistics({'commands':1})
 
 		else:
 			return
@@ -373,8 +370,6 @@ def callback_handler(msg):
 				bot.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
 			except:
 				pass
-
-		return
 
 
 	def update_list_view(msg, chat, provider_list):
@@ -902,7 +897,7 @@ def callback_handler(msg):
 
 	# update stats, except if command was a stats refresh
 	if input_data[0] != 'stats':
-		updateStats({'commands':1})
+		update_statistics({'commands':1})
 
 
 # restrict command send frequency to avoid spam
@@ -1560,12 +1555,12 @@ def flight_schedule(msg, command_invoke, call_type):
 
 		i += 1
 
-	schedule_msg = reconstructMessageForMarkdown(schedule_msg)
+	schedule_msg = reconstruct_message_for_markdown(schedule_msg)
 	header = f'📅 *5\-day flight schedule*\n'
 	header_note = f'Dates are subject to change. For detailed flight information, use /next@{BOT_USERNAME}.'
 	footer_note = '\n\n🟢 = verified launch date\n🟡 = exact time to be determined'
-	footer = f'_{reconstructMessageForMarkdown(footer_note)}_'
-	header_info = f'_{reconstructMessageForMarkdown(header_note)}\n\n_'
+	footer = f'_{reconstruct_message_for_markdown(footer_note)}_'
+	header_info = f'_{reconstruct_message_for_markdown(header_note)}\n\n_'
 	schedule_msg = header + header_info + schedule_msg + footer
 
 	# call change button
@@ -1741,7 +1736,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 	in_hold = True if in_hold == 1 else False
 
 	if lsp_name == 'SpaceX':
-		spx_info_str, spx_orbit_info = spxInfoStrGen(mission_name, 0)
+		spx_info_str, spx_orbit_info = spx_info_str_gen(mission_name, 0)
 		if spx_info_str != None:
 			spx_str = True
 		else:
@@ -2024,11 +2019,11 @@ def next_flight(msg, current_index, command_invoke, cmd):
 	msg_text += f'\n{notify_str}'
 
 	# reconstruct
-	msg_text = reconstructMessageForMarkdown(msg_text)
+	msg_text = reconstruct_message_for_markdown(msg_text)
 
 	# add proper URL, format for MarkdownV2
 	if vid_str is not None:
-		link_text = reconstructLinkForMarkdown(vid_url)
+		link_text = reconstruct_link_for_markdown(vid_url)
 		msg_text = msg_text.replace('LinkTextGoesHere', f'[live\!]({link_text})')
 
 	if max_index > 1:
@@ -2075,14 +2070,14 @@ def next_flight(msg, current_index, command_invoke, cmd):
 
 
 # handles API update requests and decides on which notification to send
-def launchUpdateCheck():
+def launch_update_check():
 	# compare data to data found in local launch database
 	# send a notification if launch time is approaching
 
 	launch_dir = 'data/launch'
 	if not os.path.isfile(os.path.join(launch_dir, 'launches.db')):
 		create_launch_database()
-		getLaunchUpdates(None)
+		get_launch_updates(None)
 
 	# Establish connection to the launch database
 	conn = sqlite3.connect(os.path.join(launch_dir, 'launches.db'))
@@ -2118,7 +2113,7 @@ def launchUpdateCheck():
 	if debug_log:
 		logging.info(f'⏰ Found {len(query_return)} pending notification(s)... Updating database to verify.')
 	
-	getLaunchUpdates(None)
+	get_launch_updates(None)
 	c.execute(f'''SELECT * FROM launches 
 		WHERE 
 		NET <= {unix_24h_threshold} AND NET >= {now_timestamp} AND notify24h = 0 OR
@@ -2161,7 +2156,7 @@ def launchUpdateCheck():
 		
 		if len(notif_class) == 0:
 			if debug_log:
-				logging.info(f'⚠️ Error setting notif_class in notificationHandler(): curr_Tminus:{curr_Tminus}, launch:{query_return[0][1]}.\
+				logging.info(f'⚠️ Error setting notif_class in notification_handler(): curr_Tminus:{curr_Tminus}, launch:{query_return[0][1]}.\
 				 24h: {status_24h}, 12h: {status_12h}, 1h: {status_1h}, 5m: {status_5m}')
 			
 			return
@@ -2171,26 +2166,26 @@ def launchUpdateCheck():
 				logging.info(f'✅ Set {len(notif_class)} notif_classes. Timestamp: {now_timestamp}, flt NET: {NET}')
 
 		# send the notifications
-		notificationHandler(row, notif_class, False)
+		notification_handler(row, notif_class, False)
 
 	return
 
 
 # handles r/spacex api requests
-def spxAPIHandler():
+def spx_api_handler():
 	'''
 	This function performs an API call to the r/SpaceX API and updates the database with
 	the returned information. 
 
-	constructParams():
+	construct_params():
 		Dynamically constructs the parameters for the request URL so we don't have to do it manually.
 	
-	multiParse():
+	multi_parse():
 		Parses the returned json-file by iterating over the launches found in the json, and updating
 		the database with the information.
 	'''
 
-	def constructParams(PARAMS):
+	def construct_params(PARAMS):
 		param_url, i = '', 0
 		if PARAMS is not None:
 			for key, val in PARAMS.items():
@@ -2202,11 +2197,11 @@ def spxAPIHandler():
 
 		return param_url
 
-	def multiParse(json, launch_count):
+	def multi_parse(json, launch_count):
 		# check if db exists
 		launch_dir = 'data/launch'
 		if not os.path.isfile(os.path.join(launch_dir, 'spx-launches.db')):
-			createSPXDatabase()
+			create_spx_database()
 
 		# open connection
 		conn = sqlite3.connect(os.path.join(launch_dir, 'spx-launches.db'))
@@ -2221,14 +2216,14 @@ def spxAPIHandler():
 				try:
 					if 'error' in launch_json.keys():
 						if debug_log:
-							logging.info(f'⚠️ Error in spxAPIHandler multiParse: {launch_json["error"]}')
+							logging.info(f'⚠️ Error in spx_api_handler multi_parse: {launch_json["error"]}')
 
 					elif debug_log:
-						logging.info(f'⚠️ Got KeyError in spxAPIHandler(multiParse()), returning: {error}')
+						logging.info(f'⚠️ Got KeyError in spx_api_handler(multi_parse()), returning: {error}')
 						logging.info(f'⚠️ range: 0,{launch_count}, i:{i}, launch_json: {launch_json}')
 
 				except Exception as error:
-					logging.info(f'Other error in multiParse: {error}')
+					logging.info(f'Other error in multi_parse: {error}')
 					pass
 
 				return
@@ -2359,7 +2354,7 @@ def spxAPIHandler():
 	API_VERSION = 'v3'
 
 	# construct the call URL
-	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{constructParams(PARAMS)}'
+	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{construct_params(PARAMS)}'
 	
 	try: # perform the API call
 		API_RESPONSE = requests.get(API_CALL)
@@ -2369,7 +2364,7 @@ def spxAPIHandler():
 			logging.info(f'⚠️ Trying again after 3 seconds...')
 
 		time.sleep(3)
-		spxAPIHandler()
+		spx_api_handler()
 
 		if debug_log:
 			logging.info(f'✅ Success!')
@@ -2381,20 +2376,20 @@ def spxAPIHandler():
 		launch_json = json.loads(API_RESPONSE.text)
 	except Exception as error:
 		#if debug_log:
-			#logging.info(f'Error reading launch_json in spxAPIHandler: {error}')
+			#logging.info(f'Error reading launch_json in spx_api_handler: {error}')
 
 		return
 		
 
-	multiParse(launch_json, len(launch_json))
+	multi_parse(launch_json, len(launch_json))
 
 	# update stats
-	updateStats({'API_requests':1, 'db_updates':1, 'data':len(API_RESPONSE.content)})
+	update_statistics({'API_requests':1, 'db_updates':1, 'data':len(API_RESPONSE.content)})
 
 	return
 
 
-def spxInfoStrGen(launch_name, run_count):
+def spx_info_str_gen(launch_name, run_count):
 	'''
 	Gets the name of a launch from launches.db and attempts to find the corresponding launch name
 	from spx-launches.db with diffing, then generate the SpaceX launch specific information string.
@@ -2408,8 +2403,8 @@ def spxInfoStrGen(launch_name, run_count):
 	# if not, update
 	launch_dir = 'data/launch'
 	if not os.path.isfile(os.path.join(launch_dir, 'spx-launches.db')):
-		createSPXDatabase()
-		spxAPIHandler()
+		create_spx_database()
+		spx_api_handler()
 
 	# open connection
 	conn = sqlite3.connect(os.path.join(launch_dir, 'spx-launches.db'))
@@ -2506,14 +2501,14 @@ def spxInfoStrGen(launch_name, run_count):
 		else:
 			if run_count == 0:
 				if debug_log:
-					logging.info(f'🛑 Error in spxInfoStrGen: unable to find launches \
+					logging.info(f'🛑 Error in spx_info_str_gen: unable to find launches \
 						with a NET >= {today_unix}. Updating and trying again...')
 
-				spxAPIHandler()
-				spxInfoStrGen(launch_name, 1)
+				spx_api_handler()
+				spx_info_str_gen(launch_name, 1)
 			else:
 				if debug_log:
-					logging.info(f'🛑 Error in spxInfoStrGen: unable to find launches \
+					logging.info(f'🛑 Error in spx_info_str_gen: unable to find launches \
 						with a NET >= {today_unix}. Tried once before, not trying again.')
 
 			return None, None
@@ -2524,7 +2519,7 @@ def spxInfoStrGen(launch_name, run_count):
 
 	else:
 		if debug_log:
-			logging.info(f'⚠️ Error in spxInfoStrGen(): got more than one launch. \
+			logging.info(f'⚠️ Error in spx_info_str_gen(): got more than one launch. \
 				query: {launch_name}, return: {query_return}')
 
 		return None, None
@@ -2547,14 +2542,14 @@ def spxInfoStrGen(launch_name, run_count):
 					db_match = query_return[0]
 				else:
 					if debug_log:
-						logging.info(f'🛑 [spxInfoStrGen] Found {len(query_return)} matches from db... Exiting')
+						logging.info(f'🛑 [spx_info_str_gen] Found {len(query_return)} matches from db... Exiting')
 					return None, None
 			else:
 				if debug_log:
-					logging.info(f'🛑 [spxInfoStrGen] Found {len(query_return)} matches from db... Exiting')
+					logging.info(f'🛑 [spx_info_str_gen] Found {len(query_return)} matches from db... Exiting')
 				return None, None
 
-	# same found in multiparse
+	# same found in multi_parse
 	# use to extract info from db
 	# row stored in db_match
 	# flight_num 0, launch_name 1, NET 2, orbit 3, vehicle 4, core_serials 5
@@ -2697,7 +2692,7 @@ def spxInfoStrGen(launch_name, run_count):
 
 	else:
 		if debug_log:
-			logging.info(f'🛑 Error in spxInfoStrGen: vehicle not found ({db_match[4]})')
+			logging.info(f'🛑 Error in spx_info_str_gen: vehicle not found ({db_match[4]})')
 		
 		return None, None
 
@@ -2764,13 +2759,13 @@ def spxInfoStrGen(launch_name, run_count):
 	return spx_info, destination_orbit
 
 
-# handles API requests from launchUpdateCheck()
-def getLaunchUpdates(launch_ID):
+# handles API requests from launch_update_check()
+def get_launch_updates(launch_ID):
 	# handle notification sending; done in a separate function so we can retry more easily and handle exceptions
-	def sendPostponeNotification(chat, notification, launch_id, keywords):
+	def send_postpone_notification(chat, notification, launch_id, keywords):
 		try:
 			# load mute status, generate keys
-			mute_status = loadMuteStatus(chat, launch_id, keywords)
+			mute_status = load_mute_status(chat, launch_id, keywords)
 			mute_press = 0 if mute_status == 1 else 1
 			mute_key = {0:f'🔇 Mute this launch',1:'🔊 Unmute this launch'}[mute_status]
 
@@ -2793,7 +2788,7 @@ def getLaunchUpdates(launch_ID):
 			if debug_log:
 				logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat)} – cleaning notify database...')
 
-			cleanNotifyDatabase(chat)
+			clean_notify_database(chat)
 			return True
 
 		except telepot.exception.TelegramError as error:
@@ -2803,7 +2798,7 @@ def getLaunchUpdates(launch_ID):
 					logging.info(f'⚠️ chat {anonymize_id(chat)} not found – cleaning notify database...')
 					logging.info(f'Error: {error}')
 
-				cleanNotifyDatabase(chat)
+				clean_notify_database(chat)
 				return True
 
 			elif error.error_code == 403:
@@ -2812,7 +2807,7 @@ def getLaunchUpdates(launch_ID):
 						logging.info(f'⚠️ user {anonymize_id(chat)} was deactivated – cleaning notify database...')
 						logging.info(f'Error: {error}')
 
-					cleanNotifyDatabase(chat)
+					clean_notify_database(chat)
 					return True
 
 				elif 'bot was kicked from the supergroup chat' in error.description:
@@ -2820,12 +2815,12 @@ def getLaunchUpdates(launch_ID):
 						logging.info(f'⚠️ bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database...')
 						logging.info(f'Error: {error}')
 
-					cleanNotifyDatabase(chat)
+					clean_notify_database(chat)
 					return True
 
 				else:
 					if debug_log:
-						logging.info(f'⚠️ unhandled 403 telepot.exception.TelegramError in sendPostponeNotification: {error}')
+						logging.info(f'⚠️ unhandled 403 telepot.exception.TelegramError in send_postpone_notification: {error}')
 
 			# Rate-limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
 			elif error.error_code == 429:
@@ -2838,7 +2833,7 @@ def getLaunchUpdates(launch_ID):
 			# Some error code we don't know how to handle
 			else:
 				if debug_log:
-					logging.info(f'⚠️ unhandled telepot.exception.TelegramError in sendNotification: {error}')
+					logging.info(f'⚠️ unhandled telepot.exception.TelegramError in send_notification: {error}')
 
 				return False
 
@@ -2846,7 +2841,7 @@ def getLaunchUpdates(launch_ID):
 			return caught_exception
 
 
-	def constructParams(PARAMS):
+	def construct_params(PARAMS):
 		param_url, i = '', 0
 		if PARAMS is not None:
 			for key, val in PARAMS.items():
@@ -2859,7 +2854,7 @@ def getLaunchUpdates(launch_ID):
 		return param_url
 
 
-	def multiParse(json, launch_count):
+	def multi_parse(json, launch_count):
 		# check if db exists
 		launch_dir = 'data/launch'
 		if not os.path.isfile(os.path.join(launch_dir, 'launches.db')):
@@ -3154,7 +3149,7 @@ def getLaunchUpdates(launch_ID):
 						msg_text = f'📢 *{launch_name}* has been postponed by {postpone_str}. '
 						msg_text += f'*{lsp_name}* is now targeting lift-off on *{date_str}* at *{launch_time} UTC*.\n\n'
 						msg_text += f'⏱ {eta_str} until next launch attempt.\n\n'
-						msg_text = reconstructMessageForMarkdown(msg_text)
+						msg_text = reconstruct_message_for_markdown(msg_text)
 						msg_text += f'ℹ️ _You will be re\-notified of this launch\. For detailed info\, use \/next\@{BOT_USERNAME}\. '
 						msg_text += 'To disable\, mute this launch with the button below\._'
 
@@ -3165,7 +3160,7 @@ def getLaunchUpdates(launch_ID):
 
 						active_chats, muted_chats = set(), set()
 						for chat in notify_list:
-							if loadMuteStatus(chat, launch_id, lsp) == 0:
+							if load_mute_status(chat, launch_id, lsp) == 0:
 								active_chats.add(chat)
 							else:
 								muted_chats.add(chat)
@@ -3174,7 +3169,7 @@ def getLaunchUpdates(launch_ID):
 						global msg_identifiers
 						msg_identifiers = []
 						for chat in active_chats:
-							ret = sendPostponeNotification(chat, msg_text, launch_id, lsp)
+							ret = send_postpone_notification(chat, msg_text, launch_id, lsp)
 
 							if ret != True and debug_log:
 								logging.info(f'🛑 Error sending notification to chat={anonymize_id(chat)}! Exception: {ret}')
@@ -3182,7 +3177,7 @@ def getLaunchUpdates(launch_ID):
 							tries = 1
 							while ret != True:
 								time.sleep(2)
-								ret = sendPostponeNotification(chat, msg_text, launch_id, lsp)
+								ret = send_postpone_notification(chat, msg_text, launch_id, lsp)
 								tries += 1
 								
 								if ret == True:
@@ -3202,14 +3197,14 @@ def getLaunchUpdates(launch_ID):
 										 f' status.')
 
 						# update stats with sent notifications
-						updateStats({'notifications':len(active_chats)})
+						update_statistics({'notifications':len(active_chats)})
 
 						# remove old notifs if possible
-						removePreviousNotification(launch_id, lsp_short if len(lsp_name) > len('Virgin Orbit') else lsp_name)
+						remove_previous_notification(launch_id, lsp_short if len(lsp_name) > len('Virgin Orbit') else lsp_name)
 
 						# convert identifiers to string, store
 						msg_identifiers = ','.join(msg_identifiers)
-						storeIdentifiers(launch_id, msg_identifiers)
+						store_identifiers(launch_id, msg_identifiers)
 
 						if debug_log:
 							if len(disabled_statuses) > 0:
@@ -3244,7 +3239,7 @@ def getLaunchUpdates(launch_ID):
 	API_VERSION = '1.4'
 
 	# construct the call URL
-	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{constructParams(PARAMS)}' #&{fields}
+	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{construct_params(PARAMS)}' #&{fields}
 	
 	# perform the API call
 	headers = {'user-agent': f'telegram-{BOT_USERNAME}/{VERSION}'}
@@ -3257,7 +3252,7 @@ def getLaunchUpdates(launch_ID):
 			logging.info(f'⚠️ Trying again after 3 seconds...')
 
 		time.sleep(3)
-		getLaunchUpdates(None)
+		get_launch_updates(None)
 
 		if debug_log:
 			logging.info(f'✅ Success!')
@@ -3286,7 +3281,7 @@ def getLaunchUpdates(launch_ID):
 			logging.info(f'⚠️ Trying again after 3 seconds...')
 
 		time.sleep(3)
-		getLaunchUpdates(None)
+		get_launch_updates(None)
 		return
 
 	if len(launch_json['launches']) == 0:
@@ -3300,13 +3295,13 @@ def getLaunchUpdates(launch_ID):
 
 	# we got something, parse all of it
 	if len(launch_json['launches']) >= 1:
-		multiParse(launch_json, len(launch_json['launches']))
+		multi_parse(launch_json, len(launch_json['launches']))
 
-	updateStats({'API_requests':1, 'db_updates':1, 'data':len(API_RESPONSE.content)})
+	update_statistics({'API_requests':1, 'db_updates':1, 'data':len(API_RESPONSE.content)})
 
 
 # MarkdownV2 requires some special handling, so parse the link here
-def reconstructLinkForMarkdown(link):
+def reconstruct_link_for_markdown(link):
 	link_reconstruct, char_set = '', {')', '\\'}
 	for char in link:
 		if char in char_set:
@@ -3318,7 +3313,7 @@ def reconstructLinkForMarkdown(link):
 
 
 # Same as above, but for the message text
-def reconstructMessageForMarkdown(message):
+def reconstruct_message_for_markdown(message):
 	message_reconstruct = ''
 	char_set = {'[', ']', '(', ')', '~', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'}
 	for char in message:
@@ -3422,7 +3417,7 @@ def getNotifyList(lsp, launch_id, notif_class):
 
 
 # load mute status for chat and launch
-def loadMuteStatus(chat, launch_id, keywords):
+def load_mute_status(chat, launch_id, keywords):
 	launch_dir = 'data/launch'
 	conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
 	c = conn.cursor()
@@ -3443,7 +3438,7 @@ def loadMuteStatus(chat, launch_id, keywords):
 
 
 # removes all notification settings for a chat from the notify database
-def cleanNotifyDatabase(chat):
+def clean_notify_database(chat):
 	conn = sqlite3.connect(os.path.join('data/launch', 'notifications.db'))
 	c = conn.cursor()
 	
@@ -3452,7 +3447,7 @@ def cleanNotifyDatabase(chat):
 	conn.close()
 
 
-def removePreviousNotification(launch_id, keyword):
+def remove_previous_notification(launch_id, keyword):
 	''' Before storing the new identifiers, remove the old notification if possible. '''
 	launch_dir = 'data/launch'
 	if not os.path.isfile(os.path.join(launch_dir, 'sent-notifications.db')):
@@ -3481,7 +3476,7 @@ def removePreviousNotification(launch_id, keyword):
 		message_identifier = (chat_id, message_id)
 
 		# try removing the message, if launch has not been muted
-		if loadMuteStatus(chat_id, launch_id, keyword) == 0:
+		if load_mute_status(chat_id, launch_id, keyword) == 0:
 			try:
 				ret = bot.deleteMessage(message_identifier)
 				if ret is not False:
@@ -3500,7 +3495,7 @@ def removePreviousNotification(launch_id, keyword):
 
 
 # store identifiers for sent messages so they can be removed later
-def storeIdentifiers(launch_id, msg_identifiers):
+def store_identifiers(launch_id, msg_identifiers):
 	launch_dir = 'data/launch'
 	conn = sqlite3.connect(os.path.join(launch_dir, 'sent-notifications.db'))
 	c = conn.cursor()
@@ -3522,10 +3517,10 @@ def storeIdentifiers(launch_id, msg_identifiers):
 	conn.close()
 
 
-# gets a request to send a notification about launch X from launchUpdateCheck()
-def notificationHandler(launch_row, notif_class, NET_slip):
+# gets a request to send a notification about launch X from launch_update_check()
+def notification_handler(launch_row, notif_class, NET_slip):
 	# handle notification sending; done in a separate function so we can retry more easily and handle exceptions
-	def sendNotification(chat, notification, launch_id, keywords, vid_link, notif_class):
+	def send_notification(chat, notification, launch_id, keywords, vid_link, notif_class):
 		# send early notifications silently
 		if notif_class not in {'1h', '5m'}:
 			silent = True
@@ -3533,14 +3528,14 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 			silent = False
 
 		# parse the message text for MarkdownV2
-		notification = reconstructMessageForMarkdown(notification)
+		notification = reconstruct_message_for_markdown(notification)
 		if 'LinkTextGoesHere' in notification:
-			link_text = reconstructLinkForMarkdown(vid_link)
+			link_text = reconstruct_link_for_markdown(vid_link)
 			notification = notification.replace('LinkTextGoesHere', f'[live\!]({link_text})')
 
 		try:
 			# load mute status, generate keys
-			mute_status = loadMuteStatus(chat, launch_id, keywords)
+			mute_status = load_mute_status(chat, launch_id, keywords)
 			mute_press = 0 if mute_status == 1 else 1
 			mute_key = {0:f'🔇 Mute this launch',1:'🔊 Unmute this launch'}[mute_status]
 
@@ -3566,7 +3561,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 			if debug_log:
 				logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat)} – cleaning notify database...')
 
-			cleanNotifyDatabase(chat)
+			clean_notify_database(chat)
 			return True
 
 		except telepot.exception.TelegramError as error:
@@ -3576,7 +3571,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 					logging.info(f'⚠️ chat {anonymize_id(chat)} not found – cleaning notify database...')
 					logging.info(f'Error: {error}')
 
-				cleanNotifyDatabase(chat)
+				clean_notify_database(chat)
 				return True
 
 			elif error.error_code == 403:
@@ -3585,7 +3580,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 						logging.info(f'⚠️ user {anonymize_id(chat)} was deactivated – cleaning notify database...')
 						logging.info(f'Error: {error}')
 
-					cleanNotifyDatabase(chat)
+					clean_notify_database(chat)
 					return True
 
 				elif 'bot was kicked from the supergroup chat' in error.description:
@@ -3593,12 +3588,12 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 						logging.info(f'⚠️ bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database...')
 						logging.info(f'Error: {error}')
 
-					cleanNotifyDatabase(chat)
+					clean_notify_database(chat)
 					return True
 
 				else:
 					if debug_log:
-						logging.info(f'⚠️ unhandled 403 telepot.exception.TelegramError in sendNotification: {error}')
+						logging.info(f'⚠️ unhandled 403 telepot.exception.TelegramError in send_notification: {error}')
 
 			# Rate limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
 			elif error.error_code == 429:
@@ -3611,7 +3606,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 			# Something else
 			else:
 				if debug_log:
-					logging.info(f'⚠️ unhandled telepot.exception.TelegramError in sendNotification: {error}')
+					logging.info(f'⚠️ unhandled telepot.exception.TelegramError in send_notification: {error}')
 
 				return False
 
@@ -3729,7 +3724,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 
 	# if it's a SpaceX launch, pull get the info string
 	if lsp_name == 'SpaceX':
-		spx_info_str, spx_orbit_info = spxInfoStrGen(launch_name, 0)
+		spx_info_str, spx_orbit_info = spx_info_str_gen(launch_name, 0)
 		if spx_info_str != None:
 			spx_str = True
 		else:
@@ -3851,7 +3846,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 	global msg_identifiers
 	reached_people, start_time, msg_identifiers = 0, timer(), []
 	for chat in notify_list:
-		ret = sendNotification(chat, launch_str, launch_id, cmd_keyword, launch_row[19], notif_class)
+		ret = send_notification(chat, launch_str, launch_id, cmd_keyword, launch_row[19], notif_class)
 
 		if ret == True:
 			success = True
@@ -3864,7 +3859,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 		tries = 1
 		while ret != True:
 			time.sleep(2)
-			ret = sendNotification(chat, launch_str, launch_id, cmd_keyword, launch_row[19], notif_class)
+			ret = send_notification(chat, launch_str, launch_id, cmd_keyword, launch_row[19], notif_class)
 			tries += 1
 			
 			if ret == True:
@@ -3890,7 +3885,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 
 	# update stats for sent notifications
 	conn.close()
-	updateStats({'notifications':len(notify_list)})
+	update_statistics({'notifications':len(notify_list)})
 
 	# set notification as sent; if 12 hour sent but 24 hour not sent, disable "higher" ones as well
 	conn.close()
@@ -3910,7 +3905,7 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 	
 	except Exception as e:
 		if debug_log:
-			logging.info(f'''⚠️ Error disabling notification in notificationHandler().
+			logging.info(f'''⚠️ Error disabling notification in notification_handler().
 			t_minus={t_minus}, launch_id={launch_id}. Notifications sent: {len(notify_list)}.
 			Exception: {e}. Disabling all further notifications.''')
 
@@ -3920,15 +3915,15 @@ def notificationHandler(launch_row, notif_class, NET_slip):
 	conn.close()
 
 	# remove previous notification
-	removePreviousNotification(launch_id, cmd_keyword)
+	remove_previous_notification(launch_id, cmd_keyword)
 
 	# store msg_identifiers
 	msg_identifiers = ','.join(msg_identifiers)
-	storeIdentifiers(launch_id, msg_identifiers)
+	store_identifiers(launch_id, msg_identifiers)
 
 
 # updates our stats with the given input
-def updateStats(stats_update):
+def update_statistics(stats_update):
 	# check if the db exists
 	if not os.path.isfile(os.path.join('data', 'statistics.db')):
 		create_stats_database()
@@ -4055,7 +4050,7 @@ def statistics(chat, mode):
 
 
 # creates the spx database
-def createSPXDatabase():
+def create_spx_database():
 	launch_dir = 'data/launch'
 	if not os.path.isdir(launch_dir):
 		if not os.path.isdir('data'):
@@ -4079,7 +4074,7 @@ def createSPXDatabase():
 	
 	except sqlite3.OperationalError as e:
 		if debug_log:
-			logging.info(f'🛑 Error in createSPXDatabase: {e}')
+			logging.info(f'🛑 Error in create_spx_database: {e}')
 
 	conn.commit()
 	conn.close()
@@ -4234,7 +4229,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.14'
+	VERSION = '0.5.15'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
@@ -4446,14 +4441,14 @@ if __name__ == '__main__':
 		sys.stdout.write('%s\r' % '  Connected to Telegram! ✅')
 
 	# schedule regular database updates and NET checks
-	schedule.every(2).minutes.do(getLaunchUpdates, launch_ID=None)
-	schedule.every(2).minutes.do(spxAPIHandler)
-	schedule.every(30).seconds.do(launchUpdateCheck)
+	schedule.every(2).minutes.do(get_launch_updates, launch_ID=None)
+	schedule.every(2).minutes.do(spx_api_handler)
+	schedule.every(30).seconds.do(launch_update_check)
 	
 	# run all scheduled jobs now, so we don't have to sit in the dark for a while
-	getLaunchUpdates(None)
-	spxAPIHandler()
-	launchUpdateCheck()
+	get_launch_updates(None)
+	spx_api_handler()
+	launch_update_check()
 
 	# handle sigterm
 	signal.signal(signal.SIGTERM, sigterm_handler)
