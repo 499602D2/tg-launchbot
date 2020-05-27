@@ -2400,6 +2400,10 @@ def spxInfoStrGen(launch_name, run_count):
 	from spx-launches.db with diffing, then generate the SpaceX launch specific information string.
 	'''
 
+	# manual matches for certain launches
+	if 'DM2' in launch_name:
+		launch_name = 'cctcap demo mission 2'
+
 	# open the database connection and check if the launch exists in the database
 	# if not, update
 	launch_dir = 'data/launch'
@@ -2558,6 +2562,9 @@ def spxInfoStrGen(launch_name, run_count):
 
 	# get the orbit
 	destination_orbit = db_match[3]
+
+	if 'ISS' in destination_orbit:
+		destination_orbit = None
 
 	# booster information
 	if db_match[4] == 'FH': # a Falcon Heavy launch
