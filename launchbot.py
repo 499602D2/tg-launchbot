@@ -485,7 +485,7 @@ def callback_handler(msg):
 			sender = bot.getChatMember(chat, from_id)
 			if sender['status'] != 'creator' and sender['status'] != 'administrator':
 				try:
-					bot.answerCallbackQuery(query_id, text="🚨 This button is only callable by administrators!")
+					bot.answerCallbackQuery(query_id, text="⚠️ This button is only callable by the group admins! ⚠️")
 				except Exception as error:
 					if debug_log:
 						logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
@@ -643,8 +643,8 @@ def callback_handler(msg):
 		elif input_data[1] == 'done':
 			# new text + callback text
 			reply_text = f'✅ All done!'
-			msg_text = f'✅ *All done!* Your preferences were saved!\n\n'
-			msg_text += f'ℹ️ If you need to adjust your settings in the future, use /notify@{BOT_USERNAME} to access these same settings!'
+			msg_text = f'✅ *All done!* Your preferences were saved.\n\n'
+			msg_text += f'ℹ️ If you need to adjust your settings in the future, use /notify@{BOT_USERNAME} to access these same settings.'
 
 			# now we have the keyboard; update the previous keyboard
 			bot.editMessageText(msg_identifier, text=msg_text, reply_markup=None, parse_mode='Markdown')
@@ -3262,9 +3262,7 @@ def get_launch_updates(launch_ID):
 	# pull json, dump for later inspection
 	try:
 		launch_json = json.loads(API_RESPONSE.text)
-		#launch_json = API_RESPONSE.json()
 	except Exception as error:
-		#logging.info(f'Error reading launch_json: {error}')
 		with open(os.path.join('data', 'json-parsing-error.txt'), 'w') as error_file:
 			error_file.write(f'Error: {error}')
 			error_file.write(API_RESPONSE.text)
@@ -3935,7 +3933,20 @@ def update_statistics(stats_update):
 	# Update stats with the provided data
 	for stat, val in stats_update.items():
 		stats_cursor.execute(f"UPDATE stats SET {stat} = {stat} + {val}")
-	
+
+	# experimental sliding 24-hour window for command frequency
+	if 'commands' in stats_update.keys():
+		today = datetime.datetime.utcnow()
+		date = f'{today.year}-{today.month}-{today.day}'
+		slot = f'{today.hour}:{today.minute}'
+
+		stats_cursor.execute("CREATE TABLE IF NOT EXISTS command_frequency (day TEXT, time_slot TEXT, commands INTEGER, PRIMARY KEY (day, time_slot))")
+
+		try:
+			stats_cursor.execute("INSERT INTO command_frequency (day, time_slot, commands) VALUES (?, ?, ?)", (date, slot, stats_update['commands']))
+		except:
+			stats_cursor.execute("UPDATE command_frequency SET commands = commands + ? WHERE day = ? AND time_slot = ?", (stats_update['commands'], date, slot))
+
 	stats_conn.commit()
 	stats_conn.close()
 
@@ -4154,6 +4165,7 @@ def create_stats_database():
 		# chat ID - keyword - UNIX timestamp - enabled true/false
 		c.execute('''CREATE TABLE stats (notifications INTEGER, API_requests INTEGER, 
 			db_updates INTEGER, commands INTEGER, data INTEGER, db_calls INTEGER, PRIMARY KEY (notifications, API_requests))''')
+		
 		c.execute("INSERT INTO stats (notifications, API_requests, db_updates, commands, data, db_calls) VALUES (0, 0, 0, 0, 0, 0)")
 	except sqlite3.OperationalError:
 		pass
@@ -4229,7 +4241,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.15'
+	VERSION = '0.5.16'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
