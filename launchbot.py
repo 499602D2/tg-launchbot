@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 # /usr/bin/python3
+import os, sys, time, ssl, datetime, logging, math, requests
+import inspect, signal, random, sqlite3, difflib
 
-import os, sys, time, ssl, datetime, logging, math, requests, inspect, signal, random
-import telepot, sqlite3, cursor, difflib, schedule
+import telepot, cursor, schedule
 import ujson as json
 
 from hashlib import sha1
@@ -214,16 +215,25 @@ def handle(msg):
 				if not all_admins:
 					sender = bot.getChatMember(chat, msg['from']['id'])
 					if sender['status'] != 'creator' and sender['status'] != 'administrator':
-						if debug_log:
-							logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)}, returning.')
+						# check for bot's admin status and whether we can remove the message
+						bot_chat_specs = bot.getChatMember(chat, bot.getMe()['id'])
+						if bot_chat_specs['status'] == 'administrator':
+							try:
+								success = bot.deleteMessage((chat, msg['message_id']))
+								if debug_log:
+									if success:
+										logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)}: successfully deleted message! ✅')
+									else:
+										logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)}: unable to delete message (success != True. Type:{type(success)}, val:{success}) ⚠️')
+							except Exception as e:
+								if debug_log:
+									logging.info(f'⚠️ Could not delete message sent by non-admin: {e}')
+
+						else:
+							if debug_log:
+								logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)}: could not remove.')
+						
 						return
-			'''
-			else:
-				try:
-					bot.sendChatAction(chat, action='typing')
-				except:
-					return
-			'''
 			
 			# start timer
 			start = timer()
@@ -4241,7 +4251,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.16'
+	VERSION = '0.5.17'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
