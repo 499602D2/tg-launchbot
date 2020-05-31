@@ -3,15 +3,25 @@
 import os, sys, time, ssl, datetime, logging, math, requests
 import inspect, signal, random, sqlite3, difflib
 
-import telepot, cursor, schedule
+import telepot, cursor, schedule, pytz
 import ujson as json
 
 from hashlib import sha1
 from uptime import uptime
 from timeit import default_timer as timer
+from timezonefinder import TimezoneFinder
 from telepot.loop import MessageLoop
-from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
+from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
+# changelog: add "show changelog" button to /help
+'''
+*Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (May 2020)
+- Added preferences to /notify@{BOT_USERNAME} ⚙️
+- You can now choose when you receive notifications (24h/12h/etc.)
+- Updates to the schedule command
+- Added probability of launch to /next@{BOT_USERNAME}
+- /next@{BOT_USERNAME} now indicates if a launch countdown is on hold
+'''
 
 # main loop-function for messages with flavor=chat
 def handle(msg):
@@ -109,22 +119,23 @@ def handle(msg):
 		🚀 /next shows the next launches
 		🗓 /schedule displays a simple flight schedule
 		📊 /statistics tells various statistics about the bot
-		✍️ /feedback allows you to send *feedback and suggestions*
+		✍️ /feedback send feedback/suggestion to the developer
 
-		⚠️ *Note!* Commands are only callable by group *admins* and *moderators*
+		⚠️ *Note for group chats* ⚠️ 
+		- Commands are *only* callable by group *admins* and *moderators* to reduce group spam
+		- If the bot has admin permissions (permission to delete messages), it will automatically remove commands it doesn't answer to
 
-		*Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (May 2020)
-		- Added preferences to /notify@{BOT_USERNAME} ⚙️
-		- You can now choose when you receive notifications (24h/12h/etc.)
-		- Updates to the schedule command
-		- Added probability of launch to /next@{BOT_USERNAME}
-		- /next@{BOT_USERNAME} now indicates if a launch countdown is on hold
+		*Frequently asked questions* ❓
+		_How do I turn off a notification?_
+		- Use /notify@{BOT_USERNAME}: find the launch provider you want to turn notifications off for.
 
-		*Coming soon*
-		🌎 Timezone support
-		🛰 Command permissions support
+		_I want less notifications!_
+		- You can choose at what times you receive notifications with /notify@{BOT_USERNAME}. You can edit these at the preferences menu (⚙️).
 
-		*LaunchBot* version *{VERSION}* ✨
+		_Why does the bot only answer to some people?_
+		- You have to be an admin in a group to send commands.
+
+		LaunchBot version *{VERSION}* ✨
 		'''
 		
 		bot.sendMessage(chat, inspect.cleandoc(reply_msg), parse_mode='Markdown')
@@ -184,6 +195,54 @@ def handle(msg):
 
 		return
 	
+	# if location in message, verify it's a time zone setup reply
+	if 'location' in msg and 'reply_to_message' in msg:
+		if chat in time_zone_setup_chats.keys():
+			if msg['from']['id'] == time_zone_setup_chats[chat][1] and msg['reply_to_message']['message_id'] == time_zone_setup_chats[chat][0]:
+				msg_identifier = (chat, time_zone_setup_chats[chat][0])
+				bot.deleteMessage(msg_identifier)
+
+				try:
+					bot.deleteMessage((chat, msg['message_id']))
+				except:
+					pass
+
+				latitude = msg['location']['latitude']
+				longitude = msg['location']['longitude']
+
+				timezone_str = TimezoneFinder().timezone_at(lng=longitude, lat=latitude)
+				timezone = pytz.timezone(timezone_str)
+				
+				user_local_now = datetime.datetime.now(timezone)
+				user_utc_offset = user_local_now.utcoffset().total_seconds()/3600
+
+				if user_utc_offset % 1 == 0:
+					user_utc_offset = int(user_utc_offset)
+					utc_offset_str = f'+{user_utc_offset}' if user_utc_offset >= 0 else f'{user_utc_offset}'
+				else:
+					utc_offset_hours = math.floor(user_utc_offset)
+					utc_offset_minutes = int((user_utc_offset % 1) * 60)
+					utc_offset_str = f'{utc_offset_hours}:{utc_offset_minutes}'
+
+					utc_offset_str = f'+{utc_offset_str}' if user_utc_offset >= 0 else f'{utc_offset_str}'
+
+				new_text = f'''✅ Time zone successfully set! 
+
+				Your time zone is *UTC{utc_offset_str} ({timezone_str})*
+
+				You can now return to other settings.'''
+
+				keyboard = InlineKeyboardMarkup(inline_keyboard = [[InlineKeyboardButton(text='⏮ Return to menu', callback_data=f'prefs/main_menu')]])
+				bot.sendMessage(chat, text=inspect.cleandoc(new_text), reply_markup=keyboard, parse_mode='Markdown')
+
+				# store user's timezone_str
+				update_time_zone_string(chat, timezone_str)
+
+
+		else:
+			if debug_log:
+				logging.info(f'🗺 Location received, but chat not in time_zone_setup_chats.keys()')
+
 	# sees a valid command
 	if content_type == 'text':
 		command_split = [arg.lower() for arg in command_split]
@@ -202,7 +261,7 @@ def handle(msg):
 			# check timers
 			if not timer_handle(command, chat, sent_by):
 				if debug_log:
-					logging.info(f'✋ Spam prevented from chat {anonymize_id(chat)}. Command: {command}, returning.')
+					logging.info(f'✋ Spam prevented from chat {anonymize_id(chat)} by {anonymize_id(msg["from"]["id"])}. Command: {command}, returning.')
 				return
 
 			# check if sender is an admin/creator, and/or if we're in a public chat
@@ -222,16 +281,16 @@ def handle(msg):
 								success = bot.deleteMessage((chat, msg['message_id']))
 								if debug_log:
 									if success:
-										logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)}: successfully deleted message! ✅')
+										logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): successfully deleted message! ✅')
 									else:
-										logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)}: unable to delete message (success != True. Type:{type(success)}, val:{success}) ⚠️')
+										logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): unable to delete message (success != True. Type:{type(success)}, val:{success}) ⚠️')
 							except Exception as e:
 								if debug_log:
 									logging.info(f'⚠️ Could not delete message sent by non-admin: {e}')
 
 						else:
 							if debug_log:
-								logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)}: could not remove.')
+								logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): could not remove.')
 						
 						return
 			
@@ -248,22 +307,23 @@ def handle(msg):
 				🚀 /next shows the next launches
 				🗓 /schedule displays a simple flight schedule
 				📊 /statistics tells various statistics about the bot
-				✍️ /feedback allows you to send *feedback and suggestions*
+				✍️ /feedback send feedback/suggestion to the developer
 
-				⚠️ *Note!* Commands are only callable by group *admins* and *moderators*
+				⚠️ *Note for group chats* ⚠️ 
+				- Commands are *only* callable by group *admins* and *moderators* to reduce group spam
+				- If the bot has admin permissions (permission to delete messages), it will automatically remove commands it doesn't answer to
 
-				*Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (May 2020)
-				- Added preferences to /notify@{BOT_USERNAME} ⚙️
-				- You can now choose when you receive notifications (24h/12h/etc.)
-				- Updates to the schedule command
-				- Added probability of launch to /next@{BOT_USERNAME}
-				- /next@{BOT_USERNAME} now indicates if a launch countdown is on hold
+				*Frequently asked questions* ❓
+				_How do I turn off a notification?_
+				- Use /notify@{BOT_USERNAME}: find the launch provider you want to turn notifications off for.
 
-				*Coming soon*
-				🌎 Timezone support
-				🛰 Command permissions support
+				_I want less notifications!_
+				- You can choose at what times you receive notifications with /notify@{BOT_USERNAME}. You can edit these at the preferences menu (⚙️).
 
-				*LaunchBot* version *{VERSION}* ✨
+				_Why does the bot only answer to some people?_
+				- You have to be an admin in a group to send commands.
+
+				LaunchBot version *{VERSION}* ✨
 				'''
 				
 				bot.sendMessage(chat, inspect.cleandoc(reply_msg), parse_mode='Markdown')
@@ -341,7 +401,7 @@ def callback_handler(msg):
 		keyboard = InlineKeyboardMarkup(
 			inline_keyboard = [
 				[InlineKeyboardButton(text=global_text, callback_data=f'notify/toggle/all/all')],
-				
+
 				[InlineKeyboardButton(text='🇪🇺 EU', callback_data=f'notify/list/EU'),
 				InlineKeyboardButton(text='🇺🇸 USA', callback_data=f'notify/list/USA')],
 				
@@ -366,6 +426,8 @@ def callback_handler(msg):
 			🛰 Hi there, nice to see you! Let's set some notifications for you.
 
 			You can search for launch providers, like SpaceX (🇺🇸) or ISRO (🇮🇳), using the flags, or simply enable all!
+
+			You can also edit your notification preferences, like your time zone, from the preferences menu (⚙️).
 
 			🔔 = *enabled* (press to disable)
 			🔕 = *disabled* (press to enable)
@@ -495,7 +557,7 @@ def callback_handler(msg):
 			sender = bot.getChatMember(chat, from_id)
 			if sender['status'] != 'creator' and sender['status'] != 'administrator':
 				try:
-					bot.answerCallbackQuery(query_id, text="⚠️ This button is only callable by the group admins! ⚠️")
+					bot.answerCallbackQuery(query_id, text="⚠️ This button is only callable by admins! ⚠️")
 				except Exception as error:
 					if debug_log:
 						logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
@@ -821,18 +883,19 @@ def callback_handler(msg):
 			message_text = f'''
 			⚙️ *This tool* allows you to edit your chat's preferences.
 
-			These include...
+			*These include...*
 			⏰ Launch notification types (24 hour/12 hour etc.)
-			{rand_planet} Your timezone
+			{rand_planet} Time zone settings
 			🛰 Command permissions
 
-			Your timezone is used when sending notifications to show your local time, instead of the default UTC+0.
+			Your time zone is used when sending notifications to show your local time, instead of the default UTC+0.
 			
-			*Note:* timezone and command permission support is coming later.
+			*Note:* command permission support is coming later.
 			'''
 
 			keyboard = InlineKeyboardMarkup(
 							inline_keyboard = [
+								[InlineKeyboardButton(text=f'{rand_planet} Time zone settings', callback_data=f'prefs/timezone/menu')],
 								[InlineKeyboardButton(text='⏰ Notification settings', callback_data=f'prefs/notifs')],
 								[InlineKeyboardButton(text='⏮ Back to main menu', callback_data=f'notify/main_menu/refresh_text')]
 							]
@@ -888,6 +951,195 @@ def callback_handler(msg):
 
 			bot.editMessageText(msg_identifier, text=inspect.cleandoc(new_prefs_text), reply_markup=keyboard, parse_mode='Markdown')
 
+		elif input_data[1] == 'timezone':
+			if input_data[2] == 'menu':
+				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time.
+
+				*Choose which method you'd like to use:*
+				- *manual:* no DST support, not recommended.
+				
+				- *automatic:* uses your location to define your locale (e.g. Europe/Berlin). DST support.
+
+				Your current time zone is *UTC{load_time_zone_status(chat, readable=True)}*
+				'''
+
+				keyboard = InlineKeyboardMarkup(
+					inline_keyboard = [
+						[InlineKeyboardButton(text='🌎 Automatic setup', callback_data=f'prefs/timezone/auto_setup')],
+						[InlineKeyboardButton(text='🕹 Manual setup', callback_data=f'prefs/timezone/manual_setup')],
+						[InlineKeyboardButton(text='🗑 Remove my time zone', callback_data=f'prefs/timezone/remove')],
+						[InlineKeyboardButton(text='⏮ Back to menu', callback_data=f'prefs/main_menu')]
+					]
+				)
+
+				bot.editMessageText(msg_identifier, text=inspect.cleandoc(text), reply_markup=keyboard, parse_mode='Markdown')
+				bot.answerCallbackQuery(query_id, f'🌎 Time zone settings loaded')
+
+
+			elif input_data[2] == 'manual_setup':
+				current_time_zone = load_time_zone_status(chat, readable=True)
+
+				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time. 
+							
+				⚠️ *Note:* you need to reset your time zone when your time zone enters/exits DST!
+
+				Need help? https://www.timeanddate.com/time/map/
+
+				Use the buttons below to set the UTC offset to match your time zone.
+
+				🕗 Your time zone is set to: *UTC{current_time_zone}*
+				'''
+
+				keyboard = InlineKeyboardMarkup(
+					inline_keyboard = [
+						[
+							InlineKeyboardButton(text='-5 hours', callback_data=f'prefs/timezone/set/-5h'),
+							InlineKeyboardButton(text='-1 hour', callback_data=f'prefs/timezone/set/-1h'),
+							InlineKeyboardButton(text='+1 hour', callback_data=f'prefs/timezone/set/+1h'),
+							InlineKeyboardButton(text='+5 hours', callback_data=f'prefs/timezone/set/+5h')
+						],
+						[
+							InlineKeyboardButton(text='-15 minutes', callback_data=f'prefs/timezone/set/-15m'),
+							InlineKeyboardButton(text='+15 minutes', callback_data=f'prefs/timezone/set/+15m'),
+						],
+						[InlineKeyboardButton(text='⏮ Back to menu', callback_data=f'prefs/main_menu')]
+					]
+				)
+
+				bot.editMessageText(
+					msg_identifier, text=inspect.cleandoc(text), parse_mode='Markdown',
+					reply_markup=keyboard, disable_web_page_preview=True
+				)
+
+			elif input_data[2] == 'start':
+				if bot.getChat(chat)['type'] != 'private':
+					bot.sendMessage(chat, text=f'⚠️ This method only works for private chats. This is a Telegram API limitation.')
+
+				new_text = f'🌎 Set your time zone with the button below, where your keyboard should be. To cancel, select "cancel time zone setup" from the message above.'
+
+				# construct the keyboard so we can request a location
+				keyboard = ReplyKeyboardMarkup(
+					resize_keyboard=True,
+					one_time_keyboard=True,
+					keyboard=[
+						[KeyboardButton(text='📍 Set your time zone', request_location=True)]
+					]
+				)
+
+				new_inline_text = f'❗️ To cancel time zone setup and remove the keyboard, use the button below.'
+				inline_keyboard = InlineKeyboardMarkup(
+					inline_keyboard = [
+						[InlineKeyboardButton(text='🚫 Cancel time zone setup', callback_data=f'prefs/timezone/cancel')]
+					]
+				)
+
+				bot.editMessageText(msg_identifier, text=new_inline_text, reply_markup=inline_keyboard, parse_mode='Markdown')
+				sent_message = bot.sendMessage(chat_id=chat, text=new_text, reply_markup=keyboard, parse_mode='Markdown')
+				bot.editMessageReplyMarkup((sent_message['chat']['id'], sent_message['message_id']), ForceReply(selective=True))
+				bot.answerCallbackQuery(query_id, text=f'🌎 Time zone setup loaded')
+
+				#time_zone_setup_users.append(chat)
+
+			elif input_data[2] == 'cancel':
+				rand_planet = random.choice(('🌍', '🌎', '🌏'))
+				message_text = f'''
+				⚙️ *This tool* allows you to edit your chat's preferences.
+
+				These include...
+				⏰ Launch notification types (24 hour/12 hour etc.)
+				{rand_planet} Your time zone
+				🛰 Command permissions
+
+				Your time zone is used when sending notifications to show your local time, instead of the default UTC+0.
+				
+				*Note:* time zone and command permission support is coming later.
+				'''
+
+				sent_message = bot.sendMessage(
+					chat, inspect.cleandoc(message_text),
+					parse_mode='Markdown',
+					reply_markup=ReplyKeyboardRemove(remove_keyboard=True)
+				)
+
+				msg_identifier = (sent_message['chat']['id'], sent_message['message_id'])
+				bot.deleteMessage(msg_identifier)
+
+				keyboard = InlineKeyboardMarkup(
+					inline_keyboard = [
+						[InlineKeyboardButton(text='⏰ Notification settings', callback_data=f'prefs/notifs')],
+						[InlineKeyboardButton(text='⏮ Back to main menu', callback_data=f'notify/main_menu/refresh_text')]
+					]
+				)
+
+				sent_message = bot.sendMessage(
+					chat, inspect.cleandoc(message_text),
+					parse_mode='Markdown',
+					reply_markup=keyboard
+				)
+
+				bot.answerCallbackQuery(query_id, text=f'✅ Operation canceled!')
+
+			elif input_data[2] == 'set':
+				update_time_zone_value(chat, input_data[3])
+				current_time_zone = load_time_zone_status(chat, readable=True)
+				
+				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time. 
+				
+				Need help? https://www.timeanddate.com/time/map/
+
+				Use the buttons below to set the UTC offset to match your time zone.
+
+				🕗 Your time zone is set to: *UTC{current_time_zone}*
+				'''
+				keyboard = InlineKeyboardMarkup(inline_keyboard = [
+					[
+						InlineKeyboardButton(text='-5 hours', callback_data=f'prefs/timezone/set/-5h'),
+						InlineKeyboardButton(text='-1 hour', callback_data=f'prefs/timezone/set/-1h'),
+						InlineKeyboardButton(text='+1 hour', callback_data=f'prefs/timezone/set/+1h'),
+						InlineKeyboardButton(text='+5 hours', callback_data=f'prefs/timezone/set/+5h')
+					],
+					[
+						InlineKeyboardButton(text='-15 minutes', callback_data=f'prefs/timezone/set/-15m'),
+						InlineKeyboardButton(text='+15 minutes', callback_data=f'prefs/timezone/set/+15m'),
+					],
+					[InlineKeyboardButton(text='⏮ Back to menu', callback_data=f'prefs/main_menu')]
+					]
+				)
+
+				bot.answerCallbackQuery(query_id, text=f'🌎 Time zone set to UTC{current_time_zone}')
+				bot.editMessageText(
+					msg_identifier, text=inspect.cleandoc(text), reply_markup=keyboard,
+					parse_mode='Markdown', disable_web_page_preview=True
+				)
+
+			elif input_data[2] == 'auto_setup':
+				# send message with ForceReply()
+				text = f'''🌎 Automatic time zone setup
+
+				⚠️ Your exact location is *NOT* stored or logged anywhere. You can remove your time zone at any time.
+
+				Your coordinates are converted to a locale, e.g. Europe/Berlin, or America/Lima, which is used for the UTC off-set. This allows us to support DST.
+				
+				🌎 *To set your time zone, do the following:*
+				1. make sure you're replying to *this* message
+				2. tap the file attachment button to the left of the text field (📎)
+				3. choose "location"
+				4. send the bot an approximate location, but *make sure* it's within the same time zone as you are in
+				'''
+
+				bot.deleteMessage(msg_identifier)
+				sent_message = bot.sendMessage(
+					chat, text=inspect.cleandoc(text),
+					reply_markup=ForceReply(selective=True), parse_mode='Markdown'
+				)
+
+				time_zone_setup_chats[chat] = [sent_message['message_id'], from_id]
+
+			elif input_data[2] == 'remove':
+				remove_time_zone_information(chat)
+				bot.answerCallbackQuery(query_id, f'✅ Time zone deleted!')
+
+
 	elif input_data[0] == 'stats':
 		if input_data[1] == 'refresh':
 			if debug_log and chat != OWNER:
@@ -899,8 +1151,7 @@ def callback_handler(msg):
 				return
 
 			keyboard = InlineKeyboardMarkup(
-				inline_keyboard=[[InlineKeyboardButton(
-					text='🔄 Refresh statistics', callback_data=f'stats/refresh')]])
+				inline_keyboard=[[InlineKeyboardButton(text='🔄 Refresh statistics', callback_data=f'stats/refresh')]])
 
 			bot.editMessageText(msg_identifier, text=new_text, reply_markup=keyboard, parse_mode='Markdown')
 			bot.answerCallbackQuery(query_id, text=f'🔄 Statistics refreshed!')
@@ -908,6 +1159,24 @@ def callback_handler(msg):
 	# update stats, except if command was a stats refresh
 	if input_data[0] != 'stats':
 		update_statistics({'commands':1})
+
+
+def remove_time_zone_information(chat):
+	# connect to database
+	conn = sqlite3.connect(os.path.join('data', 'preferences.db'))
+	c = conn.cursor()
+
+	try:
+		c.execute("UPDATE preferences SET timezone_str = ?, timezone = ? WHERE chat = ?", (None, None, chat))
+		if debug_log:
+			logging.info(f'✅ User successfully removed their time zone information!')
+	
+	except Exception as e:
+		if debug_log:
+			logging.info(f'❓ User tried to remove their time zone information, but ran into exception: {e}')
+
+	conn.commit()
+	conn.close()
 
 
 # restrict command send frequency to avoid spam
@@ -983,12 +1252,9 @@ def timer_handle(command, chat, user):
 				def offense_delta(self):
 					pass
 
-			spammer_id_list = [spammer.id for spammer in spammers]
-			if user in spammer_id_list:
-				for spammer in spammers:
-					if spammer.id == user:
-						spammer.add_offense()
-						break
+			spammer = next((spammer for spammer in spammers if spammer.id == user), None)
+			if spammer is not None:
+				spammer.add_offense()
 
 				if debug_log:
 					logging.info(f'⚠️ User {anonymize_id(user)} now has {spammer.get_offenses()} spam offenses.')
@@ -1024,6 +1290,121 @@ def timer_handle(command, chat, user):
 # load the current status of the permissions into memory
 def load_permissions_status():
 	return
+
+
+def update_time_zone_string(chat, time_zone):
+	# connect to database
+	conn = sqlite3.connect(os.path.join('data', 'preferences.db'))
+	c = conn.cursor()
+
+	try:
+		c.execute(
+			"INSERT INTO preferences (chat, notifications, timezone, timezone_str, postpone, commands) VALUES (?, ?, ?, ?, ?, ?)", 
+			(chat, '1,1,1,1', None, time_zone, 1, None))
+	except:
+		c.execute("UPDATE preferences SET timezone_str = ?, timezone = ? WHERE chat = ?", (time_zone, None, chat))
+
+	conn.commit()
+	conn.close()
+
+	if debug_log:
+		logging.info(f'🌎 User successfully set their time zone locale to {time_zone}')
+
+
+def update_time_zone_value(chat, offset):
+	# connect to database
+	conn = sqlite3.connect(os.path.join('data', 'preferences.db'))
+	c = conn.cursor()
+
+	# translate offset to hours
+	if 'h' in offset:
+		offset = int(offset.replace('h',''))
+	elif 'm' in offset:
+		offset = float(int(offset.replace('m',''))/60)
+
+	current_value = load_time_zone_status(chat, False)
+	current_value = 0 if current_value == None else current_value
+	new_time_zone_value = current_value + offset
+
+	if new_time_zone_value > 14:
+		new_time_zone_value = -12
+	elif new_time_zone_value < -12:
+		new_time_zone_value = 14
+
+	try:
+		c.execute(
+			"INSERT INTO preferences (chat, notifications, timezone, timezone_str, postpone, commands) VALUES (?, ?, ?, ?, ?, ?)", 
+			(chat, '1,1,1,1', new_time_zone_value, None, 1, None)
+		)
+	except:
+		c.execute("UPDATE preferences SET timezone = ?, timezone_str = ? WHERE chat = ?", (new_time_zone_value, None, chat))
+
+	conn.commit()
+	conn.close()
+
+
+def load_time_zone_status(chat, readable):
+	conn = sqlite3.connect(os.path.join('data', 'preferences.db'))
+	c = conn.cursor()
+
+	try:
+		c.execute("SELECT timezone, timezone_str FROM preferences WHERE chat = ?",(chat,))
+	except:
+		c.execute("CREATE TABLE preferences (chat TEXT, notifications TEXT, timezone TEXT, timezone_str TEXT, postpone INTEGER, commands TEXT, PRIMARY KEY (chat))")
+		conn.commit()
+		c.execute("SELECT timezone, timezone_str FROM preferences WHERE chat = ?",(chat,))
+
+	query_return = c.fetchall()
+	conn.close()
+
+	if len(query_return) != 0:
+		time_zone_string_found = True if query_return[0][1] != None else False
+
+	if not readable:
+		if len(query_return) == 0:
+			return 0
+		else:
+			if not time_zone_string_found:
+				if query_return[0][0] == None:
+					return 0
+				
+				return float(query_return[0][0])
+			else:
+				timezone = pytz.timezone(query_return[0][1])
+				user_local_now = datetime.datetime.now(timezone)
+				utc_offset = user_local_now.utcoffset().total_seconds()/3600
+				return utc_offset
+	
+	else:
+		if len(query_return) == 0:
+			return '+0'
+
+		if not time_zone_string_found:
+			if query_return[0][0] == None:
+				return '+0'
+
+			status = float(query_return[0][0])
+
+			mins = int(60 * (abs(status) % 1))
+			hours = math.floor(status)
+			prefix = '+' if hours >= 0 else ''
+
+			return f'{prefix}{hours}' if mins == 0 else f'{prefix}{hours}:{mins}'
+		else:
+			timezone = pytz.timezone(query_return[0][1])
+			user_local_now = datetime.datetime.now(timezone)
+			user_utc_offset = user_local_now.utcoffset().total_seconds()/3600
+
+			if user_utc_offset % 1 == 0:
+				user_utc_offset = int(user_utc_offset)
+				utc_offset_str = f'+{user_utc_offset}' if user_utc_offset >= 0 else f'{user_utc_offset}'
+			else:
+				utc_offset_hours = math.floor(user_utc_offset)
+				utc_offset_minutes = int((user_utc_offset % 1) * 60)
+				utc_offset_str = f'{utc_offset_hours}:{utc_offset_minutes}'
+				utc_offset_str = f'+{utc_offset_str}' if user_utc_offset >= 0 else f'{utc_offset_str}'
+
+			return utc_offset_str
 
 
 def get_user_notifications_status(chat, provider_list):
@@ -1154,7 +1535,8 @@ def update_notif_preference(chat, notification_type):
 
 	# preferences (chat TEXT, notifications TEXT, timezone TEXT, postpone INTEGER, commands TEXT, PRIMARY KEY (chat))
 	try:
-		c.execute("INSERT INTO preferences (chat, notifications, timezone, postpone, commands) VALUES (?, ?, ?, ?, ?)", (chat, new_preferences, None, 1, None))
+		c.execute("INSERT INTO preferences (chat, notifications, timezone, timezone_str, postpone, commands) VALUES (?, ?, ?, ?, ?, ?)",
+		 (chat, new_preferences, None, None, 1, None))
 	except:
 		c.execute("UPDATE preferences SET notifications = ? WHERE chat = ?", (new_preferences, chat))
 
@@ -1176,6 +1558,7 @@ def get_notif_preference(chat):
 
 	c.execute("SELECT notifications FROM preferences WHERE chat = ?",(chat,))
 	query_return = c.fetchall()
+	conn.close()
 
 	if len(query_return) == 0:
 		return (1, 1, 1, 1)
@@ -1202,7 +1585,7 @@ def chat_preferences(chat):
 		c = conn.cursor()
 		try:
 			# chat - notififcations - postpone - timezone - commands
-			c.execute("CREATE TABLE preferences (chat TEXT, notifications TEXT, timezone TEXT, postpone INTEGER, commands TEXT, PRIMARY KEY (chat))")
+			c.execute("CREATE TABLE preferences (chat TEXT, notifications TEXT, timezone TEXT, timezone_str TEXT, postpone INTEGER, commands TEXT, PRIMARY KEY (chat))")
 			conn.commit()
 		except sqlite3.OperationalError:
 			pass
@@ -1215,12 +1598,12 @@ def chat_preferences(chat):
 
 	These include...
 	⏰ Launch notification types (24 hour/12 hour etc.)
-	{rand_planet} Your timezone
+	{rand_planet} Your time zone
 	🛰 Command permissions
 
-	Your timezone is used when sending notifications to show your local time, instead of the default UTC+0.
+	Your time zone is used when sending notifications to show your local time, instead of the default UTC+0.
 	
-	Note: timezone and command permission support is coming later.
+	Note: time zone and command permission support is coming later.
 	'''
 
 	'''
@@ -1348,7 +1731,7 @@ def notify(msg):
 
 	You can search for launch providers, like SpaceX (🇺🇸) or ISRO (🇮🇳), using the flags, or simply enable all!
 
-	⚙️ With preferences you can choose which notifications you receive (e.g. 24 hours before a launch)
+	You can also edit your notification preferences, like your time zone, from the preferences menu (⚙️).
 
 	🔔 = *currently enabled*
 	🔕 = *currently disabled*
@@ -1618,11 +2001,19 @@ def next_flight(msg, current_index, command_invoke, cmd):
 		if cmd == 'None':
 			cmd = None
 
+	# load UTC offset
+	utc_offset = 3600 * load_time_zone_status(chat, readable=False)
+
 	# if command was "all", no need to perform a special select
 	# if no command, we'll need to figure out what LSPs the user has set notifs for
 	notify_conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
 	notify_cursor = notify_conn.cursor()
-	notify_cursor.execute('''SELECT * FROM notify WHERE chat = ?''', (chat,))
+
+	try:
+		notify_cursor.execute('''SELECT * FROM notify WHERE chat = ?''', (chat,))
+	except:
+		create_notify_database()
+	
 	query_return = notify_cursor.fetchall()
 	notify_conn.close()
 
@@ -1783,27 +2174,17 @@ def next_flight(msg, current_index, command_invoke, cmd):
 					, notif_providers: {notif_providers}')
 			user_notif_enabled = False
 
-	launch_unix = datetime.datetime.utcfromtimestamp(query_return[9])
-	if launch_unix.second == 0:
-		if launch_unix.minute < 10:
-			min_time = f'0{launch_unix.minute}'
-		else:
-			min_time = launch_unix.minute
+	# load UTC offset if available
+	utc_timestamp = query_return[9]
+	utc_timestamp = utc_timestamp + utc_offset
+	launch_unix = datetime.datetime.utcfromtimestamp(utc_timestamp)
 
-		launch_time = f'{launch_unix.hour}:{min_time}'
-	
+	if launch_unix.minute < 10:
+		min_time = f'0{launch_unix.minute}'
 	else:
-		if launch_unix.second < 10:
-			sec_time = f'0{launch_unix.second}'
-		else:
-			sec_time = launch_unix.second
+		min_time = launch_unix.minute
 
-		if launch_unix.minute < 10:
-			min_time = f'0{launch_unix.minute}'
-		else:
-			min_time = launch_unix.minute
-
-		launch_time = f'{launch_unix.hour}:{min_time}.{sec_time}'
+	launch_time = f'{launch_unix.hour}:{min_time}'
 
 	if tbd_time is True:
 		launch_time = f'launch time TBD'
@@ -1907,7 +2288,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 			info = f'{". ".join(info.split(". ")[0:2])}.'
 
 		if 'DM2' in mission_name:
-			info = 'A new era of human spaceflight is set to begin as 🇺🇸-astronauts once again launch to orbit on a 🇺🇸-rocket from 🇺🇸-soil, almost a decade after the retirement of the Space Shuttle fleet back in 2011. \n\nDemo-2 will launch mission commander Doug Hurley and joint operations commander Bob Behnken to the ISS on the third overall flight of the Crew Dragon. Demo-2 follows the two previous successful unmanned test-flights, Demo-1 and IFA, and will be the last test-flight of the Dragon 2 system before it enters operational service later this year with the Crew-1 mission.'
+			info = 'A new era of human spaceflight is set to begin as 🇺🇸-astronauts once again launch to orbit on a 🇺🇸-rocket from 🇺🇸-soil, almost a decade after the retirement of the Space Shuttle fleet in 2011.'
 			mission_name = 'SpX-DM2'
 
 		info_msg = f'ℹ️ {info}'
@@ -1968,7 +2349,10 @@ def next_flight(msg, current_index, command_invoke, cmd):
 
 	if tbd_date is False: # verified launch date
 		if tbd_time is False: # verified launch time
-			time_str = f'📅 {date_str}`,` `{launch_time} UTC`\n⏱ {eta_str}'
+			# load UTC offset in readable format
+			readable_utc_offset = load_time_zone_status(chat, readable=True)
+
+			time_str = f'📅 {date_str}`,` `{launch_time} UTC{readable_utc_offset} `\n⏱ {eta_str}'
 		else: # unverified launch time
 			launch_time = ' '.join("`{}`".format(word) for word in launch_time.split(' '))
 			time_str = f'📅 {date_str}`,` {launch_time}\n⏱ {eta_str}'
@@ -3094,23 +3478,10 @@ def get_launch_updates(launch_ID):
 
 						# notify users with a message
 						launch_unix = datetime.datetime.utcfromtimestamp(new_NET)
-						if launch_unix.second == 0:
-							if launch_unix.minute < 10:
-								launch_time = f'{launch_unix.hour}:0{launch_unix.minute}'
-							else:
-								launch_time = f'{launch_unix.hour}:{launch_unix.minute}'
+						if launch_unix.minute < 10:
+							launch_time = f'{launch_unix.hour}:0{launch_unix.minute}'
 						else:
-							if launch_unix.second < 10:
-								sec_time = f'0{launch_unix.second}'
-							else:
-								sec_time = launch_unix.second
-
-							if launch_unix.minute < 10:
-								min_time = f'0{launch_unix.minute}'
-							else:
-								min_time = launch_unix.minute
-
-							launch_time = f'{launch_unix.hour}:{min_time}.{sec_time}'
+							launch_time = f'{launch_unix.hour}:{launch_unix.minute}'
 
 						# lift-off date
 						ymd_split = f'{launch_unix.year}-{launch_unix.month}-{launch_unix.day}'.split('-')
@@ -3164,9 +3535,9 @@ def get_launch_updates(launch_ID):
 						msg_text += 'To disable\, mute this launch with the button below\._'
 
 						if lsp not in LSP_IDs.keys():
-							notify_list = getNotifyList(lsp_name, launch_id, None)
+							notify_list = get_notify_list(lsp_name, launch_id, None)
 						else:
-							notify_list = getNotifyList(LSP_IDs[lsp][0], launch_id, None)
+							notify_list = get_notify_list(LSP_IDs[lsp][0], launch_id, None)
 
 						active_chats, muted_chats = set(), set()
 						for chat in notify_list:
@@ -3279,8 +3650,8 @@ def get_launch_updates(launch_ID):
 			
 		return
 	
-	with open(os.path.join('data', 'launch', 'launch-json.json'), 'w') as json_data:
-		json.dump(launch_json, json_data, indent=4)
+	#with open(os.path.join('data', 'launch', 'launch-json.json'), 'w') as json_data:
+	#	json.dump(launch_json, json_data, indent=4)
 
 	# if we got nothing in return from the API
 	if 'launches' not in launch_json:
@@ -3333,7 +3704,7 @@ def reconstruct_message_for_markdown(message):
 	return message_reconstruct
 
 
-def getNotifyList(lsp, launch_id, notif_class):
+def get_notify_list(lsp, launch_id, notif_class):
 	# pull all with matching keyword (LSP ID), matching country code notification, or an "all" marker (and no exclusion for this ID/country)
 	# Establish connection
 	launch_dir = 'data/launch'
@@ -3480,7 +3851,12 @@ def remove_previous_notification(launch_id, keyword):
 	identifiers, success_count, muted_count = query_return[0][0].split(','), 0, 0
 	for id_pair in identifiers:
 		id_pair = id_pair.split(':')
-		chat_id, message_id = id_pair[0], id_pair[1]
+		
+		try:
+			chat_id, message_id = id_pair[0], id_pair[1]
+		except: # throws an error if nothing to remove (i.e. empty db)
+			return
+
 		message_identifier = (chat_id, message_id)
 
 		# try removing the message, if launch has not been muted
@@ -3654,7 +4030,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 			info = f'{". ".join(info.split(". ")[0:2])}.'
 		
 		if 'DM2' in launch_name:
-			info = 'A new era of human spaceflight is set to begin as 🇺🇸-astronauts once again launch to orbit on a 🇺🇸-rocket from 🇺🇸-soil, almost a decade after the retirement of the Space Shuttle fleet back in 2011. \n\nDemo-2 will launch mission commander Doug Hurley and joint operations commander Bob Behnken to the ISS on the third overall flight of the Crew Dragon. Demo-2 follows the two previous successful unmanned test-flights, Demo-1 and IFA, and will be the last test-flight of the Dragon 2 system before it enters operational service later this year with the Crew-1 mission.'
+			info = 'A new era of human spaceflight is set to begin as 🇺🇸-astronauts once again launch to orbit on a 🇺🇸-rocket from 🇺🇸-soil, almost a decade after the retirement of the Space Shuttle fleet in 2011.'
 			launch_name = 'SpX-DM2'
 		
 		info_text = f'ℹ️ {info}'
@@ -3665,24 +4041,8 @@ def notification_handler(launch_row, notif_class, NET_slip):
 		lsp = query_return[0][3]
 		lsp_short = query_return[0][4]
 
-	launch_unix = datetime.datetime.utcfromtimestamp(query_return[0][9])
-	if launch_unix.second == 0:
-		if launch_unix.minute < 10:
-			launch_time = f'{launch_unix.hour}:0{launch_unix.minute}'
-		else:
-			launch_time = f'{launch_unix.hour}:{launch_unix.minute}'
-	else:
-		if launch_unix.second < 10:
-			sec_time = f'0{launch_unix.second}'
-		else:
-			sec_time = launch_unix.second
-
-		if launch_unix.minute < 10:
-			min_time = f'0{launch_unix.minute}'
-		else:
-			min_time = launch_unix.minute
-
-		launch_time = f'{launch_unix.hour}:{min_time}.{sec_time}'
+	# launch time as a unix time stamp
+	utc_timestamp = query_return[0][9]
 
 	# map notif_class to sqlite column names
 	notif_dict = {
@@ -3790,7 +4150,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 		message_footer = ''
 
 	# add the footer
-	message_footer += f'*🕓 The launch is scheduled* for `{launch_time}` `UTC`\n'
+	message_footer += f'*🕓 The launch is scheduled* for LAUNCHTIMEHERE\n'
 	message_footer += f'*🔕 To disable* use /notify@{BOT_USERNAME}'
 	launch_str = message_header + '\n\n' + info_text + '\n\n' + message_footer
 
@@ -3833,9 +4193,10 @@ def notification_handler(launch_row, notif_class, NET_slip):
 
 
 	# get chats to send the notification to
-	notify_list = getNotifyList(lsp, launch_id, notif_class)
+	notify_list = get_notify_list(lsp, launch_id, notif_class)
 
 	if debug_log:
+		launch_unix = datetime.datetime.utcfromtimestamp(utc_timestamp)
 		logging.info(f'Sending notifications for launch {launch_id} | NET: {launch_unix}')
 
 	# send early notifications silently
@@ -3854,7 +4215,22 @@ def notification_handler(launch_row, notif_class, NET_slip):
 	global msg_identifiers
 	reached_people, start_time, msg_identifiers = 0, timer(), []
 	for chat in notify_list:
-		ret = send_notification(chat, launch_str, launch_id, cmd_keyword, launch_row[19], notif_class)
+		# generate unique time for each chat
+		utc_offset = 3600 * load_time_zone_status(chat, readable=False)
+		local_timestamp = utc_timestamp + utc_offset
+		launch_unix = datetime.datetime.utcfromtimestamp(local_timestamp)
+
+		# generate lift-off time
+		if launch_unix.minute < 10:
+			launch_time = f'{launch_unix.hour}:0{launch_unix.minute}'
+		else:
+			launch_time = f'{launch_unix.hour}:{launch_unix.minute}'
+		
+		# set time for chat
+		readable_utc = load_time_zone_status(chat, readable=True)
+		time_string = f'`{launch_time}` `UTC{readable_utc}`'
+		chat_launch_str = launch_str.replace('LAUNCHTIMEHERE', time_string)
+		ret = send_notification(chat, chat_launch_str, launch_id, cmd_keyword, launch_row[19], notif_class)
 
 		if ret == True:
 			success = True
@@ -3867,7 +4243,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 		tries = 1
 		while ret != True:
 			time.sleep(2)
-			ret = send_notification(chat, launch_str, launch_id, cmd_keyword, launch_row[19], notif_class)
+			ret = send_notification(chat, chat_launch_str, launch_id, cmd_keyword, launch_row[19], notif_class)
 			tries += 1
 			
 			if ret == True:
@@ -3948,7 +4324,7 @@ def update_statistics(stats_update):
 	if 'commands' in stats_update.keys():
 		today = datetime.datetime.utcnow()
 		date = f'{today.year}-{today.month}-{today.day}'
-		slot = f'{today.hour}:{today.minute}'
+		slot = f'{today.hour}:0{today.minute}' if today.minute < 10 else f'{today.hour}:{today.minute}'
 
 		stats_cursor.execute("CREATE TABLE IF NOT EXISTS command_frequency (day TEXT, time_slot TEXT, commands INTEGER, PRIMARY KEY (day, time_slot))")
 
@@ -4028,22 +4404,18 @@ def statistics(chat, mode):
 	else:
 		db_sizes, db_size_class = db_sizes/10**6, 'MB'
 
-	# pull amount of unique recipients from the notifications database
+	# connect to notifications db
 	conn = sqlite3.connect(os.path.join('data/launch', 'notifications.db'))
 	c = conn.cursor()
 
-	c.execute('SELECT * FROM notify WHERE enabled = 1')
+	# pull all rows with enabled = 1
+	c.execute('SELECT chat FROM notify WHERE enabled = 1')
 	query_return = c.fetchall()
-
-	recipients = set()
-	for row in query_return:
-		if row[0] not in recipients:
-			recipients.add(row[0])
 
 	reply_str = f'''
 	📊 *LaunchBot global statistics*
 	Notifications delivered: {notifs}
-	Notification recipients: {len(recipients)}
+	Notification recipients: {len(set(row[0] for row in query_return))}
 	Commands parsed: {commands}
 
 	🛰 *Network statistics*
@@ -4251,7 +4623,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.17'
+	VERSION = '0.5.23'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
@@ -4412,6 +4784,9 @@ if __name__ == '__main__':
 		'Northrop Grumman': 'Northrop Grumman Innovation Systems',
 		'ROSCOSMOS': 'Russian Federal Space Agency (ROSCOSMOS)'
 	}
+
+	global time_zone_setup_chats
+	time_zone_setup_chats = {}
 
 	''' LSP ID -> name, flag dictionary
 	Used to shorten the names, so we don't end up with super long messages
