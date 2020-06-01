@@ -74,7 +74,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ allow users to set their own notifications (i.e. 24h/12h/...)
 	
-	- allow users to set their own timezone
+	- ✅ allow users to set their own timezone
 	
 0.6: back-end improvements
 
