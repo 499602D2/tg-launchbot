@@ -960,8 +960,11 @@ def callback_handler(msg):
 				
 				- *automatic:* uses your location to define your locale (e.g. Europe/Berlin). DST support.
 
-				Your current time zone is *UTC{load_time_zone_status(chat, readable=True)}*
-				'''
+				Your current time zone is *UTC{load_time_zone_status(chat, readable=True)}*'''
+
+				locale_string = load_locale_string(chat)
+				if locale_string != None:
+					text += f' *({locale_string})*'
 
 				keyboard = InlineKeyboardMarkup(
 					inline_keyboard = [
@@ -1130,14 +1133,37 @@ def callback_handler(msg):
 				bot.deleteMessage(msg_identifier)
 				sent_message = bot.sendMessage(
 					chat, text=inspect.cleandoc(text),
-					reply_markup=ForceReply(selective=True), parse_mode='Markdown'
-				)
+					reply_markup=ForceReply(selective=True), parse_mode='Markdown')
 
 				time_zone_setup_chats[chat] = [sent_message['message_id'], from_id]
 
 			elif input_data[2] == 'remove':
 				remove_time_zone_information(chat)
-				bot.answerCallbackQuery(query_id, f'✅ Time zone deleted!')
+				bot.answerCallbackQuery(query_id, f'✅ Your time zone information was deleted from the server', show_alert=True)
+
+				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time.
+
+				*Choose which method you'd like to use:*
+				- *manual:* no DST support, not recommended.
+				
+				- *automatic:* uses your location to define your locale (e.g. Europe/Berlin). DST support.
+
+				Your current time zone is *UTC{load_time_zone_status(chat, readable=True)}*
+				'''
+
+				keyboard = InlineKeyboardMarkup(
+					inline_keyboard = [
+						[InlineKeyboardButton(text='🌎 Automatic setup', callback_data=f'prefs/timezone/auto_setup')],
+						[InlineKeyboardButton(text='🕹 Manual setup', callback_data=f'prefs/timezone/manual_setup')],
+						[InlineKeyboardButton(text='🗑 Remove my time zone', callback_data=f'prefs/timezone/remove')],
+						[InlineKeyboardButton(text='⏮ Back to menu', callback_data=f'prefs/main_menu')]
+					]
+				)
+
+				try:
+					bot.editMessageText(msg_identifier, text=inspect.cleandoc(text), reply_markup=keyboard, parse_mode='Markdown')
+				except:
+					pass
 
 
 	elif input_data[0] == 'stats':
@@ -1159,6 +1185,26 @@ def callback_handler(msg):
 	# update stats, except if command was a stats refresh
 	if input_data[0] != 'stats':
 		update_statistics({'commands':1})
+
+
+def load_locale_string(chat):
+	# connect to database
+	conn = sqlite3.connect(os.path.join('data', 'preferences.db'))
+	c = conn.cursor()
+
+	try:
+		c.execute("SELECT timezone_str FROM preferences WHERE chat = ?",(chat,))
+	except:
+		return None
+
+	query_return = c.fetchall()
+	if len(query_return) == 0:
+		return None
+
+	if query_return[0][0] != None:
+		return query_return[0][0]
+
+	return None
 
 
 def remove_time_zone_information(chat):
@@ -1839,6 +1885,8 @@ def flight_schedule(msg, command_invoke, call_type):
 	sched_dict = {}
 	for row, i in zip(query_return, range(len(query_return))):
 		launch_unix = datetime.datetime.utcfromtimestamp(row[9])
+		#launch_unix += 3600 * load_time_zone_status(chat, readable=False)
+
 		provider = row[3] if len(row[3]) <= len('Arianespace') else row[4]
 		mission = row[0]
 
@@ -1894,7 +1942,8 @@ def flight_schedule(msg, command_invoke, call_type):
 		else:
 			sched_dict[utc_str].append(flt_str)
 
-	schedule_msg, i, today = '', 0, datetime.datetime.utcnow()
+	schedule_msg, i = '', 0
+	today = datetime.datetime.utcnow()
 	for key, val in sched_dict.items():
 		if i != 0:
 			schedule_msg += '\n\n'
@@ -2290,6 +2339,8 @@ def next_flight(msg, current_index, command_invoke, cmd):
 		if 'DM2' in mission_name:
 			info = 'A new era of human spaceflight is set to begin as 🇺🇸-astronauts once again launch to orbit on a 🇺🇸-rocket from 🇺🇸-soil, almost a decade after the retirement of the Space Shuttle fleet in 2011.'
 			mission_name = 'SpX-DM2'
+		elif 'Starlink' in mission_name and '8' not in mission_name:
+			info = "60 satellites for the Starlink satellite constellation, SpaceX's project for providing global, high-speed internet access."
 
 		info_msg = f'ℹ️ {info}'
 	else:
@@ -3015,6 +3066,10 @@ def spx_info_str_gen(launch_name, run_count):
 
 		if 'OCISLY' in landing_intents:
 			landing_intents = 'OCISLY (Atlantic Ocean)'
+		elif 'JRTI' in landing_intents:
+			landing_intents = 'JRTI (Atlantic Ocean)'
+		elif 'ASLOG' in landing_intents:
+			landing_intents = 'ASLOG (Pacific Ocean)'
 		elif 'LZ-1' in landing_intents:
 			landing_intents = 'LZ-1 (RTLS)'
 
@@ -3212,6 +3267,14 @@ def get_launch_updates(launch_ID):
 					clean_notify_database(chat)
 					return True
 
+				elif 'Forbidden: bot is not a member of the supergroup chat' in error.description:
+					if debug_log:
+						logging.info(f'⚠️ bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database...')
+						logging.info(f'Error: {error}')
+
+					clean_notify_database(chat)
+					return True
+
 				else:
 					if debug_log:
 						logging.info(f'⚠️ unhandled 403 telepot.exception.TelegramError in send_postpone_notification: {error}')
@@ -3269,10 +3332,15 @@ def get_launch_updates(launch_ID):
 			status = launch_json['status']
 
 			# extract: lsp_name, vehicle, pad, info
-			lsp_name = launch_json['lsp']['name']
-			lsp_short = launch_json['lsp']['abbrev']
-			vehicle = launch_json['rocket']['name']
-			location_name = launch_json['location']['pads'][0]['name']
+			try:
+				lsp_name = launch_json['lsp']['name']
+				lsp_short = launch_json['lsp']['abbrev']
+				vehicle = launch_json['rocket']['name']
+				location_name = launch_json['location']['pads'][0]['name']
+			except Exception as e:
+				if debug_log:
+					logging.info(f'⚠️ Error in multi_parse (3334): {e}')
+				pass
 
 			# NEW (2020): probability of launch + tbdtime/tbddate
 			tbd_date = launch_json['tbddate']
@@ -3975,6 +4043,14 @@ def notification_handler(launch_row, notif_class, NET_slip):
 					clean_notify_database(chat)
 					return True
 
+				elif 'Forbidden: bot is not a member of the supergroup chat' in error.description:
+					if debug_log:
+						logging.info(f'⚠️ bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database...')
+						logging.info(f'Error: {error}')
+
+					clean_notify_database(chat)
+					return True
+
 				else:
 					if debug_log:
 						logging.info(f'⚠️ unhandled 403 telepot.exception.TelegramError in send_notification: {error}')
@@ -4032,6 +4108,8 @@ def notification_handler(launch_row, notif_class, NET_slip):
 		if 'DM2' in launch_name:
 			info = 'A new era of human spaceflight is set to begin as 🇺🇸-astronauts once again launch to orbit on a 🇺🇸-rocket from 🇺🇸-soil, almost a decade after the retirement of the Space Shuttle fleet in 2011.'
 			launch_name = 'SpX-DM2'
+		elif 'Starlink' in launch_name and '8' not in launch_name:
+			info = "60 satellites for the Starlink satellite constellation, SpaceX's project for providing global, high-speed internet access."
 		
 		info_text = f'ℹ️ {info}'
 	else:
