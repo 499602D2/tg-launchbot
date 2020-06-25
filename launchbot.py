@@ -2859,7 +2859,10 @@ def spx_info_str_gen(launch_name, run_count):
 	today_unix = time.mktime(datetime.datetime.today().timetuple())
 
 	# manual launch name matching for cases where automatic parsing fails
-	manual_name_matches = {}
+	# MAKE SURE THE KEYS ARE IN lower_case!!!!
+	manual_name_matches = {
+		'starlink-9': 'starlink-9 & blacksky global 5-6'
+	}
 
 	if launch_name.lower() in manual_name_matches.keys():
 		launch_name = manual_name_matches[launch_name.lower()]
@@ -2868,6 +2871,7 @@ def spx_info_str_gen(launch_name, run_count):
 	# launch names are stored in lower case
 	c.execute('''SELECT * FROM launches WHERE launch_name = ?''', (launch_name.lower(),))
 	query_return = c.fetchall()
+
 	if len(query_return) == 0:
 		# try pulling all launches, diff them, sort by NET
 		c.execute('''SELECT * FROM launches WHERE NET >= ?''', (today_unix,))
@@ -3654,6 +3658,9 @@ def get_launch_updates(launch_ID):
 						# convert identifiers to string, store
 						msg_identifiers = ','.join(msg_identifiers)
 						store_identifiers(launch_id, msg_identifiers)
+
+						if debug_log:
+							logging.info(f'Storing identifiers (send_postpone_notification)... strlen: {len(msg_identifiers)}')
 
 						if debug_log:
 							if len(disabled_statuses) > 0:
@@ -4701,7 +4708,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.23'
+	VERSION = '0.5.24'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
