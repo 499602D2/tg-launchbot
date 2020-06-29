@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # /usr/bin/python3
-import os, sys, time, ssl, datetime, logging, math, requests
+import os, sys, time, ssl, datetime, logging, math, requests, traceback
 import inspect, signal, random, sqlite3, difflib
 
 import telepot, cursor, schedule, pytz
@@ -29,7 +29,7 @@ def handle(msg):
 		content_type, chat_type, chat = telepot.glance(msg, flavor="chat")
 	except KeyError:
 		if debug_log:
-			logging.info(f'KeyError in handle(): {msg}')
+			logging.exception(f'KeyError in handle(): {msg}')
 		return
 
 	# for admin/private chat checks; also might throw an error when kicked out of a group, so handle that here as well
@@ -151,9 +151,9 @@ def handle(msg):
 		command_split = msg['text'].strip().split(' ')
 	except KeyError:
 		pass
-	except Exception as e:
+	except Exception as error:
 		if debug_log:
-			logging.info(f'🛑 Error generating command split, returning: {e}')
+			logging.exception(f'🛑 Error generating command split, returning. {error}')
 			logging.info(f'msg object: {msg}')
 		return
 
@@ -184,9 +184,9 @@ def handle(msg):
 
 					try: # remove the original feedback message
 						bot.deleteMessage((chat, msg['reply_to_message']['message_id']))
-					except Exception as e:
+					except Exception as error:
 						if debug_log:
-							logging.info(f'Unable to remove sent feedback message with params chat={chat}, message_id={msg["reply_to_message"]["message_id"]}: {e}')
+							logging.exception(f'Unable to remove sent feedback message with params chat={chat}, message_id={msg["reply_to_message"]["message_id"]} {error}')
 
 					if OWNER != 0:
 						bot.sendMessage(OWNER,
@@ -284,9 +284,9 @@ def handle(msg):
 										logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): successfully deleted message! ✅')
 									else:
 										logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): unable to delete message (success != True. Type:{type(success)}, val:{success}) ⚠️')
-							except Exception as e:
+							except Exception as error:
 								if debug_log:
-									logging.info(f'⚠️ Could not delete message sent by non-admin: {e}')
+									logging.exception(f'⚠️ Could not delete message sent by non-admin: {error}')
 
 						else:
 							if debug_log:
@@ -530,7 +530,7 @@ def callback_handler(msg):
 	
 	except Exception as caught_exception:
 		if debug_log:
-			logging.info(f'⚠️ Exception in callback_handler: {caught_exception}')
+			logging.exception(f'⚠️ Exception in callback_handler: {caught_exception}')
 
 		return
 
@@ -560,7 +560,7 @@ def callback_handler(msg):
 					bot.answerCallbackQuery(query_id, text="⚠️ This button is only callable by admins! ⚠️")
 				except Exception as error:
 					if debug_log:
-						logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
+						logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 				if debug_log:
 					logging.info(f'✋ Callback query called by a non-admin in {anonymize_id(chat)}, returning | {(1000*(timer() - start)):.0f} ms')
@@ -609,7 +609,7 @@ def callback_handler(msg):
 				bot.answerCallbackQuery(query_id, text=f'{flag_map[country_code]}')
 			except Exception as error:
 				if debug_log:
-					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
+					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 		# user requests to return to the main menu; send the main keyboard
 		elif input_data[1] == 'main_menu':
@@ -623,7 +623,7 @@ def callback_handler(msg):
 				bot.answerCallbackQuery(query_id, text='⏮ Returned to main menu')
 			except Exception as error:
 				if debug_log:
-					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
+					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 			if debug_log and chat != OWNER:
 				logging.info(f'⏮ {anonymize_id(chat)} (main-view update) | {(1000*(timer() - start)):.0f} ms')
@@ -689,7 +689,7 @@ def callback_handler(msg):
 				bot.answerCallbackQuery(query_id, text=reply_text, show_alert=True)
 			except Exception as error:
 				if debug_log:
-					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
+					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 			if debug_log and chat != OWNER:
 				logging.info(f'{anonymize_id(chat)} {reply_text} | {(1000*(timer() - start)):.0f} ms')
@@ -725,7 +725,7 @@ def callback_handler(msg):
 				bot.answerCallbackQuery(query_id, text=reply_text)
 			except Exception as error:
 				if debug_log:
-					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
+					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 			if debug_log and chat != OWNER:
 				logging.info(f'💫 {anonymize_id(chat)} finished setting notifications with the "Done" button! | {(1000*(timer() - start)):.0f} ms')
@@ -754,7 +754,7 @@ def callback_handler(msg):
 				bot.answerCallbackQuery(query_id, text=callback_text)
 			except Exception as error:
 				if debug_log:
-					logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
+					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 			
 			if debug_log and chat != OWNER:
 				if new_toggle_state == 0:
@@ -764,13 +764,13 @@ def callback_handler(msg):
 
 		except Exception as exception:
 			if debug_log:
-				logging.info(f'⚠️ User attempted to mute/unmute a launch, but no reply could be provided (sending message...): {exception}')
+				logging.exception(f'⚠️ User attempted to mute/unmute a launch, but no reply could be provided (sending message...): {exception}')
 
 			try:
 				bot.sendMessage(chat, callback_text, parse_mode='Markdown')
 			except Exception as exception:
 				if debug_log:
-					logging.info(f'🛑 Ran into an error sending the mute/unmute message to chat={chat}! {exception}')
+					logging.exception(f'🛑 Ran into an error sending the mute/unmute message to chat={chat}! {exception}')
 
 		# toggle the mute here, so we can give more responsive feedback
 		toggle_launch_mute(chat, input_data[1], input_data[2], input_data[3])	
@@ -807,7 +807,7 @@ def callback_handler(msg):
 
 			except Exception as e:
 				if debug_log:
-					logging.info(f'⚠️ No launches found after refresh! {e}')
+					logging.exception(f'⚠️ No launches found after refresh! {e}')
 
 		# query reply text
 		query_reply_text = {'next': 'Next flight ⏩', 'prev': '⏪ Previous flight', 'refresh': '🔄 Refreshed data!'}[input_data[1]]
@@ -820,13 +820,13 @@ def callback_handler(msg):
 				pass
 			else:
 				if debug_log:
-					logging.info(f'⚠️ TelegramError updating message text: {exception}')
+					logging.exception(f'⚠️ TelegramError updating message text: {exception}')
 		
 		try:
 			bot.answerCallbackQuery(query_id, text=query_reply_text)
 		except Exception as error:
 			if debug_log:
-				logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
+				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 		if debug_log and chat != OWNER:
 			logging.info(f'{anonymize_id(chat)} pressed "{query_reply_text}" button in /next | {(1000*(timer() - start)):.0f} ms')
@@ -862,11 +862,11 @@ def callback_handler(msg):
 					bot.answerCallbackQuery(query_id, text=query_reply_text)
 				except Exception as error:
 					if debug_log:
-						logging.info(f'⚠️ Ran into error when answering callbackquery: {error}')
+						logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 				pass
 			else:
 				if debug_log:
-					logging.info(f'⚠️ TelegramError updating message text: {exception}')
+					logging.exception(f'⚠️ TelegramError updating message text: {exception}')
 
 	elif input_data[0] == 'prefs':
 		if input_data[1] not in ('timezone', 'notifs', 'cmds', 'done', 'main_menu'):
@@ -1219,7 +1219,7 @@ def remove_time_zone_information(chat):
 	
 	except Exception as e:
 		if debug_log:
-			logging.info(f'❓ User tried to remove their time zone information, but ran into exception: {e}')
+			logging.exception(f'❓ User tried to remove their time zone information, but ran into exception: {e}')
 
 	conn.commit()
 	conn.close()
@@ -2145,7 +2145,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 			query_return = query_return[current_index]
 		except Exception as error:
 			if debug_log:
-				logging.info(f'⚠️ Exception setting query_return: {error}')
+				logging.exception(f'⚠️ Exception setting query_return: {error}')
 
 			query_return = query_return[0]
 	else:
@@ -2661,14 +2661,14 @@ def spx_api_handler():
 				try:
 					if 'error' in launch_json.keys():
 						if debug_log:
-							logging.info(f'⚠️ Error in spx_api_handler multi_parse: {launch_json["error"]}')
+							logging.exception(f'⚠️ Error in spx_api_handler multi_parse: {launch_json["error"]}')
 
 					elif debug_log:
-						logging.info(f'⚠️ Got KeyError in spx_api_handler(multi_parse()), returning: {error}')
-						logging.info(f'⚠️ range: 0,{launch_count}, i:{i}, launch_json: {launch_json}')
+						logging.exception(f'⚠️ Got KeyError in spx_api_handler(multi_parse()), returning: {error}')
+						logging.exception(f'⚠️ range: 0,{launch_count}, i:{i}, launch_json: {launch_json}')
 
 				except Exception as error:
-					logging.info(f'Other error in multi_parse: {error}')
+					logging.exception(f'Other error in multi_parse: {error}')
 					pass
 
 				return
@@ -2803,9 +2803,9 @@ def spx_api_handler():
 	
 	try: # perform the API call
 		API_RESPONSE = requests.get(API_CALL)
-	except Exception:
+	except Exception as error:
 		if debug_log:
-			logging.info(f'🛑 Exception in r/SpaceX API request')
+			logging.exception(f'🛑 Exception in r/SpaceX API request: {error}')
 			logging.info(f'⚠️ Trying again after 3 seconds...')
 
 		time.sleep(3)
@@ -3248,8 +3248,7 @@ def get_launch_updates(launch_ID):
 			# Bad Request: chat not found
 			if error.error_code == 400 and 'not found' in error.description:
 				if debug_log:
-					logging.info(f'⚠️ chat {anonymize_id(chat)} not found – cleaning notify database...')
-					logging.info(f'Error: {error}')
+					logging.exception(f'⚠️ Chat {anonymize_id(chat)} not found – cleaning notify database... Error: {error}')
 
 				clean_notify_database(chat)
 				return True
@@ -3257,36 +3256,33 @@ def get_launch_updates(launch_ID):
 			elif error.error_code == 403:
 				if 'user is deactivated' in error.description:
 					if debug_log:
-						logging.info(f'⚠️ user {anonymize_id(chat)} was deactivated – cleaning notify database...')
-						logging.info(f'Error: {error}')
+						logging.exception(f'⚠️ User {anonymize_id(chat)} was deactivated – cleaning notify database... Error: {error}')
 
 					clean_notify_database(chat)
 					return True
 
 				elif 'bot was kicked from the supergroup chat' in error.description:
 					if debug_log:
-						logging.info(f'⚠️ bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database...')
-						logging.info(f'Error: {error}')
+						logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database... Error: {error}')
 
 					clean_notify_database(chat)
 					return True
 
 				elif 'Forbidden: bot is not a member of the supergroup chat' in error.description:
 					if debug_log:
-						logging.info(f'⚠️ bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database...')
-						logging.info(f'Error: {error}')
+						logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database... Error: {error}')
 
 					clean_notify_database(chat)
 					return True
 
 				else:
 					if debug_log:
-						logging.info(f'⚠️ unhandled 403 telepot.exception.TelegramError in send_postpone_notification: {error}')
+						logging.exception(f'⚠️ Unhandled 403 telepot.exception.TelegramError in send_postpone_notification: {error}')
 
 			# Rate-limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
 			elif error.error_code == 429:
 				if debug_log:
-					logging.info(f'🚧 Rate-limited (429) - sleeping for 5 seconds and continuing. Error: {error}')
+					logging.exception(f'🚧 Rate-limited (429) - sleeping for 5 seconds and continuing. Error: {error}')
 
 				time.sleep(5)
 				return False
@@ -3294,7 +3290,7 @@ def get_launch_updates(launch_ID):
 			# Some error code we don't know how to handle
 			else:
 				if debug_log:
-					logging.info(f'⚠️ unhandled telepot.exception.TelegramError in send_notification: {error}')
+					logging.exception(f'⚠️ Unhandled telepot.exception.TelegramError in send_notification: {error}')
 
 				return False
 
@@ -3343,7 +3339,7 @@ def get_launch_updates(launch_ID):
 				location_name = launch_json['location']['pads'][0]['name']
 			except Exception as e:
 				if debug_log:
-					logging.info(f'⚠️ Error in multi_parse (3334): {e}')
+					logging.exception(f'⚠️ Error in multi_parse (3334): {e}')
 				pass
 
 			# NEW (2020): probability of launch + tbdtime/tbddate
@@ -3702,9 +3698,9 @@ def get_launch_updates(launch_ID):
 
 	try:
 		API_RESPONSE = requests.get(API_CALL, headers=headers)
-	except Exception:
+	except Exception as error:
 		if debug_log:
-			logging.info(f'🛑 Error in LL API request')
+			logging.exception(f'🛑 Error in LL API request: {error}')
 			logging.info(f'⚠️ Trying again after 3 seconds...')
 
 		time.sleep(3)
@@ -3720,7 +3716,7 @@ def get_launch_updates(launch_ID):
 		launch_json = json.loads(API_RESPONSE.text)
 	except Exception as error:
 		with open(os.path.join('data', 'json-parsing-error.txt'), 'w') as error_file:
-			error_file.write(f'Error: {error}')
+			error_file.write(f'Error: {traceback.print_exception(error)}')
 			error_file.write(API_RESPONSE.text)
 			
 		return
@@ -3942,7 +3938,7 @@ def remove_previous_notification(launch_id, keyword):
 					success_count += 1
 			except Exception as error:
 				if debug_log:
-					logging.info(f'⚠️ Unable to delete previous notification. Unique ID: {message_identifier}.'
+					logging.exception(f'⚠️ Unable to delete previous notification. Unique ID: {message_identifier}.'
 								 f'Got error: {error}')
 		else:
 			muted_count += 1
@@ -4027,8 +4023,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 			# Bad Request: chat not found
 			if error.error_code == 400 and 'not found' in error.description:
 				if debug_log:
-					logging.info(f'⚠️ chat {anonymize_id(chat)} not found – cleaning notify database...')
-					logging.info(f'Error: {error}')
+					logging.exception(f'⚠️ Chat {anonymize_id(chat)} not found – cleaning notify database... Error: {error}')
 
 				clean_notify_database(chat)
 				return True
@@ -4036,36 +4031,33 @@ def notification_handler(launch_row, notif_class, NET_slip):
 			elif error.error_code == 403:
 				if 'user is deactivated' in error.description:
 					if debug_log:
-						logging.info(f'⚠️ user {anonymize_id(chat)} was deactivated – cleaning notify database...')
-						logging.info(f'Error: {error}')
+						logging.exception(f'⚠️ User {anonymize_id(chat)} was deactivated – cleaning notify database... Error: {error}')
 
 					clean_notify_database(chat)
 					return True
 
 				elif 'bot was kicked from the supergroup chat' in error.description:
 					if debug_log:
-						logging.info(f'⚠️ bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database...')
-						logging.info(f'Error: {error}')
+						logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database... Error: {error}')
 
 					clean_notify_database(chat)
 					return True
 
 				elif 'Forbidden: bot is not a member of the supergroup chat' in error.description:
 					if debug_log:
-						logging.info(f'⚠️ bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database...')
-						logging.info(f'Error: {error}')
+						logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database... Error: {error}')
 
 					clean_notify_database(chat)
 					return True
 
 				else:
 					if debug_log:
-						logging.info(f'⚠️ unhandled 403 telepot.exception.TelegramError in send_notification: {error}')
+						logging.exception(f'⚠️ Unhandled 403 telepot.exception.TelegramError in send_notification: {error}')
 
 			# Rate limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
 			elif error.error_code == 429:
 				if debug_log:
-					logging.info(f'🚧 Rate-limited (429) - sleeping for 5 seconds and continuing. Error: {error}')
+					logging.exception(f'🚧 Rate-limited (429) - sleeping for 5 seconds and continuing. Error: {error}')
 
 				time.sleep(5)
 				return False
@@ -4073,7 +4065,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 			# Something else
 			else:
 				if debug_log:
-					logging.info(f'⚠️ unhandled telepot.exception.TelegramError in send_notification: {error}')
+					logging.exception(f'⚠️ Unhandled telepot.exception.TelegramError in send_notification: {error}')
 
 				return False
 
@@ -4157,7 +4149,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 			
 			except Exception as e:
 				if debug_log:
-					logging.info(f'\t🛑 Error disabling notification: {e}')
+					logging.exception(f'\t🛑 Error disabling notification: {e}')
 
 		conn.commit()
 
@@ -4347,7 +4339,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 				reached_people += bot.getChatMembersCount(chat) - 1
 			except Exception as error:
 				if debug_log:
-					logging.info(f'⚠️ Error getting number of chat members for chat={anonymize_id(chat)}. Error: {error}')
+					logging.exception(f'⚠️ Error getting number of chat members for chat={anonymize_id(chat)}. Error: {error}')
 
 	# log end time
 	end_time = timer()
@@ -4374,7 +4366,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 	
 	except Exception as e:
 		if debug_log:
-			logging.info(f'''⚠️ Error disabling notification in notification_handler().
+			logging.exception(f'''⚠️ Error disabling notification in notification_handler().
 			t_minus={t_minus}, launch_id={launch_id}. Notifications sent: {len(notify_list)}.
 			Exception: {e}. Disabling all further notifications.''')
 
@@ -4552,7 +4544,7 @@ def create_spx_database():
 	
 	except sqlite3.OperationalError as e:
 		if debug_log:
-			logging.info(f'🛑 Error in create_spx_database: {e}')
+			logging.exception(f'🛑 Error in create_spx_database: {e}')
 
 	conn.commit()
 	conn.close()
@@ -4611,7 +4603,7 @@ def create_launch_database():
 	
 	except sqlite3.OperationalError as e:
 		if debug_log:
-			logging.info(f'Error in create_launch_database: {e}')
+			logging.exception(f'Error in create_launch_database: {e}')
 		pass
 
 	conn.commit()
@@ -4708,7 +4700,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.24'
+	VERSION = '0.5.25'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
