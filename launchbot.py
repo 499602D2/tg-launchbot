@@ -3716,7 +3716,7 @@ def get_launch_updates(launch_ID):
 		launch_json = json.loads(API_RESPONSE.text)
 	except Exception as error:
 		with open(os.path.join('data', 'json-parsing-error.txt'), 'w') as error_file:
-			error_file.write(f'Error: {traceback.print_exception(error)}')
+			error_file.write(f'Error: {traceback.format_exc(error)}')
 			error_file.write(API_RESPONSE.text)
 			
 		return
