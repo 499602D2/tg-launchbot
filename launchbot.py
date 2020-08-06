@@ -1,18 +1,34 @@
 # -*- coding: utf-8 -*-
 # /usr/bin/python3
-import os, sys, time, ssl, datetime, logging, math, requests, traceback
-import inspect, signal, random, sqlite3, difflib
-import telepot, cursor, schedule, pytz
+import os
+import sys
+import time
+import ssl
+import datetime
+import logging
+import math
+import inspect
+import traceback
+import random
+import sqlite3
+import difflib
+import signal
+from hashlib import sha1
+from timeit import default_timer as timer
+
+import requests
+import telepot
+import cursor
+import schedule
+import pytz
 import ujson as json
 
-from hashlib import sha1
 from uptime import uptime
-from timeit import default_timer as timer
 from timezonefinder import TimezoneFinder
 from telepot.loop import MessageLoop
-from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
+from telepot.namedtuple import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
-# changelog: add "show changelog" button to /help
 '''
 *Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (May 2020)
 - Added preferences to /notify@{BOT_USERNAME} ⚙️
@@ -22,13 +38,20 @@ from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton, Force
 - /next@{BOT_USERNAME} now indicates if a launch countdown is on hold
 '''
 
+# TODO schedule: add "only show certain launches" button
+# TODO changelog: add "show changelog" button to /help
+
 # main loop-function for messages with flavor=chat
 def handle(msg):
 	try:
 		content_type, chat_type, chat = telepot.glance(msg, flavor="chat")
 	except KeyError:
+		if 'poll' in msg:
+			return
+
 		if debug_log:
 			logging.exception(f'KeyError in handle(): {msg}')
+
 		return
 
 	# for admin/private chat checks; also might throw an error when kicked out of a group, so handle that here as well
@@ -37,17 +60,17 @@ def handle(msg):
 			chat_type = msg['chat']['type']
 		except:
 			chat_type = bot.getChat(chat)['type']
-	
+
 	except telepot.exception.BotWasKickedError:
 		'''
 		Bot kicked; remove corresponding chat IDs from notification database
-		
+
 		This exception is effectively only triggered if we're handling a message
 		_after_ the bot has been kicked, e.g. after a bot restart.
 		'''
 		conn = sqlite3.connect(os.path.join('data/launch', 'notifications.db'))
 		c = conn.cursor()
-		
+
 		c.execute("DELETE FROM notify WHERE chat = ?", (chat,))
 		conn.commit()
 		conn.close()
@@ -82,7 +105,7 @@ def handle(msg):
 		# bot kicked; remove corresponding chat IDs from notification database
 		conn = sqlite3.connect(os.path.join('data/launch', 'notifications.db'))
 		c = conn.cursor()
-		
+
 		c.execute("DELETE FROM notify WHERE chat = ?", (chat,))
 		conn.commit()
 		conn.close()
@@ -99,7 +122,7 @@ def handle(msg):
 					pass
 				else:
 					return
-			
+
 			except TypeError:
 				if msg['new_chat_member']['id'] == BOT_ID:
 					pass
@@ -136,7 +159,7 @@ def handle(msg):
 
 		LaunchBot version *{VERSION}* ✨
 		'''
-		
+
 		bot.sendMessage(chat, inspect.cleandoc(reply_msg), parse_mode='Markdown')
 
 		notify(msg)
@@ -145,7 +168,7 @@ def handle(msg):
 			logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat)}. Sent user the new inline keyboard. [1]')
 
 		return
-	
+
 	try:
 		command_split = msg['text'].strip().split(' ')
 	except KeyError:
@@ -160,15 +183,15 @@ def handle(msg):
 	try:
 		if msg['from']['id'] in ignored_users:
 			if debug_log:
-				logging.info(f'😎 Message from spamming user ignored successfully')
-			
+				logging.info('😎 Message from spamming user ignored successfully')
+
 			return
 	except: # all users don't have a user ID, so check for the regular username as well
 		if 'author_signature' in msg:
 			if msg['author_signature'] in ignored_users:
 				if debug_log:
-					logging.info(f'😎 Message from spamming user (no UID) ignored successfully')
-			
+					logging.info('😎 Message from spamming user (no UID) ignored successfully')
+
 			return
 
 	# regular text — check if it's feedback. If not, return.
@@ -193,7 +216,7 @@ def handle(msg):
 							parse_mode='MarkdownV2')
 
 		return
-	
+
 	# if location in message, verify it's a time zone setup reply
 	if 'location' in msg and 'reply_to_message' in msg:
 		if chat in time_zone_setup_chats.keys():
@@ -211,7 +234,7 @@ def handle(msg):
 
 				timezone_str = TimezoneFinder().timezone_at(lng=longitude, lat=latitude)
 				timezone = pytz.timezone(timezone_str)
-				
+
 				user_local_now = datetime.datetime.now(timezone)
 				user_utc_offset = user_local_now.utcoffset().total_seconds()/3600
 
@@ -225,7 +248,7 @@ def handle(msg):
 
 					utc_offset_str = f'+{utc_offset_str}' if user_utc_offset >= 0 else f'{utc_offset_str}'
 
-				new_text = f'''✅ Time zone successfully set! 
+				new_text = f'''✅ Time zone successfully set!
 
 				Your time zone is *UTC{utc_offset_str} ({timezone_str})*
 
@@ -290,9 +313,9 @@ def handle(msg):
 						else:
 							if debug_log:
 								logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): could not remove.')
-						
+
 						return
-			
+
 			# start timer
 			start = timer()
 
@@ -324,7 +347,7 @@ def handle(msg):
 
 				LaunchBot version *{VERSION}* ✨
 				'''
-				
+
 				bot.sendMessage(chat, inspect.cleandoc(reply_msg), parse_mode='Markdown')
 
 				# /start, send also the inline keyboard
@@ -344,6 +367,7 @@ def handle(msg):
 
 			# /statistics
 			elif command == '/statistics':
+				update_statistics({'commands':1})
 				statistics(chat, 'cmd')
 
 			# /schedule)
@@ -363,7 +387,8 @@ def handle(msg):
 						logging.info(f'🕹 {command} called by {anonymize_id(chat)} | args: [] | {(1000*t_elapsed):.0f} ms')
 
 			# store statistics here, so our stats database can't be spammed either
-			update_statistics({'commands':1})
+			if command != '/statistics':
+				update_statistics({'commands':1})
 
 		else:
 			return
@@ -403,7 +428,7 @@ def callback_handler(msg):
 
 				[InlineKeyboardButton(text='🇪🇺 EU', callback_data=f'notify/list/EU'),
 				InlineKeyboardButton(text='🇺🇸 USA', callback_data=f'notify/list/USA')],
-				
+
 				[InlineKeyboardButton(text='🇷🇺 Russia', callback_data=f'notify/list/RUS'),
 				InlineKeyboardButton(text='🇨🇳 China', callback_data=f'notify/list/CHN')],
 
@@ -411,7 +436,7 @@ def callback_handler(msg):
 				InlineKeyboardButton(text='🇯🇵 Japan', callback_data=f'notify/list/JPN')],
 
 				[InlineKeyboardButton(text='⚙️ Edit your preferences', callback_data=f'prefs/main_menu')],
-				
+
 				[InlineKeyboardButton(text='✅ Save and exit', callback_data=f'notify/done')]
 			]
 		)
@@ -421,7 +446,7 @@ def callback_handler(msg):
 
 		# now we have the keyboard; update the previous keyboard
 		if text_refresh:
-			message_text = f'''
+			message_text = '''
 			🛰 Hi there, nice to see you! Let's set some notifications for you.
 
 			You can search for launch providers, like SpaceX (🇺🇸) or ISRO (🇮🇳), using the flags, or simply enable all!
@@ -461,7 +486,7 @@ def callback_handler(msg):
 				disabled_count += 1
 				break
 
-		local_text = f'Press to enable all' if disabled_count != 0 else f'Press to disable all'
+		local_text = 'Press to enable all' if disabled_count != 0 else 'Press to disable all'
 
 		# we now have the list of providers for this country code. Generate the buttons dynamically.
 		inline_keyboard = [[
@@ -508,7 +533,7 @@ def callback_handler(msg):
 					])
 
 		# append a back button, so user can return to the "main menu"
-		inline_keyboard.append([InlineKeyboardButton(text=f'⏮ Return to menu', callback_data=f'notify/main_menu')])
+		inline_keyboard.append([InlineKeyboardButton(text='⏮ Return to menu', callback_data='notify/main_menu')])
 
 		keyboard = InlineKeyboardMarkup(
 			inline_keyboard=inline_keyboard)
@@ -526,7 +551,7 @@ def callback_handler(msg):
 
 	try:
 		query_id, from_id, query_data = telepot.glance(msg, flavor='callback_query')
-	
+
 	except Exception as caught_exception:
 		if debug_log:
 			logging.exception(f'⚠️ Exception in callback_handler: {caught_exception}')
@@ -563,7 +588,7 @@ def callback_handler(msg):
 
 				if debug_log:
 					logging.info(f'✋ Callback query called by a non-admin in {anonymize_id(chat)}, returning | {(1000*(timer() - start)):.0f} ms')
-				
+
 				return
 
 	# callbacks only supported for notify at the moment; verify it's a notify command
@@ -635,7 +660,7 @@ def callback_handler(msg):
 					for val in provider_by_cc.values():
 						for provider in val:
 							providers.append(provider)
-				
+
 				elif toggle_type == 'country_code':
 					for provider in provider_by_cc[country_code]:
 						providers.append(provider)
@@ -646,7 +671,7 @@ def callback_handler(msg):
 						if val == 0:
 							disabled_count += 1
 							break
-					
+
 					elif toggle_type == 'all' or toggle_type == 'lsp':
 						if val == 0:
 							disabled_count += 1
@@ -663,7 +688,7 @@ def callback_handler(msg):
 			else:
 				country_code = input_data[3]
 				if input_data[2] == 'country_code':
-					all_toggle_new_status = get_all_toggle_new_status('country_code', country_code, chat)			
+					all_toggle_new_status = get_all_toggle_new_status('country_code', country_code, chat)
 				else:
 					all_toggle_new_status = 0
 
@@ -680,8 +705,8 @@ def callback_handler(msg):
 					0:f'🔕 Disabled notifications for {flag_map[input_data[3]]}'}[new_status]
 			elif input_data[2] == 'all':
 				reply_text = {
-					1:f'🔔 Enabled all notifications 🌍',
-					0:f'🔕 Disabled all notifications 🌍'}[new_status]
+					1:'🔔 Enabled all notifications 🌍',
+					0:'🔕 Disabled all notifications 🌍'}[new_status]
 
 			# give feedback to the button press
 			try:
@@ -705,7 +730,7 @@ def callback_handler(msg):
 
 				# update keyboard list view
 				update_list_view(msg, chat, provider_list)
-			
+
 			# update main view if "enable all" button was pressed, as in this case we're in the main view
 			else:
 				update_main_view(chat, msg, provider_by_cc, False)
@@ -719,7 +744,7 @@ def callback_handler(msg):
 
 			# now we have the keyboard; update the previous keyboard
 			bot.editMessageText(msg_identifier, text=msg_text, reply_markup=None, parse_mode='Markdown')
-			
+
 			try:
 				bot.answerCallbackQuery(query_id, text=reply_text)
 			except Exception as error:
@@ -728,11 +753,11 @@ def callback_handler(msg):
 
 			if debug_log and chat != OWNER:
 				logging.info(f'💫 {anonymize_id(chat)} finished setting notifications with the "Done" button! | {(1000*(timer() - start)):.0f} ms')
-	
+
 	elif input_data[0] == 'mute':
 		# user wants to mute a launch from notification inline keyboard
 		# /mute/$provider/$launch_id/(0/1) | 1=muted (true), 0=not muted
-		
+
 		# reverse the button status on press
 		new_toggle_state = 0 if int(input_data[3]) == 1 else 1
 		new_text = {0:'🔊 Unmute this launch', 1:'🔇 Mute this launch'}[new_toggle_state]
@@ -745,16 +770,16 @@ def callback_handler(msg):
 
 		# tuple containing necessary information to edit the message
 		callback_text = f'🔇 Launch muted!' if input_data[3] == '1' else f'🔊 Launch unmuted!'
-		
+
 		try:
 			bot.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
-			
+
 			try:
 				bot.answerCallbackQuery(query_id, text=callback_text)
 			except Exception as error:
 				if debug_log:
 					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
-			
+
 			if debug_log and chat != OWNER:
 				if new_toggle_state == 0:
 					logging.info(f'🔇 {anonymize_id(chat)} muted a launch for {input_data[1]} (launch_id={input_data[2]}) | {(1000*(timer() - start)):.0f} ms')
@@ -772,7 +797,7 @@ def callback_handler(msg):
 					logging.exception(f'🛑 Ran into an error sending the mute/unmute message to chat={chat}! {exception}')
 
 		# toggle the mute here, so we can give more responsive feedback
-		toggle_launch_mute(chat, input_data[1], input_data[2], input_data[3])	
+		toggle_launch_mute(chat, input_data[1], input_data[2], input_data[3])
 
 	elif input_data[0] == 'next_flight':
 		# next_flight(msg, current_index, command_invoke, cmd):
@@ -793,7 +818,7 @@ def callback_handler(msg):
 		elif input_data[1] == 'refresh':
 			try:
 				new_message_text, keyboard = next_flight(msg, int(current_index), False, cmd)
-			
+
 			except TypeError:
 				new_message_text = '🔄 No launches found! Try enabling notifications for other providers, or searching for all flights.'
 				inline_keyboard = []
@@ -820,7 +845,7 @@ def callback_handler(msg):
 			else:
 				if debug_log:
 					logging.exception(f'⚠️ TelegramError updating message text: {exception}')
-		
+
 		try:
 			bot.answerCallbackQuery(query_id, text=query_reply_text)
 		except Exception as error:
@@ -853,7 +878,7 @@ def callback_handler(msg):
 				query_reply_text = '🚀 Vehicle schedule loaded!' if input_data[1] == 'vehicle' else '🛰 Mission schedule loaded!'
 
 			bot.answerCallbackQuery(query_id, text=query_reply_text)
-		
+
 		except telepot.exception.TelegramError as exception:
 			if exception.error_code == 400 and 'Bad Request: message is not modified' in exception.description:
 				try:
@@ -920,7 +945,7 @@ def callback_handler(msg):
 					query_reply_text = f'{input_data[2]} notifications '
 					query_reply_text = query_reply_text.replace('h', ' hour') if 'h' in query_reply_text else query_reply_text.replace('m', ' minute')
 					query_reply_text += 'enabled 🔔' if new_state == 1 else 'disabled 🔕'
-					
+
 					bot.answerCallbackQuery(query_id, text=query_reply_text, show_alert=True)
 
 			# load notification preferences for chat, and map to emoji
@@ -962,7 +987,7 @@ def callback_handler(msg):
 				Your current time zone is *UTC{load_time_zone_status(chat, readable=True)}*'''
 
 				locale_string = load_locale_string(chat)
-				if locale_string != None:
+				if locale_string is not None:
 					text += f' *({locale_string})*'
 
 				keyboard = InlineKeyboardMarkup(
@@ -975,13 +1000,13 @@ def callback_handler(msg):
 				)
 
 				bot.editMessageText(msg_identifier, text=inspect.cleandoc(text), reply_markup=keyboard, parse_mode='Markdown')
-				bot.answerCallbackQuery(query_id, f'🌎 Time zone settings loaded')
+				bot.answerCallbackQuery(query_id, '🌎 Time zone settings loaded')
 
 
 			elif input_data[2] == 'manual_setup':
 				current_time_zone = load_time_zone_status(chat, readable=True)
 
-				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time. 
+				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time.
 							
 				⚠️ *Note:* you need to reset your time zone when your time zone enters/exits DST!
 
@@ -995,16 +1020,16 @@ def callback_handler(msg):
 				keyboard = InlineKeyboardMarkup(
 					inline_keyboard = [
 						[
-							InlineKeyboardButton(text='-5 hours', callback_data=f'prefs/timezone/set/-5h'),
-							InlineKeyboardButton(text='-1 hour', callback_data=f'prefs/timezone/set/-1h'),
-							InlineKeyboardButton(text='+1 hour', callback_data=f'prefs/timezone/set/+1h'),
-							InlineKeyboardButton(text='+5 hours', callback_data=f'prefs/timezone/set/+5h')
+							InlineKeyboardButton(text='-5 hours', callback_data='prefs/timezone/set/-5h'),
+							InlineKeyboardButton(text='-1 hour', callback_data='prefs/timezone/set/-1h'),
+							InlineKeyboardButton(text='+1 hour', callback_data='prefs/timezone/set/+1h'),
+							InlineKeyboardButton(text='+5 hours', callback_data='prefs/timezone/set/+5h')
 						],
 						[
-							InlineKeyboardButton(text='-15 minutes', callback_data=f'prefs/timezone/set/-15m'),
-							InlineKeyboardButton(text='+15 minutes', callback_data=f'prefs/timezone/set/+15m'),
+							InlineKeyboardButton(text='-15 minutes', callback_data='prefs/timezone/set/-15m'),
+							InlineKeyboardButton(text='+15 minutes', callback_data='prefs/timezone/set/+15m'),
 						],
-						[InlineKeyboardButton(text='⏮ Back to menu', callback_data=f'prefs/main_menu')]
+						[InlineKeyboardButton(text='⏮ Back to menu', callback_data='prefs/main_menu')]
 					]
 				)
 
@@ -1017,7 +1042,7 @@ def callback_handler(msg):
 				if bot.getChat(chat)['type'] != 'private':
 					bot.sendMessage(chat, text=f'⚠️ This method only works for private chats. This is a Telegram API limitation.')
 
-				new_text = f'🌎 Set your time zone with the button below, where your keyboard should be. To cancel, select "cancel time zone setup" from the message above.'
+				new_text = '🌎 Set your time zone with the button below, where your keyboard should be. To cancel, select "cancel time zone setup" from the message above.'
 
 				# construct the keyboard so we can request a location
 				keyboard = ReplyKeyboardMarkup(
@@ -1028,10 +1053,10 @@ def callback_handler(msg):
 					]
 				)
 
-				new_inline_text = f'❗️ To cancel time zone setup and remove the keyboard, use the button below.'
+				new_inline_text = '❗️ To cancel time zone setup and remove the keyboard, use the button below.'
 				inline_keyboard = InlineKeyboardMarkup(
 					inline_keyboard = [
-						[InlineKeyboardButton(text='🚫 Cancel time zone setup', callback_data=f'prefs/timezone/cancel')]
+						[InlineKeyboardButton(text='🚫 Cancel time zone setup', callback_data='prefs/timezone/cancel')]
 					]
 				)
 
@@ -1084,15 +1109,16 @@ def callback_handler(msg):
 			elif input_data[2] == 'set':
 				update_time_zone_value(chat, input_data[3])
 				current_time_zone = load_time_zone_status(chat, readable=True)
-				
-				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time. 
-				
+
+				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time.
+
 				Need help? https://www.timeanddate.com/time/map/
 
 				Use the buttons below to set the UTC offset to match your time zone.
 
 				🕗 Your time zone is set to: *UTC{current_time_zone}*
 				'''
+
 				keyboard = InlineKeyboardMarkup(inline_keyboard = [
 					[
 						InlineKeyboardButton(text='-5 hours', callback_data=f'prefs/timezone/set/-5h'),
@@ -1116,7 +1142,7 @@ def callback_handler(msg):
 
 			elif input_data[2] == 'auto_setup':
 				# send message with ForceReply()
-				text = f'''🌎 Automatic time zone setup
+				text = '''🌎 Automatic time zone setup
 
 				⚠️ Your exact location is *NOT* stored or logged anywhere. You can remove your time zone at any time.
 
@@ -1172,14 +1198,14 @@ def callback_handler(msg):
 
 			new_text = inspect.cleandoc(statistics(chat, 'refresh'))
 			if msg['message']['text'] == new_text.replace('*',''):
-				bot.answerCallbackQuery(query_id, text=f'🔄 Statistics are up to date!')
+				bot.answerCallbackQuery(query_id, text='🔄 Statistics are up to date!')
 				return
 
 			keyboard = InlineKeyboardMarkup(
-				inline_keyboard=[[InlineKeyboardButton(text='🔄 Refresh statistics', callback_data=f'stats/refresh')]])
+				inline_keyboard=[[InlineKeyboardButton(text='🔄 Refresh statistics', callback_data='stats/refresh')]])
 
 			bot.editMessageText(msg_identifier, text=new_text, reply_markup=keyboard, parse_mode='Markdown')
-			bot.answerCallbackQuery(query_id, text=f'🔄 Statistics refreshed!')
+			bot.answerCallbackQuery(query_id, text='🔄 Statistics refreshed!')
 
 	# update stats, except if command was a stats refresh
 	if input_data[0] != 'stats':
@@ -1200,7 +1226,7 @@ def load_locale_string(chat):
 	if len(query_return) == 0:
 		return None
 
-	if query_return[0][0] != None:
+	if query_return[0][0] is not None:
 		return query_return[0][0]
 
 	return None
@@ -1215,7 +1241,7 @@ def remove_time_zone_information(chat):
 		c.execute("UPDATE preferences SET timezone_str = ?, timezone = ? WHERE chat = ?", (None, None, chat))
 		if debug_log:
 			logging.info(f'✅ User successfully removed their time zone information!')
-	
+
 	except Exception as e:
 		if debug_log:
 			logging.exception(f'❓ User tried to remove their time zone information, but ran into exception: {e}')
@@ -1260,15 +1286,15 @@ def timer_handle(command, chat, user):
 	except KeyError:
 		if chat not in chat_command_calls:
 			chat_command_calls[chat] = {}
-		
+
 		if command not in chat_command_calls[chat]:
-			chat_command_calls[chat][command] = '0'	
-		
+			chat_command_calls[chat][command] = '0'
+
 		last_called = chat_command_calls[chat][command]
 
 	if last_called == '0': # never called; store now
 		chat_command_calls[chat][command] = str(now_called) # stringify datetime object, store
-	
+
 	else:
 		last_called = datetime.datetime.strptime(last_called, "%Y-%m-%d %H:%M:%S.%f") # unstring datetime object
 		time_since = abs(now_called - last_called)
@@ -1281,7 +1307,7 @@ def timer_handle(command, chat, user):
 					self.id = uid
 					self.offenses = 1
 					self.spam_times = [timer()]
-					return
+
 
 				def get_offenses(self):
 					return self.offenses
@@ -1344,7 +1370,7 @@ def update_time_zone_string(chat, time_zone):
 
 	try:
 		c.execute(
-			"INSERT INTO preferences (chat, notifications, timezone, timezone_str, postpone, commands) VALUES (?, ?, ?, ?, ?, ?)", 
+			"INSERT INTO preferences (chat, notifications, timezone, timezone_str, postpone, commands) VALUES (?, ?, ?, ?, ?, ?)",
 			(chat, '1,1,1,1', None, time_zone, 1, None))
 	except:
 		c.execute("UPDATE preferences SET timezone_str = ?, timezone = ? WHERE chat = ?", (time_zone, None, chat))
@@ -1368,7 +1394,7 @@ def update_time_zone_value(chat, offset):
 		offset = float(int(offset.replace('m',''))/60)
 
 	current_value = load_time_zone_status(chat, False)
-	current_value = 0 if current_value == None else current_value
+	current_value = 0 if current_value is None else current_value
 	new_time_zone_value = current_value + offset
 
 	if new_time_zone_value > 14:
@@ -1403,14 +1429,14 @@ def load_time_zone_status(chat, readable):
 	conn.close()
 
 	if len(query_return) != 0:
-		time_zone_string_found = True if query_return[0][1] != None else False
+		time_zone_string_found = True if query_return[0][1] is not None else False
 
 	if not readable:
 		if len(query_return) == 0:
 			return 0
 		else:
 			if not time_zone_string_found:
-				if query_return[0][0] == None:
+				if query_return[0][0] is None:
 					return 0
 				
 				return float(query_return[0][0])
@@ -1425,7 +1451,7 @@ def load_time_zone_status(chat, readable):
 			return '+0'
 
 		if not time_zone_string_found:
-			if query_return[0][0] == None:
+			if query_return[0][0] is None:
 				return '+0'
 
 			status = float(query_return[0][0])
@@ -1691,7 +1717,7 @@ def name_from_provider_id(provider_id):
 
 	if len(query_return) != 0:
 		return query_return[0][0]
-	
+
 	return provider_id
 
 
@@ -1712,7 +1738,7 @@ def toggle_launch_mute(chat, launch_provider, launch_id, toggle):
 	# get mute status
 	conn = sqlite3.connect(os.path.join(launch_dir,'notifications.db'))
 	c = conn.cursor()
-	
+
 	# pull the current muted_launches field
 	c.execute("SELECT muted_launches FROM notify WHERE chat = ? AND keyword = ?", (chat, launch_provider))
 	query_return = c.fetchall()
@@ -1722,7 +1748,7 @@ def toggle_launch_mute(chat, launch_provider, launch_id, toggle):
 		if len(query_return) == 0:
 			new_mute_string = str(launch_id)
 		else:
-			if query_return[0][0] == None:
+			if query_return[0][0] is None:
 				new_mute_string = str(launch_id)
 
 			elif query_return[0][0] != '':
@@ -1732,7 +1758,7 @@ def toggle_launch_mute(chat, launch_provider, launch_id, toggle):
 					new_mute_string = f'{query_return[0][0]},{launch_id}'
 			else:
 				new_mute_string = f'{launch_id}'
-			
+
 			new_mute_string = new_mute_string.replace(f'None,', '')
 
 	# unmute
@@ -1742,7 +1768,7 @@ def toggle_launch_mute(chat, launch_provider, launch_id, toggle):
 			pass
 		else:
 			mute_string = query_return[0][0]
-			if mute_string == None:
+			if mute_string is None:
 				new_mute_string = str(launch_id)
 			elif f'{launch_id},' in mute_string:
 				new_mute_string = mute_string.replace(f'{launch_id},', '')
@@ -1852,7 +1878,7 @@ def flight_schedule(msg, command_invoke, call_type):
 	# perform the select; if cmd == all, just pull the next launch
 	today_unix = time.mktime(datetime.datetime.today().timetuple())
 	c.execute('SELECT * FROM launches WHERE NET >= ?',(today_unix,))
-	
+
 	# sort ascending by NET, pick smallest 5
 	query_return = c.fetchall()
 	conn.close()
@@ -1902,7 +1928,7 @@ def flight_schedule(msg, command_invoke, call_type):
 			provider = providers_short[provider]
 
 		vehicle = row[5].split('/')[0]
-		
+
 		country_code, flag = row[8], None
 		if country_code in flag_map.keys():
 			flag = flag_map[country_code]
@@ -1917,7 +1943,7 @@ def flight_schedule(msg, command_invoke, call_type):
 		mission = ' '.join("`{}`".format(word) for word in mission.split(' '))
 
 		# start the string with the flag of the provider's country
-		flt_str = flag if flag != None else ''
+		flt_str = flag if flag is not None else ''
 
 		# add a button indicating the status of the launch
 		if verified_date and verified_time:
@@ -2025,7 +2051,7 @@ def flight_schedule(msg, command_invoke, call_type):
 # handles /next by polling the launch database
 def next_flight(msg, current_index, command_invoke, cmd):
 	launch_dir = 'data/launch'
-	if command_invoke == True:
+	if command_invoke:
 		content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
 		command_split = msg['text'].strip().split(" ")
 		cmd = ' '.join(command_split[1:])
@@ -2061,7 +2087,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 		notify_cursor.execute('''SELECT * FROM notify WHERE chat = ?''', (chat,))
 	except:
 		create_notify_database()
-	
+
 	query_return = notify_cursor.fetchall()
 	notify_conn.close()
 
@@ -2110,7 +2136,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 		query_return = c.fetchall()
 
 	# if no next command, assume the user wants to know the next launch they're interested in
-	elif cmd == None:
+	elif cmd is None:
 		if all_flag:
 			if len(disabled) > 0:
 				query_str = f"SELECT * FROM launches WHERE NET >= {today_unix} AND lsp_name NOT IN ({','.join(['?']*len(disabled))})"
@@ -2150,14 +2176,14 @@ def next_flight(msg, current_index, command_invoke, cmd):
 	else:
 		msg_text = '🔄 No launches found! Try enabling notifications for other providers, or searching for all flights.'
 		inline_keyboard = []
-		inline_keyboard.append([InlineKeyboardButton(text='🔔 Adjust your notification settings', callback_data=f'notify/main_menu/refresh_text')])
-		inline_keyboard.append([InlineKeyboardButton(text='🔎 Search for all flights', callback_data=f'next_flight/refresh/0/all')])
+		inline_keyboard.append([InlineKeyboardButton(text='🔔 Adjust your notification settings', callback_data='notify/main_menu/refresh_text')])
+		inline_keyboard.append([InlineKeyboardButton(text='🔎 Search for all flights', callback_data='next_flight/refresh/0/all')])
 		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 		bot.sendMessage(chat, msg_text, reply_markup=keyboard)
 
 		if debug_log:
-			logging.info(f'🔎 No launches found in next. Sent user the "No launches found" message.')
+			logging.info('🔎 No launches found in next. Sent user the "No launches found" message.')
 
 		return
 
@@ -2180,13 +2206,13 @@ def next_flight(msg, current_index, command_invoke, cmd):
 	launch_prob = query_return[22]
 	in_hold = query_return[18]
 
-	tbd_date = True if tbd_date == 1 else False
-	tbd_time = True if tbd_time == 1 else False
-	in_hold = True if in_hold == 1 else False
+	tbd_date = bool(tbd_date == 1)
+	tbd_time = bool(tbd_time == 1)
+	in_hold = bool(in_hold == 1)
 
 	if lsp_name == 'SpaceX':
 		spx_info_str, spx_orbit_info = spx_info_str_gen(mission_name, 0)
-		if spx_info_str != None:
+		if spx_info_str is not None:
 			spx_str = True
 		else:
 			spx_str = False
@@ -2202,12 +2228,12 @@ def next_flight(msg, current_index, command_invoke, cmd):
 	print(f'lsp_short in enabled? {lsp_short in enabled}')
 	print(f'lsp_short in disabled? {lsp_short in disabled}')
 	'''
-	
+
 	if cmd == 'all' and lsp_name in disabled:
 		user_notif_enabled = False
 
 	# check if user has notifications enabled
-	if user_notif_enabled == None:
+	if user_notif_enabled is None:
 		if lsp_name in enabled or lsp_short in enabled:
 			user_notif_enabled = True
 		elif len(difflib.get_close_matches(lsp_name, enabled)) == 1:
@@ -2261,7 +2287,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 		t_h = math.floor(eta.seconds/3600)
 		t_m = math.floor((eta.seconds-t_h*3600)/60)
 
-		day_suff = f'day' if t_d == 1 else f'days'
+		day_suff = 'day' if t_d == 1 else 'days'
 		min_suff = 'minute' if t_m == 1 else 'minutes'
 		h_suff = 'hour' if t_h == 1 else 'hours'
 		eta_str = f'{t_d} {day_suff}, {t_h} {h_suff}, {t_m} {min_suff}'
@@ -2275,7 +2301,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 		min_suff = 'minute' if t_m == 1 else 'minutes'
 		s_suff = 'second' if t_s == 1 else 'seconds'
 		eta_str = f'{t_h} {h_suff}, {t_m} {min_suff}, {t_s} {s_suff}'
-	
+
 	elif (eta.seconds/3600) < 1:
 		t_m = math.floor(eta.seconds/60)
 		t_s = math.floor(eta.seconds-t_m*60)
@@ -2371,13 +2397,13 @@ def next_flight(msg, current_index, command_invoke, cmd):
 	date_str = ' '.join("`{}`".format(word) for word in date_str.split(' '))
 
 	# construct the message
-	if lsp_flag != None:
+	if lsp_flag is not None:
 		header = f'🚀 *Next launch* is by {lsp_name} {lsp_flag}\n*Mission* {mission_name}\n*Vehicle* {vehicle_name}\n*Pad* {pad_name}'
 	else:
 		header = f'🚀 *Next launch* is by {lsp_name}\n*Mission* {mission_name}\n*Vehicle* {vehicle_name}\n*Pad* {pad_name}'
 
 	if lsp_name.replace('`','') == 'SpaceX':
-		if spx_orbit_info != '' and spx_orbit_info != None:
+		if spx_orbit_info not in {'', None}:
 			orbit_map = {
 			'VLEO': 'Very low-Earth orbit',
 			'SO': 'Sub-orbital',
@@ -2411,7 +2437,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 		time_str = f'🗓 `Not` `` `before` `` {date_str}\n⏱ {eta_str}'
 
 	# add probability if found
-	if launch_prob != -1 and launch_prob != None:
+	if launch_prob != -1 and launch_prob is not None:
 		if launch_prob >= 80:
 			prob_str = f'☀️ {launch_prob} % probability of launch'
 		elif launch_prob >= 60:
@@ -2434,31 +2460,31 @@ def next_flight(msg, current_index, command_invoke, cmd):
 	# if close to launch, include video url if possible
 	vid_url = query_return[19]
 	if vid_url != '' and eta.seconds <= 3600 and eta.days == 0:
-		vid_str = f'🔴 Watch the launch LinkTextGoesHere'
+		vid_str = '🔴 Watch the launch LinkTextGoesHere'
 	elif vid_url != '' and eta.seconds <= 3600*4 and 'DM2' in mission_name and eta.days == 0:
-		vid_str = f'🔴 Watch the launch LinkTextGoesHere'
+		vid_str = '🔴 Watch the launch LinkTextGoesHere'
 	else:
 		vid_str = None
-	
+
 	# not a spx launch, or no info available
 	if not spx_str:
 		if info_msg is not None:
 			msg_text = f'{header}\n\n{time_str}\n\n{info_msg}\n'
 		else:
 			msg_text = f'{header}\n\n{time_str}\n'
-	
+
 	# spx info string provided
 	else:
 		if info_msg is not None:
 			msg_text = f'{header}\n\n{time_str}\n\n{spx_info_str}\n\n{info_msg}\n'
-		
+
 		else:
 			msg_text = f'{header}\n\n{time_str}\n\n{spx_info_str}\n'
 
 	# add vid_str if needed
 	if vid_str is not None:
 		msg_text += f'\n{vid_str}'
-	
+
 	# add notify str
 	msg_text += f'\n{notify_str}'
 
@@ -2473,7 +2499,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 	if max_index > 1:
 		inline_keyboard = [[]]
 		back, fwd = False, False
-		
+
 		if current_index != 0:
 			back = True
 			inline_keyboard[0].append(
@@ -2502,7 +2528,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 		inline_keyboard.append([InlineKeyboardButton(text='🔄 Refresh', callback_data=f'next_flight/prev/1/{cmd}')])
 		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
-	if current_index == 0 and command_invoke == True:
+	if current_index == 0 and command_invoke:
 		if max_index > 1:
 			bot.sendMessage(chat, msg_text, parse_mode='MarkdownV2', reply_markup=keyboard)
 		else:
@@ -2689,7 +2715,7 @@ def spx_api_handler():
 			try:
 				fairing_reused = launch['rocket']['fairings']['reused']
 			except:
-				if launch['rocket']['fairings'] == None:
+				if launch['rocket']['fairings'] is None:
 					if 'dragon' in launch['rocket']['second_stage']['payloads'][0]['payload_type'].lower():
 						dragon_type = launch['rocket']['second_stage']['payloads'][0]['payload_type']
 						try:
@@ -2721,19 +2747,19 @@ def spx_api_handler():
 
 			# iterate through found booster information (FH has three boosters, that's why)
 			# also handle the extremely prevalent NULL cases in the returned .json
-			if cores != None:
+			if cores is not None:
 				reuses, serials, landing_intents = '', '', ''
 				for core, n in zip(cores, range(len(cores))):
 					# serials
-					if core['core_serial'] != None:
+					if core['core_serial'] is not None:
 						serials = serials + str(core['core_serial'])
 					else:
 						serials = serials + 'Unknown'
 
 					# reuses
-					if core['reused'] != None:
-						if core['reused'] == True:
-							if core['flight'] != None:
+					if core['reused'] is not None:
+						if core['reused']:
+							if core['flight'] is not None:
 								reuses = reuses + str(core['flight'] - 1)
 							else:
 								reuses = reuses + '?'
@@ -2743,8 +2769,8 @@ def spx_api_handler():
 						reuses = reuses + 'Unknown'
 
 					# landing intents
-					if core['landing_intent'] != None:
-						if core['landing_intent'] == True:
+					if core['landing_intent'] is not None:
+						if core['landing_intent']:
 							landing_intents = landing_intents + f"{core['landing_type']}/{core['landing_vehicle']}"
 						else:
 							landing_intents = landing_intents + 'expend'
@@ -2792,7 +2818,7 @@ def spx_api_handler():
 	now = datetime.datetime.now()
 
 	# what we're throwing at the API
-	API_REQUEST = f'launches/upcoming'
+	API_REQUEST = 'launches/upcoming'
 	PARAMS = {'limit': 20, 'start': f'{now.year}-{now.month}-{now.day}'}
 	API_URL = 'https://api.spacexdata.com'
 	API_VERSION = 'v3'
@@ -2819,9 +2845,6 @@ def spx_api_handler():
 	try:
 		launch_json = json.loads(API_RESPONSE.text)
 	except Exception as error:
-		#if debug_log:
-			#logging.info(f'Error reading launch_json in spx_api_handler: {error}')
-
 		return
 		
 
@@ -2829,8 +2852,6 @@ def spx_api_handler():
 
 	# update stats
 	update_statistics({'API_requests':1, 'db_updates':1, 'data':len(API_RESPONSE.content)})
-
-	return
 
 
 def spx_info_str_gen(launch_name, run_count):
@@ -2860,7 +2881,7 @@ def spx_info_str_gen(launch_name, run_count):
 	# manual launch name matching for cases where automatic parsing fails
 	# MAKE SURE THE KEYS ARE IN lower_case!!!!
 	manual_name_matches = {
-		'starlink-9': 'starlink-9 & blacksky global 5-6'
+		'starlink-9': 'starlink-9 (v1.0) & blacksky global 5-6'
 	}
 
 	if launch_name.lower() in manual_name_matches.keys():
@@ -2913,7 +2934,7 @@ def spx_info_str_gen(launch_name, run_count):
 					if debug_log:
 						logging.info(f'🛑 Error finding {launch_name_stripped} from keys (tried manually)!\nStripped_keys: {stripped_keys}')
 						logging.info(f'🛑 Manual try: match_count={len(manual_matches)}, matches={manual_matches}')
-					
+
 					return None, None
 
 			elif len(close_matches) > 1:
@@ -2930,13 +2951,13 @@ def spx_info_str_gen(launch_name, run_count):
 					for row, i in zip(close_matches, range(len(close_matches))):
 						if row[2] < smallest_net:
 							smallest_net, net_index = row[2], i
-				
+
 					diff_match = close_matches[net_index]
 
 		# only one diff match; use it
 		elif len(close_matches) == 1:
 			diff_match = close_matches[0]
-		
+
 		# if we have more than one diffed match, sort launches by NET
 		elif len(close_matches) > 1:
 			smallest_net, net_index = close_matches[0][2], 0
@@ -2973,7 +2994,7 @@ def spx_info_str_gen(launch_name, run_count):
 		return None, None
 
 	# if we got a diff_match, pull the launch manually from the spx database
-	if diff_match != None:
+	if diff_match is not None:
 		c.execute('''SELECT * FROM launches WHERE launch_name = ?''', (diff_match,))
 		query_return = c.fetchall()
 
@@ -3060,7 +3081,7 @@ def spx_info_str_gen(launch_name, run_count):
 		else:
 			booster2_recovery = f"*No recovery* `godspeed,` `{serials[2]}` 💫"
 
-	
+
 	else: # single-stick
 		core_serial = db_match[5]
 
@@ -3093,7 +3114,7 @@ def spx_info_str_gen(launch_name, run_count):
 			rec_str = f'*Recovery operations*\n*Center core* {center_recovery}'
 			boost_str = f'*Boosters* No recovery – godspeed, `{serials[1]}` & `{serials[2]}'
 			spx_info = f'{header}\n\n{rec_str}\n{boost_str}'
-		
+
 		else:
 			rec_str = f'*Recovery operations*\n*Center core* {center_recovery}'
 			boost_str = f'*Boosters* {booster1_recovery} `&` {booster2_recovery}'
@@ -3131,7 +3152,7 @@ def spx_info_str_gen(launch_name, run_count):
 					suffix = 'th'
 
 				reuse_count = f'{reuses}{suffix}'
-				
+
 			reuses = '(' + reuse_count + ' flight ✨)' if reuses == 0 else '(' + reuse_count + ' flight ♻️)'
 			reuses = ' '.join("`{}`".format(word) for word in reuses.split(' '))
 
@@ -3145,7 +3166,7 @@ def spx_info_str_gen(launch_name, run_count):
 	else:
 		if debug_log:
 			logging.info(f'🛑 Error in spx_info_str_gen: vehicle not found ({db_match[4]})')
-		
+
 		return None, None
 
 	# check if there is fairing recovery & orbit information available
@@ -3156,7 +3177,7 @@ def spx_info_str_gen(launch_name, run_count):
 				dragon_serial = 'Unknown' if dragon_info[1] == 'None' else dragon_info[1]
 				dragon_reused = '♻️ `Reused`' if dragon_info[2] == 'True' else ' '.join("`{}`".format(word) for word in '(first flight ✨)'.split(' '))
 				dragon_crew = dragon_info[3]
-				
+
 				crew_str = ''
 				if 'Crew' in dragon_info[0] and dragon_crew != 'None':
 					if int(dragon_crew) != 0:
@@ -3165,7 +3186,7 @@ def spx_info_str_gen(launch_name, run_count):
 					else:
 						crew_str = 'Unmanned'
 				elif 'Crew' in dragon_info[0] and dragon_crew == 'None':
-					crew_str = 'Unmanned/Unknown'			
+					crew_str = 'Unmanned/Unknown'
 				elif 'Crew' not in dragon_info[0]:
 					crew_str = 'Cargo mission'
 
@@ -3184,10 +3205,10 @@ def spx_info_str_gen(launch_name, run_count):
 	else:
 		try:
 			if int(db_match[8]) == 1 or int(db_match[8]) == 0:
-				if db_match[9] != None:
+				if db_match[9] is not None:
 					try: 
 						if int(db_match[9]) == 1:
-							if db_match[10] != None:
+							if db_match[10] is not None:
 								rec_str = db_match[10]
 							else:
 								rec_str = 'Unknown'
@@ -3235,7 +3256,7 @@ def get_launch_updates(launch_ID):
 			msg_identifier = f"{sent_msg['chat']['id']}:{sent_msg['message_id']}"
 			msg_identifiers.append(f'{msg_identifier}')
 			return True
-		
+
 		except telepot.exception.BotWasBlockedError:
 			if debug_log:
 				logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat)} – cleaning notify database...')
@@ -3339,29 +3360,30 @@ def get_launch_updates(launch_ID):
 			except Exception as e:
 				if debug_log:
 					logging.exception(f'⚠️ Error in multi_parse (3334): {e}')
-				pass
+
+				return
 
 			# NEW (2020): probability of launch + tbdtime/tbddate
 			tbd_date = launch_json['tbddate']
 			tbd_time = launch_json['tbdtime']
 			launch_prob = launch_json['probability']
-			
+
 			# find a video url, preferably a youtube link
 			try:
 				if 'vidURLs' in launch_json:
 					urls = launch_json['vidURLs']
 					vid_url = None
-					
+
 					for url in urls:
 						if 'youtube' in url:
 							vid_url = url
 							break
-					
+
 					if vid_url is None:
 						vid_url = urls[0]
 			except:
 				vid_url = ''
-			
+
 			if 'Unknown Pad' not in location_name:
 				pad = location_name.split(', ')[0]
 				try:
@@ -3411,7 +3433,7 @@ def get_launch_updates(launch_ID):
 				if launch_json['isonet'] != 0:
 					# convert to datetime object
 					utc_dt = datetime.datetime.strptime(launch_json['isonet'], '%Y%m%dT%H%M%S%fZ')
-					
+
 					# convert UTC datetime to seconds since the Epoch
 					net_unix = (utc_dt - datetime.datetime(1970, 1, 1)).total_seconds()
 					net_stamp = datetime.datetime.fromtimestamp(net_unix)
@@ -3434,7 +3456,7 @@ def get_launch_updates(launch_ID):
 					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?)''',
 					(launch_name, launch_id, lsp, lsp_name, lsp_short, vehicle, pad, mission_text, countrycode, net_unix, Tminus, success, launched, holding, vid_url,
 						tbd_date, tbd_time, launch_prob))
-			
+
 			except: # launch found
 				# Launch is already found; check if the new NET matches the old NET.
 				c.execute('SELECT NET, notify24h, notify12h, notify60min, notify5min, launched FROM launches WHERE id = ?',(launch_id,))
@@ -3521,7 +3543,7 @@ def get_launch_updates(launch_ID):
 							min_suff = 'minute' if t_m == 1 else 'minutes'
 							s_suff = 'second' if t_s == 1 else 'seconds'
 							eta_str = f'{t_h} {h_suff}, {t_m} {min_suff}, {t_s} {s_suff}'
-						
+
 						elif (eta.seconds/3600) < 1:
 							t_m = math.floor(eta.seconds/60)
 							t_s = math.floor(eta.seconds-t_m*60)
@@ -3573,7 +3595,7 @@ def get_launch_updates(launch_ID):
 
 							if hours == 0:
 								postpone_str = f'{days} {d_suff}'
-							else:	
+							else:
 								postpone_str = f'{days} {d_suff} and {hours} {h_suff}'
 
 						elif net_diff == 3600*24:
@@ -3584,7 +3606,7 @@ def get_launch_updates(launch_ID):
 							mins = math.floor((net_diff-hours*3600)/60)
 							h_suff = 'hour' if hours == 1 else 'hours'
 							m_suff = 'minute' if mins == 1 else 'minutes'
-							
+
 							if hours == 0:
 								postpone_str = f'{mins} {m_suff}'
 							else:
@@ -3627,15 +3649,15 @@ def get_launch_updates(launch_ID):
 								time.sleep(2)
 								ret = send_postpone_notification(chat, msg_text, launch_id, lsp)
 								tries += 1
-								
-								if ret == True:
+
+								if ret:
 									if debug_log:
 										logging.info(f'✅ Notification sent successfully to chat={anonymize_id(chat)}! Took {tries} tries.')
 
 								elif ret != True and tries > 5:
 									if debug_log:
 										logging.info(f'⚠️ Tried to send notification to {anonymize_id(chat)} {tries} times – passing.')
-										
+				
 									ret = True
 
 						if debug_log:
@@ -3678,7 +3700,7 @@ def get_launch_updates(launch_ID):
 		conn.commit()
 		conn.close()
 		return
-	
+
 	# datetime, so we can only get launches starting today
 	now = datetime.datetime.now()
 	today_call = f'{now.year}-{now.month}-{now.day}'
@@ -3691,7 +3713,7 @@ def get_launch_updates(launch_ID):
 
 	# construct the call URL
 	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{construct_params(PARAMS)}' #&{fields}
-	
+
 	# perform the API call
 	headers = {'user-agent': f'telegram-{BOT_USERNAME}/{VERSION}'}
 
@@ -3707,20 +3729,20 @@ def get_launch_updates(launch_ID):
 
 		if debug_log:
 			logging.info(f'✅ Success!')
-		
+
 		return
 
 	# pull json, dump for later inspection
 	try:
 		launch_json = json.loads(API_RESPONSE.text)
-	except Exception as error:
+	except Exception as e:
 		with open(os.path.join('data', 'json-parsing-error.txt'), 'w') as error_file:
-			error_file.write(traceback.format_exc(error))
-			error_file.write('\n---- API response follows ----')
+			error_file.write(traceback.format_exc())
+			error_file.write(f'\n---- API response follows (error: {e}) ----')
 			error_file.write(API_RESPONSE.text)
-			
+
 		return
-	
+
 	#with open(os.path.join('data', 'launch', 'launch-json.json'), 'w') as json_data:
 	#	json.dump(launch_json, json_data, indent=4)
 
@@ -3740,7 +3762,7 @@ def get_launch_updates(launch_ID):
 				logging.info('⚠️ No launches found!')
 			else:
 				logging.info(f'⚠️ Failed request with status code {API_RESPONSE.status_code}')
-		
+
 		return
 
 	# we got something, parse all of it
@@ -3794,7 +3816,7 @@ def get_notify_list(lsp, launch_id, notif_class):
 	muted_chats = set()
 	for row in query_return:
 		append = True
-		if row[2] != None:
+		if row[2] is not None:
 			if row[2] != '':
 				split = row[2].split(',')
 				for muted_id in split:
@@ -3825,7 +3847,7 @@ def get_notify_list(lsp, launch_id, notif_class):
 		chat = row[0]
 		if chat not in notify_dict:
 			notify_dict[chat] = {}
-		
+
 		notify_dict[chat][row[1]] = row[3] # lsp: 0/1, or All: 0/1
 
 	# if All is enabled, and lsp is disabled
@@ -3844,7 +3866,7 @@ def get_notify_list(lsp, launch_id, notif_class):
 					logging.info(f'ℹ️ notify_dict[{anonymize_id(chat)}]: {notify_dict[chat]} | lsp: {lsp} | enabled: {enabled} | disabled: {disabled}')
 				except:
 					logging.info(f'⚠️ KeyError getting notify_dict[chat]. notify_dict: {notify_dict}')
-		
+
 		elif lsp in enabled or 'All' in enabled:
 			notify_list.add(chat)
 
@@ -3877,7 +3899,7 @@ def load_mute_status(chat, launch_id, keywords):
 	if len(query_return) == 0:
 		mute_status = 0
 	else:
-		if query_return[0][0] == None:
+		if query_return[0][0] is None:
 			mute_status = 0
 		elif str(launch_id) in query_return[0][0].split(','):
 			mute_status = 1
@@ -3891,7 +3913,7 @@ def load_mute_status(chat, launch_id, keywords):
 def clean_notify_database(chat):
 	conn = sqlite3.connect(os.path.join('data/launch', 'notifications.db'))
 	c = conn.cursor()
-	
+
 	c.execute("DELETE FROM notify WHERE chat = ?", (chat,))
 	conn.commit()
 	conn.close()
@@ -3937,7 +3959,7 @@ def remove_previous_notification(launch_id, keyword):
 				if ret is not False:
 					success_count += 1
 			except Exception as error:
-				if debug_log:
+				if debug_log and error.error_code != 400:
 					logging.exception(f'⚠️ Unable to delete previous notification. Unique ID: {message_identifier}.'
 								 f'Got error: {error}')
 		else:
@@ -4000,7 +4022,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 						InlineKeyboardButton(text=mute_key, callback_data=f'mute/{keywords}/{launch_id}/{mute_press}')
 				]])
 
-			if silent == True:
+			if silent:
 				sent_msg = bot.sendMessage(chat, notification, parse_mode='MarkdownV2',
 										   reply_markup=keyboard, disable_notification=True)
 			else:
@@ -4103,17 +4125,15 @@ def notification_handler(launch_row, notif_class, NET_slip):
 		# if the info text is longer than 60 words, pick the first three sentences.
 		if len(info.split(' ')) > 60:
 			info = f'{". ".join(info.split(". ")[0:2])}.'
-		
+
 		if 'DM2' in launch_name:
 			info = 'A new era of human spaceflight is set to begin as 🇺🇸-astronauts once again launch to orbit on a 🇺🇸-rocket from 🇺🇸-soil, almost a decade after the retirement of the Space Shuttle fleet in 2011.'
 			launch_name = 'SpX-DM2'
-		elif 'Starlink' in launch_name and '8' not in launch_name:
-			info = "60 satellites for the Starlink satellite constellation, SpaceX's project for providing global, high-speed internet access."
-		
+
 		info_text = f'ℹ️ {info}'
 	else:
 		info_text = f'ℹ️ No launch information available'
-	
+
 	if lsp is None:
 		lsp = query_return[0][3]
 		lsp_short = query_return[0][4]
@@ -4143,10 +4163,10 @@ def notification_handler(launch_row, notif_class, NET_slip):
 			try:
 				notification_type = notif_dict[notif_time] # map the notification time to database column name
 				c.execute(f'UPDATE launches SET {notification_type} = 1 WHERE id = ?', (launch_id,))
-				
+
 				if debug_log:
 					logging.info(f'\t✅ notification disabled without sending for notif_time={notif_time}, launch_id={launch_id}')
-			
+
 			except Exception as e:
 				if debug_log:
 					logging.exception(f'\t🛑 Error disabling notification: {e}')
@@ -4170,7 +4190,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 	# if it's a SpaceX launch, pull get the info string
 	if lsp_name == 'SpaceX':
 		spx_info_str, spx_orbit_info = spx_info_str_gen(launch_name, 0)
-		if spx_info_str != None:
+		if spx_info_str is not None:
 			spx_str = True
 		else:
 			spx_str = False
@@ -4191,7 +4211,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 
 	# if it's a SpaceX launch, append the orbit to the header
 	if lsp_name == 'SpaceX':
-		if spx_orbit_info != '' and spx_orbit_info != None:
+		if spx_orbit_info != '' and spx_orbit_info is not None:
 			orbit_map = {
 			'VLEO': 'Very low-Earth orbit', 'SO': 'Sub-orbital', 'LEO': 'Low-Earth orbit',
 			'SSO': 'Sun-synchronous (SSO)', 'MEO': 'Medium-Earth orbit', 'GEO': 'Geostationary (direct)',
@@ -4209,7 +4229,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 
 	# launch probability
 	launch_prob = query_return[0][22]
-	if launch_prob != -1 and launch_prob != None:
+	if launch_prob != -1 and launch_prob is not None:
 		if launch_prob >= 80:
 			prob_str = f'☀️ *{launch_prob} %* probability of launch'
 		elif launch_prob >= 60:
@@ -4302,14 +4322,14 @@ def notification_handler(launch_row, notif_class, NET_slip):
 			launch_time = f'{launch_unix.hour}:0{launch_unix.minute}'
 		else:
 			launch_time = f'{launch_unix.hour}:{launch_unix.minute}'
-		
+
 		# set time for chat
 		readable_utc = load_time_zone_status(chat, readable=True)
 		time_string = f'`{launch_time}` `UTC{readable_utc}`'
 		chat_launch_str = launch_str.replace('LAUNCHTIMEHERE', time_string)
 		ret = send_notification(chat, chat_launch_str, launch_id, cmd_keyword, launch_row[19], notif_class)
 
-		if ret == True:
+		if ret:
 			success = True
 		else:
 			success = False
@@ -4318,12 +4338,12 @@ def notification_handler(launch_row, notif_class, NET_slip):
 
 
 		tries = 1
-		while ret != True:
+		while not ret:
 			time.sleep(2)
 			ret = send_notification(chat, chat_launch_str, launch_id, cmd_keyword, launch_row[19], notif_class)
 			tries += 1
-			
-			if ret == True:
+
+			if ret:
 				success = True
 				if debug_log:
 					logging.info(f'✅ Notification sent successfully to chat={anonymize_id(chat)}! Took {tries} tries.')
@@ -4331,7 +4351,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 			elif ret != True and tries > 5:
 				if debug_log:
 					logging.info(f'⚠️ Tried to send notification to {anonymize_id(chat)} {tries} times – passing.')
-					
+
 				ret = True
 
 		if success:
@@ -4356,21 +4376,21 @@ def notification_handler(launch_row, notif_class, NET_slip):
 	try:
 		notification_type = notif_dict[notif_class]
 		c.execute(f'UPDATE launches SET {notification_type} = 1 WHERE id = ?', (launch_id,))
-		
+
 		if debug_log:
 			try:
 				logging.info(f'🚩 {t_minus} {time_format} notification flag set to 1 for launch {launch_id}')
 				logging.info(f'ℹ️ Notifications sent: {len(notify_list)} in {((end_time - start_time)):.2f} s, number of people reached: {reached_people}')
 			except:
 				pass
-	
+
 	except Exception as e:
 		if debug_log:
 			logging.exception(f'''⚠️ Error disabling notification in notification_handler().
 			t_minus={t_minus}, launch_id={launch_id}. Notifications sent: {len(notify_list)}.
 			Exception: {e}. Disabling all further notifications.''')
 
-		c.execute(f'UPDATE launches SET notify24h = 1, notify12h = 1, notify60min = 1, notify5min = 1, notifylaunch = 1 WHERE id = ?', (launch_id,))
+		c.execute('UPDATE launches SET notify24h = 1, notify12h = 1, notify60min = 1, notify5min = 1, notifylaunch = 1 WHERE id = ?', (launch_id,))
 
 	conn.commit()
 	conn.close()
@@ -4443,7 +4463,7 @@ def statistics(chat, mode):
 	updays = int(up/(3600*24))
 	uphours = int((up-updays*3600*24)/(3600))
 	upmins = int((up - updays*3600*24 - uphours*60*60)/(60))
-	
+
 	if upmins < 10:
 		upmins = str(0) + str(upmins)
 	else:
@@ -4452,7 +4472,7 @@ def statistics(chat, mode):
 	# get system load average
 	load_avgs = os.getloadavg() # [x, y, z]
 	load_avg_str = f'Load {load_avgs[0]:.2f} {load_avgs[1]:.2f} {load_avgs[2]:.2f}'
-	
+
 	if updays > 0:
 		up_str = f'Uptime {updays} days, {uphours} h {upmins} min'
 	else:
@@ -4514,7 +4534,7 @@ def statistics(chat, mode):
 	# add a keyboard for refreshing
 	keyboard = InlineKeyboardMarkup(
 		inline_keyboard=[[InlineKeyboardButton(
-			text='🔄 Refresh statistics', callback_data=f'stats/refresh')]])
+			text='🔄 Refresh statistics', callback_data='stats/refresh')]])
 
 	bot.sendMessage(chat, inspect.cleandoc(reply_str), reply_markup=keyboard, parse_mode='Markdown')
 
@@ -4533,18 +4553,17 @@ def create_spx_database():
 	c = conn.cursor()
 
 	try:
-		c.execute(
-			'''CREATE TABLE launches
+		c.execute('''CREATE TABLE launches
 			(flight_num INTEGER, launch_name TEXT, NET INTEGER, orbit TEXT,
 			vehicle TEXT, core_serials TEXT, core_reuses TEXT, landing_intents TEXT,
 			fairing_reused TEXT, fairing_rec_attempt INT, fairing_ship TEXT,
-			PRIMARY KEY (launch_name))''')
-		
+			PRIMARY KEY (flight_num))''')
+
 		c.execute("CREATE INDEX keywordtminus ON launches (launch_name, NET)")
-	
-	except sqlite3.OperationalError as e:
+
+	except sqlite3.OperationalError as error:
 		if debug_log:
-			logging.exception(f'🛑 Error in create_spx_database: {e}')
+			logging.exception(f'🛑 Error in create_spx_database: {error}')
 
 	conn.commit()
 	conn.close()
@@ -4598,13 +4617,12 @@ def create_launch_database():
 			success BOOLEAN, launched BOOLEAN, hold BOOLEAN, vid TEXT,
 			tbd_date INTEGER, tbd_time INTEGER, launch_prob INTEGER,
 			PRIMARY KEY (id))''')
-		
+
 		c.execute("CREATE INDEX keywordtminus ON launches (id, NET)")
-	
+
 	except sqlite3.OperationalError as e:
 		if debug_log:
 			logging.exception(f'Error in create_launch_database: {e}')
-		pass
 
 	conn.commit()
 	conn.close()
@@ -4622,9 +4640,9 @@ def create_stats_database():
 
 	try:
 		# chat ID - keyword - UNIX timestamp - enabled true/false
-		c.execute('''CREATE TABLE stats (notifications INTEGER, API_requests INTEGER, 
+		c.execute('''CREATE TABLE stats (notifications INTEGER, API_requests INTEGER,
 			db_updates INTEGER, commands INTEGER, data INTEGER, db_calls INTEGER, PRIMARY KEY (notifications, API_requests))''')
-		
+
 		c.execute("INSERT INTO stats (notifications, API_requests, db_updates, commands, data, db_calls) VALUES (0, 0, 0, 0, 0, 0)")
 	except sqlite3.OperationalError:
 		pass
@@ -4638,7 +4656,7 @@ def first_run():
 	print("Looks like you're running LaunchBot for the first time!")
 	print("Let's start off by creating some folders.")
 	time.sleep(2)
-	
+
 	# create /data and /chats
 	if not os.path.isdir('data'):
 		os.mkdir('data')
@@ -4700,7 +4718,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.25'
+	VERSION = '0.5.26'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
@@ -4729,13 +4747,13 @@ if __name__ == '__main__':
 			# update tokens if instructed to
 			if arg in bot_token_args:
 				update_tokens.add('botToken')
-			
+
 			if arg in debug_args:
 				if arg in ('log', '-log'):
 					debug_log = True
 					if not os.path.isdir('data'):
 						first_run()
-					
+
 					log = 'data/log.log'
 
 					# disable logging for urllib and requests because jesus fuck they make a lot of spam
@@ -4805,7 +4823,7 @@ if __name__ == '__main__':
 		'/statistics', '/schedule', '/feedback'
 	}
 
-	# generate the "alternate" commands we listen for, as in ones suffixed with the bot's username 
+	# generate the "alternate" commands we listen for, as in ones suffixed with the bot's username
 	alt_commands = set()
 	for command in VALID_COMMANDS:
 		alt_commands.add(f'{command}@{BOT_USERNAME.lower()}')
@@ -4825,16 +4843,16 @@ if __name__ == '__main__':
 			'Firefly Aerospace',
 			'Northrop Grumman',
 			'International Launch Services'],
-		
+
 		'EU': [
 			'Arianespace',
 			'Eurockot',
 			'Starsem SA'],
-		
+
 		'CHN': [
 			'CASC',
 			'ExPace'],
-		
+
 		'RUS': [
 			'KhSC',
 			'ISC Kosmotras',
@@ -4845,11 +4863,11 @@ if __name__ == '__main__':
 			'Starsem SA',
 			'International Launch Services',
 			'ROSCOSMOS'],
-		
+
 		'IND': [
 			'ISRO',
 			'Antrix Corporation'],
-		
+
 		'JPN': [
 			'JAXA',
 			'Mitsubishi Heavy Industries']
@@ -4867,7 +4885,7 @@ if __name__ == '__main__':
 
 	''' LSP ID -> name, flag dictionary
 	Used to shorten the names, so we don't end up with super long messages
-	
+
 	This dictionary also maps custom shortened names (Northrop Grumman, Starsem)
 	to their real ID. Also used in cases where a weird name is used by LL, like...
 		RFSA for Roscosmos
@@ -4910,7 +4928,7 @@ if __name__ == '__main__':
 
 	if not debug_mode:
 		print(f"| LaunchBot.py version {VERSION}")
-		print(f"| Don't close this window or set the computer to sleep. Quit: ctrl + c.")
+		print("| Don't close this window or set the computer to sleep. Quit: ctrl + c.")
 		time.sleep(0.5)
 		sys.stdout.write('%s\r' % '  Connected to Telegram! ✅')
 
@@ -4918,7 +4936,7 @@ if __name__ == '__main__':
 	schedule.every(2).minutes.do(get_launch_updates, launch_ID=None)
 	schedule.every(2).minutes.do(spx_api_handler)
 	schedule.every(30).seconds.do(launch_update_check)
-	
+
 	# run all scheduled jobs now, so we don't have to sit in the dark for a while
 	get_launch_updates(None)
 	spx_api_handler()
@@ -4929,8 +4947,9 @@ if __name__ == '__main__':
 
 	# fancy prints so the user can tell that we're actually doing something
 	if not debug_mode:
+		# hide cursor for pretty print
 		cursor.hide()
-		
+
 		try:
 			while True:
 				schedule.run_pending()
@@ -4940,6 +4959,7 @@ if __name__ == '__main__':
 					time.sleep(1)
 
 		except KeyboardInterrupt:
+			# on exit, show cursor as otherwise it'll stay hidden
 			cursor.show()
 			sys.exit(f'Program ending... Runtime: {datetime.datetime.now() - STARTUP_TIME}.')
 
