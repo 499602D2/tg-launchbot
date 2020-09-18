@@ -4723,7 +4723,7 @@ if __name__ == '__main__':
 	global bot, debug_log
 
 	# current version
-	VERSION = '0.5.26'
+	VERSION = '0.5.27'
 
 	# default start mode, log start time
 	start = debug_log = debug_mode = False
