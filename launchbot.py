@@ -1890,7 +1890,7 @@ def flight_schedule(msg, command_invoke, call_type):
 	month_map = {
 		1: 'January', 2: 'February', 3: 'March', 4: 'April',
 		5: 'May', 6: 'June', 7: 'July', 8: 'August',
-		9: 'Septemper', 10: 'October', 11: 'November', 12: 'December' }
+		9: 'September', 10: 'October', 11: 'November', 12: 'December' }
 
 	# if a shortened name makes no sense, use this
 	providers_short = {
@@ -2199,6 +2199,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 	pad_name = query_return[6]
 	info = query_return[7]
 	country_code = query_return[8]
+	flight_unix_net = query_return[9]
 
 	# new info
 	tbd_date = query_return[20]
@@ -2211,7 +2212,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 	in_hold = bool(in_hold == 1)
 
 	if lsp_name == 'SpaceX':
-		spx_info_str, spx_orbit_info = spx_info_str_gen(mission_name, 0)
+		spx_info_str, spx_orbit_info = spx_info_str_gen(mission_name, 0, flight_unix_net)
 		if spx_info_str is not None:
 			spx_str = True
 		else:
@@ -2382,7 +2383,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 	month_map = {
 		1: 'January', 2: 'February', 3: 'March', 4: 'April',
 		5: 'May', 6: 'June', 7: 'July', 8: 'August',
-		9: 'Septemper', 10: 'October', 11: 'November', 12: 'December'
+		9: 'September', 10: 'October', 11: 'November', 12: 'December'
 	}
 
 	try:
@@ -2854,7 +2855,7 @@ def spx_api_handler():
 	update_statistics({'API_requests':1, 'db_updates':1, 'data':len(API_RESPONSE.content)})
 
 
-def spx_info_str_gen(launch_name, run_count):
+def spx_info_str_gen(launch_name, run_count, launch_net):
 	'''
 	Gets the name of a launch from launches.db and attempts to find the corresponding launch name
 	from spx-launches.db with diffing, then generate the SpaceX launch specific information string.
@@ -2863,6 +2864,9 @@ def spx_info_str_gen(launch_name, run_count):
 	# manual matches for certain launches
 	if 'DM2' in launch_name:
 		launch_name = 'cctcap demo mission 2'
+	elif 'Starlink' in launch_name:
+		split = launch_name.split(' ')
+		launch_name = f'{split[0]}-{split[1]}'.lower()
 
 	# open the database connection and check if the launch exists in the database
 	# if not, update
@@ -2894,7 +2898,7 @@ def spx_info_str_gen(launch_name, run_count):
 
 	if len(query_return) == 0:
 		# try pulling all launches, diff them, sort by NET
-		c.execute('''SELECT * FROM launches WHERE NET >= ?''', (today_unix,))
+		c.execute('''SELECT * FROM launches WHERE NET >= ?''', (launch_net - 3600*24*60,))
 		query_return = c.fetchall()
 
 		launch_names = {} # launch name -> NET dictionary
@@ -2974,7 +2978,7 @@ def spx_info_str_gen(launch_name, run_count):
 						with a NET >= {today_unix}. Updating and trying again...')
 
 				spx_api_handler()
-				spx_info_str_gen(launch_name, 1)
+				spx_info_str_gen(launch_name, 1, launch_net)
 			else:
 				if debug_log:
 					logging.info(f'🛑 Error in spx_info_str_gen: unable to find launches \
@@ -3007,6 +3011,7 @@ def spx_info_str_gen(launch_name, run_count):
 				diff_match = close_matches[0]
 				c.execute('''SELECT * FROM launches WHERE launch_name = ?''', (diff_match,))
 				query_return = c.fetchall()
+
 				if len(query_return) == 1:
 					db_match = query_return[0]
 				else:
@@ -3582,7 +3587,7 @@ def get_launch_updates(launch_ID):
 						month_map = {
 							1: 'January', 2: 'February', 3: 'March', 4: 'April',
 							5: 'May', 6: 'June', 7: 'July', 8: 'August',
-							9: 'Septemper', 10: 'October', 11: 'November', 12: 'December'}
+							9: 'September', 10: 'October', 11: 'November', 12: 'December'}
 
 						date_str = f'{month_map[int(ymd_split[1])]} {ymd_split[2]}{suffix}'
 
@@ -4189,7 +4194,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 
 	# if it's a SpaceX launch, pull get the info string
 	if lsp_name == 'SpaceX':
-		spx_info_str, spx_orbit_info = spx_info_str_gen(launch_name, 0)
+		spx_info_str, spx_orbit_info = spx_info_str_gen(launch_name, 0, utc_timestamp)
 		if spx_info_str is not None:
 			spx_str = True
 		else:
