@@ -28,6 +28,12 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 
 **Bot roadmap**
 
+0.1: first implementation (November)
+
+	- ✅ implemented uncached API requests
+	
+	- ✅ implemented the request of next launch via a direct API call
+
 0.2: basic features (December)
 
 	- ✅ implement /next using DB calls
@@ -60,7 +66,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 
 0.5: user-facing features
 	
-	- allow users to disable postpone notifications on a per-launch basis
+	- ✅ **(moved to 0.6)** allow users to disable postpone notifications on a per-launch basis
 	
 	- ✅ delete older notification messages when a new one is sent
 	
@@ -68,14 +74,40 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ add probability of launch and launch location, separate from mission name etc. with \n\n
 	
-	- handle notification send checks with schedule, instead of polling every 20-30 seconds (i.e. update schedule every time db is updated)
+	- ✅ **(moved to 0.6)** handle notification send checks with schedule, instead of polling every 20-30 seconds (i.e. update schedule every time db is updated)
 	
-	- unify spx-launch database and launch database into one file with separate tables
+	- ✅ **(moved to 0.6)** unify spx-launch database and launch database into one file with separate tables
 	
 	- ✅ allow users to set their own notifications (i.e. 24h/12h/...)
 	
 	- ✅ allow users to set their own timezone
 	
-0.6: back-end improvements
+0.6: major back-end improvements and changes
+	
+	- update to the LL2 API
+	
+	- perform API requests intelligently, as the monthly request quota is enough for only one request every 8 minutes
+	
+		- don't update API on startup, unless it has been sufficiently long since last check: store requests in memory + storage
+		
+		- use schedule to schedule requests: just before a launch is due, plus for when notifications are supposed to be sent
+		
+		- a raw update schedule of once every 15 - 60 minutes
+		
+	- check for launch notifications intelligently
+		
+		- on API update, check for updated launch times (notification send times) -> clear schedule queue -> schedule next checks for when a notification is supposed to be sent 
+		
+	- store LL2 and SpX API data in the same database
+	
+	- combine all separate database files into one file with multiple tables
+	
+	- attempt to split the monolithic file into multiple separate files, starting with the API request functions
+	
+	- index launches by the new unique launch ID instead of launch name
+	
+	- enable the disabling of postpone notifications
 
 	- improve json-parsing performance by using pooling
+	
+	
