@@ -26,21 +26,21 @@ The bot stores every interaction (i.e. command) sent to it if logging is enabled
 
 Only information stored by the bot is the chat ID, which can also be the user ID of a user in the case of a private chat. This is the only user information stored, which is used to deliver notifications. If no notifications are enabled, no information is stored, aside from an in-memory chat ID for managing spam, which is automatically cleared when the program quits and is thus never stored.
 
-**Bot roadmap**
+## **Bot roadmap**
 
-0.1: first implementation (November)
+### 0.1 / first implementation (November)
 
 	- ✅ implemented uncached API requests
 	
 	- ✅ implemented the request of next launch via a direct API call
 
-0.2: basic features (December)
+### 0.2 / basic features (December)
 
 	- ✅ implement /next using DB calls
 	
 	- ✅ implement support for SpaceX core information
 
-0.3: user-facing features (January)
+### 0.3 / user-facing features (January)
 	
 	- ✅ add "next" and "previous" button(s) to /next command
 	
@@ -54,7 +54,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ change launch database index from tminus to net
 
-0.4: basic improvements (February ->)
+### 0.4 / basic improvements (February ->)
 
 	- ✅ Notify users of a launch being postponed if a notification has already been sent
 	
@@ -64,7 +64,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ add location (i.e. state/country) below pad information (Florida, USA etc.)
 
-0.5: user-facing features
+### 0.5 / user-facing features
 	
 	- ✅ **(moved to 0.6)** allow users to disable postpone notifications on a per-launch basis
 	
@@ -82,7 +82,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ allow users to set their own timezone
 	
-0.6: major back-end improvements and changes
+### 0.6 / major back-end improvements and changes
 	
 	- update to the LL2 API
 	
