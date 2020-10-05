@@ -102,6 +102,10 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- combine all separate database files into one file with multiple tables
 	
+	- use an in-memory DB to handle all responses
+	
+		- update in-mem DB on API call, push update to disk -> persistence
+	
 	- attempt to split the monolithic file into multiple separate files, starting with the API request functions
 	
 	- index launches by the new unique launch ID instead of launch name
