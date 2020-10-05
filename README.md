@@ -84,7 +84,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 ### 0.6 / major back-end improvements and changes
 	
-	- update to the LL2 API
+	- upgrade to the LL2 API (LL1 closes at the end of October)
 	
 	- perform API requests intelligently, as the monthly request quota is enough for only one request every 8 minutes
 	
@@ -96,22 +96,30 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 		
 	- check for launch notifications intelligently
 		
-		- on API update, check for updated launch times (notification send times) -> clear schedule queue -> schedule next checks for when a notification is supposed to be sent 
+		- on API update, check for updated launch times (notification send times) -> clear schedule queue -> schedule next checks for when a notification is supposed to be sent
 		
 	- store LL2 and SpX API data in the same database
 	
+	**Other changes**
+
+	- add "show changelog" button under /help
+	
+		- or, replace /help with /info?
+	
 	- combine all separate database files into one file with multiple tables
-	
-	- use an in-memory DB to handle all responses
-	
-		- update in-mem DB on API call, push update to disk -> persistence
 	
 	- attempt to split the monolithic file into multiple separate files, starting with the API request functions
 	
 	- index launches by the new unique launch ID instead of launch name
-	
-	- enable the disabling of postpone notifications
 
 	- improve json-parsing performance by using pooling
 	
+### 0.7 more backend changes
+
+	- update from telepot Telegram API wrapper to python-telegram-bot
 	
+	- enable the disabling of postpone notifications
+	
+	- use an in-memory DB to handle all responses
+	
+		- update in-mem DB on API call, push update to disk -> persistence
