@@ -2212,6 +2212,11 @@ def next_flight(msg, current_index, command_invoke, cmd):
 	in_hold = bool(in_hold == 1)
 
 	if lsp_name == 'SpaceX':
+		# spx_info_str, spx_orbit_info = spx_info_str_gen(launch_name, 0, utc_timestamp)
+
+		if debug_log:
+			logging.info(f'Next of SpX launch: calling spx_info_str_gen with ({launch_name}, 0, {utc_timestamp})')
+
 		spx_info_str, spx_orbit_info = spx_info_str_gen(mission_name, 0, flight_unix_net)
 		if spx_info_str is not None:
 			spx_str = True
@@ -4116,7 +4121,7 @@ def notification_handler(launch_row, notif_class, NET_slip):
 	query_return = c.fetchall()
 
 	# parse the input so we can generate the message later
-	launch_name = query_return[0][0]
+	launch_name = query_return[0][0].strip()
 	lsp_short = query_return[0][4]
 	vehicle = query_return[0][5]
 	pad = query_return[0][6]
@@ -4194,11 +4199,19 @@ def notification_handler(launch_row, notif_class, NET_slip):
 
 	# if it's a SpaceX launch, pull get the info string
 	if lsp_name == 'SpaceX':
+		if debug_log:
+			logging.info(f'Notifying of a SpX launch. Calling spx_info_str_gen with ({launch_name}, 0, {utc_timestamp})')
+
 		spx_info_str, spx_orbit_info = spx_info_str_gen(launch_name, 0, utc_timestamp)
 		if spx_info_str is not None:
 			spx_str = True
+			if debug_log:
+				logging.info('Got a SpX str!')
 		else:
 			spx_str = False
+			if debug_log:
+				logging.info('Got None from SpX str gen.')
+
 
 	# do some string magic to reduce the space width of monospaced text in the telegram message
 	lsp_str = ' '.join("`{}`".format(word) for word in lsp_name.split(' '))
