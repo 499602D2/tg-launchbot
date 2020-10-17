@@ -19,7 +19,7 @@ class LaunchLibrary2Launch:
 		self.ll_id = launch_json['launch_library_id']
 
 		# net and status
-		self.net_unix = net_timestamp_to_unix(launch_json['net'])
+		self.net_unix = timestamp_to_unix(launch_json['net'])
 		self.status_id = launch_json['status']['id']
 		self.status_state = launch_json['status']['name']
 
@@ -28,7 +28,38 @@ class LaunchLibrary2Launch:
 		self.webcast_url_list = ','.join(launch_json['vidURLs'])
 
 		# rocket information
-		self.rocket_name = launch_json['rocket']['full_name']
+		self.rocket_name = launch_json['rocket']['configuration']['name']
+		self.rocket_full_name = launch_json['rocket']['configuration']['full_name']
+		self.rocket_variant = launch_json['rocket']['configuration']['variant']
+		self.rocket_family = launch_json['rocket']['configuration']['family']
+		
+		# launcher stage information
+		if launch_json['rocket']['launcher_stage'] is not None:
+			# id, type, reuse status, flight number
+			self.launcher_stage_id = launch_json['rocket']['launcher_stage']['id']
+			self.launcher_stage_type = launch_json['rocket']['launcher_stage']['type']
+			self.launcher_stage_is_reused = launch_json['rocket']['launcher_stage']['reused']
+			self.launcher_stage_flight_number = launch_json['rocket']['launcher_stage']['flight_number']
+
+			# flight proven and serial number
+			self.launcher_is_flight_proven = launch_json['rocket']['launcher_stage']['launcher']['flight_proven']
+			self.launcher_serial_number = launch_json['rocket']['launcher_stage']['launcher']['serial_number']
+
+			# first flight and maiden flight
+			self.launcher_maiden_flight = timestamp_to_unix(launch_json['rocket']['launcher_stage']['launcher']['first_launch_date'])
+			self.launcher_last_flight = timestamp_to_unix(launch_json['rocket']['launcher_stage']['launcher']['last_Launch_date'])
+
+			# landing attempt, landing location, landing type, landing count at location
+			if launch_json['rocket']['launcher_stage']['landing'] is not None:
+				self.launcher_landing_attempt = launch_json['rocket']['launcher_stage']['landing']['attempt']
+				self.launcher_landing_location = launch_json['rocket']['launcher_stage']['landing']['location']['abbrev']
+				self.landing_type = launch_json['rocket']['launcher_stage']['landing']['type']['abbrev']
+				self.launcher_landing_location_nth_landing = launch_json['rocket']['launcher_stage']['landing']['location']['successful_landings']
+
+		# ⚠️ TODO spacecraft stage information ⚠️
+		if launch_json['rocket']['spacecraft_stage'] is not None:
+			self.spacecraft_stage = None
+
 
 		# mission (payload) information
 		self.mission_name = launch_json['mission']['name']
@@ -47,7 +78,7 @@ class LaunchLibrary2Launch:
 		self.location_nth_launch = launch_json['pad']['location']['total_launch_count']
 
 
-	def net_timestamp_to_unix(timestamp):
+	def timestamp_to_unix(timestamp):
 		# convert to a datetime object
 		utc_dt = datetime.datetime.strptime(timestamp, '%Y%m%dT%H%M%S%fZ')
 
