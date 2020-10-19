@@ -28,19 +28,19 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 
 ## **Bot roadmap**
 
-### 1.0 / first implementation (November)
+### 1.0 / first implementation (November 2019)
 
 	- ✅ implemented uncached API requests
 	
 	- ✅ implemented the request of next launch via a direct API call
 
-### 1.2 / basic features (December)
+### 1.2 / basic features (December 2019)
 
 	- ✅ implement /next using DB calls
 	
 	- ✅ implement support for SpaceX core information
 
-### 1.3 / user-facing features (January)
+### 1.3 / user-facing features (January 2020)
 	
 	- ✅ add "next" and "previous" button(s) to /next command
 	
@@ -54,7 +54,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ change launch database index from tminus to net
 
-### 1.4 / basic improvements (February ->)
+### 1.4 / basic improvements (February 2020 ->)
 
 	- ✅ Notify users of a launch being postponed if a notification has already been sent
 	
@@ -76,7 +76,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ allow users to set their own timezone
 	
-### 1.6 / major back-end improvements and changes
+### 1.6 / major back-end improvements and changes (October 2020)
 	
 	- ✅ upgrade to the LL2 API (LL1 closes at the end of October)
 	
