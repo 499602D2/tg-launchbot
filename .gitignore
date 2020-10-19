@@ -4,3 +4,10 @@ venv
 /data
 __pycache__/api.cpython-38.pyc
 tg-launchbot/data/launch/launches.db
+tg-launchbot/__pycache__/api.cpython-39.pyc
+tg-launchbot/__pycache__/db.cpython-39.pyc
+tg-launchbot/data/launchbot-data.db
+tg-launchbot/data/ll2-json.json
+tg-launchbot/launchbot-0.5-stable.py
+tg-launchbot/ll2-json.json
+tg-launchbot/ll2-json.json
