@@ -10,6 +10,7 @@ class TestAPIFunctions(unittest.TestCase):
 		'''
 		Test construct_params
 		'''
+		print('Testing construct_params...')
 		test_keyvals = {'one': 1, 'two': 2, 'three': 3}
 		expected_params = '?one=1&two=2&three=3'
 		
