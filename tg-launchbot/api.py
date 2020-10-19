@@ -9,6 +9,11 @@ import sqlite3
 import requests
 import ujson as json
 
+from apscheduler.schedulers.background import BackgroundScheduler
+
+# local imports
+from db import update_launch_db
+
 class LaunchLibrary2Launch:
 	'''Description
 	A class for simplifying the handling of launch objects. Contains all the properties needed
@@ -27,7 +32,10 @@ class LaunchLibrary2Launch:
 		self.in_hold = launch_json['inhold']
 		self.probability = launch_json['probability']
 		self.success = True if 'Success' in launch_json['status']['name'] else False
-		self.launched = False
+		
+		# set launched state based on status_state
+		launch_bool = [status for status in {'success', 'failure'} if (status in self.status_state.lower())] 
+		self.launched = True if any(launch_bool) else False
 
 		# lsp/agency info
 		self.lsp_id = launch_json['launch_service_provider']['id']
@@ -164,6 +172,7 @@ class LaunchLibrary2Launch:
 		else:
 			self.orbital_nth_launch_year = None
 
+
 def timestamp_to_unix(timestamp):
 	# convert to a datetime object. Ex. 2020-10-18T12:25:00Z
 	utc_dt = datetime.datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%S%fZ')
@@ -177,117 +186,19 @@ def construct_params(PARAMS):
 	if PARAMS is not None:
 		for enum, keyvals in enumerate(PARAMS.items()):
 			key, val = keyvals[0], keyvals[1]
-
-			if enum == 0:
-				param_url += f'?{key}={val}'
-			else:
-				param_url += f'&{key}={val}'
+			param_url += f'?{key}={val}' if enum == 0 else f'&{key}={val}'
 
 	return param_url
 
 
-def update_db(launch_set):
-	# check if db exists
-	launch_dir = 'data/launch'
-	if not os.path.isfile(os.path.join(launch_dir, 'launches.db')):
-		if not os.path.isdir(launch_dir):
-			os.makedirs(launch_dir)
-
-		# open connection
-		conn = sqlite3.connect(os.path.join(launch_dir, 'launches.db'))
-		cursor = conn.cursor()
-
-		try:
-			cursor.execute('''CREATE TABLE launches
-				(name TEXT, unique_id TEXT, ll_id INT, net_unix INT, status_id INT, status_state TEXT,
-				in_hold BOOLEAN, probability REAL, success BOOLEAN, launched BOOLEAN,
-
-				webcast_islive BOOLEAN, webcast_url_list TEXT,
-
-				lsp_id INT, lsp_name TEXT, lsp_short TEXT, lsp_country_code TEXT,
-				
-				mission_name TEXT, mission_type TEXT, mission_orbit TEXT, mission_orbit_abbrev TEXT,
-				mission_description TEXT,
-
-				pad_name TEXT, location_name TEXT, location_country_code TEXT,
-
-				rocket_name TEXT, rocket_full_name TEXT, rocket_variant TEXT, rocket_family TEXT,
-				
-				launcher_stage_id TEXT, launcher_stage_type TEXT, launcher_stage_is_reused BOOLEAN,
-				launcher_stage_flight_number INT, launcher_stage_turn_around TEXT, launcher_is_flight_proven BOOLEAN,
-				launcher_serial_number TEXT, launcher_maiden_flight INT, launcher_last_flight INT,
-				launcher_landing_attempt BOOLEAN, launcher_landing_location TEXT, landing_type TEXT,
-				launcher_landing_location_nth_landing INT,
-
-				spacecraft_id INT, spacecraft_sn TEXT, spacecraft_name TEXT, spacecraft_crew TEXT,
-				spacecraft_crew_count INT, spacecraft_maiden_flight INT,
-
-				pad_nth_launch INT, location_nth_launch INT, agency_nth_launch INT, agency_nth_launch_year INT,
-				orbital_nth_launch_year INT,
-
-				notify_24h BOOLEAN, notify_12h BOOLEAN, notify_60min BOOLEAN, notify_5min BOOLEAN,
-
-				PRIMARY KEY (unique_id))
-			''')
-
-			cursor.execute("CREATE INDEX name_to_unique_id ON launches (name, unique_id)")
-			cursor.execute("CREATE INDEX unique_id_to_lsp_short ON launches (unique_id, lsp_short)")
-			cursor.execute("CREATE INDEX net_unix_to_lsp_short ON launches (net_unix, lsp_short)")
-
-			conn.commit()
-			conn.close()
-
-		except sqlite3.OperationalError as e:
-			if debug_log:
-				logging.exception(f'⚠️ Error in create_launch_database: {e}')
-
-			conn.close()
-
-	# open connection
-	conn = sqlite3.connect(os.path.join(launch_dir, 'launches.db'))
-	cursor = conn.cursor()
-
-	# loop over launch objcets in launch_set
-	for launch_object in launch_set:
-		try:
-			# set fields and values to be inserted according to available keys/values
-			insert_fields = ', '.join(vars(launch_object).keys()) + ', notify_24h, notify_12h, notify_60min, notify_5min'
-			field_values = tuple(vars(launch_object).values()) + (False, False, False, False)
-			
-			# set amount of value-characers (?) equal to amount of keys + 4 (notify fields)
-			values_string = '?,' * (len(vars(launch_object).keys()) + 4)
-			values_string = values_string[0:-1]
-
-			# execute SQL
-			cursor.execute(f'INSERT INTO launches ({insert_fields}) VALUES ({values_string})', field_values)
-
-		except Exception as error: 
-			# if insert failed, update existing data: everything but unique ID and notification fields
-			obj_dict = vars(launch_object)
-
-			update_fields = obj_dict.keys()
-			update_values = obj_dict.values()
-
-			# generate the string for the SET command
-			set_str = ' = ?, '.join(update_fields) + ' = ?'
-
-			# cursor.execute("UPDATE command_frequency SET commands = commands + ? WHERE day = ? AND time_slot = ?", (stats_update['commands'], date, slot))
-			try:
-				cursor.execute(f"UPDATE launches SET {set_str} WHERE unique_id = ?", tuple(update_values) + (launch_object.unique_id,))
-				print(f'Updated {launch_object.unique_id}!')
-			except Exception as error:
-				print(f'⚠️ Error updating field for unique_id={launch_object.unique_id}! Error: {error}')
-
-	conn.commit()
-	conn.close()
-
-	print('✅ DB update complete!')
-
-
-def ll2_api_call():
+def ll2_api_call(data_dir, scheduler):
 	# bot params
-	BOT_USERNAME = 'rocketrybot_debug'
-	VERSION = '0.6.0'
+	BOT_USERNAME = 'rocketrybot'
+	VERSION = '1.6-alpha'
+	DEBUG_API = True
+
+	# debug print
+	print('➡️ Running API call...')
 
 	# datetime, so we can only get launches starting today
 	now = datetime.datetime.now()
@@ -305,12 +216,13 @@ def ll2_api_call():
 	# set headers
 	headers = {'user-agent': f'telegram-{BOT_USERNAME}/{VERSION}'}
 
-	if os.path.isfile('ll2-json.json'):
-		with open('ll2-json.json', 'r') as json_file:
+	# if debugging and the debug file exists, run this
+	if DEBUG_API and os.path.isfile(os.path.join(data_dir,'ll2-json.json')):
+		with open(os.path.join(data_dir, 'll2-json.json'), 'r') as json_file:
 			api_json = json.load(json_file)
 
-		print('⚠️⚠️⚠️ API call skipped!')
-		time.sleep(2)
+		print('⚠️ API call skipped!')
+		time.sleep(1.5)
 	else:
 		try:
 			API_RESPONSE = requests.get(API_CALL, headers=headers)
@@ -319,49 +231,114 @@ def ll2_api_call():
 			print('⚠️ Trying again after 3 seconds...')
 
 			time.sleep(3)
-			ll2_api_call()
-
-			print('✅ Success: returning!')
-			return
+			return ll2_api_call()
 
 		try:
 			api_json = json.loads(API_RESPONSE.text)
 		except Exception as json_parse_error:
 			print('⚠️ Error parsing json')
 
-	# dump json
-	with open('ll2-json.json', 'w') as json_file:
-		json.dump(api_json, json_file, indent=4)
-
-	for launch in api_json:
-		print(launch)
-
-	print(f"count: {api_json['count']}")
-	print(f'next: {len(api_json["next"])}')
-
-	print('➡️ Testing json parsing...\n')
+		# dump json
+		with open('ll2-json.json', 'w') as json_file:
+			json.dump(api_json, json_file, indent=4)
 
 	# parse the result json into a set of launch objects
 	launch_obj_set = set()
-	for i in range(len(api_json['results'])):
-		launch_object = LaunchLibrary2Launch(api_json['results'][i])
-		launch_obj_set.add(launch_object)
-		
-		print('➡️ Got properties')
-		for prop, value in vars(launch_object).items():
-			print(f'\t{prop}: {value}')
+	for launch_json in api_json['results']:
+		launch_obj_set.add(LaunchLibrary2Launch(launch_json))
 
-		print('\n\n\n✅ ––––––––––––––––––––––––')
-
-	print('Done!')
-	print(f'Parsed {len(launch_obj_set)} launches into launch_obj_set.')
+	# success?
+	print(f'✅ Parsed {len(launch_obj_set)} launches into launch_obj_set.')
 
 	# update database with the launch objects
-	update_db(launch_obj_set)
+	update_launch_db(launch_set=launch_obj_set, db_path=data_dir)
+	print('✅ DB update complete!')
+
+	# schedule next API call
+	api_call_scheduler(db_path=data_dir, scheduler=scheduler, ignore_30=True)
+
+	# TODO update schedule for checking for pending notifications
+	notification_send_scheduler()
+	
+	# success
+	return True
+
+
+def api_call_scheduler(db_path, scheduler, ignore_30):
+	"""Summary
+	Schedules upcoming API calls for when they'll be required.
+	Calls are scheduled with the following logic:
+	- every 20 minutes, unless any of the following has triggered an update:
+		- 30 seconds before upcoming notification sends
+		- the moment a launch is due to happen (postpone notification)
+
+	The function returns the timestamp for when the next API call should be run.
+	Whenever an API call is performed, the next call should be scheduled.
+	"""
+	# debug print
+	print('⏲ Starting api_call_scheduler...')
+
+	# load the next upcoming launch from the database
+	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+	cursor = conn.cursor()
+
+	# pull all launches with a net greater than or equal to current time
+	select_fields = 'net_unix, notify_24h, notify_12h, notify_60min, notify_5min'
+	cursor.execute(f'SELECT {select_fields} FROM launches WHERE net_unix >= ?', (int(time.time()),))
+
+	query_return = cursor.fetchall()
+	conn.close()
+
+	if len(query_return) == 0:
+		print('⚠️ No launches found for scheduling: running in 5 seconds...')
+		return time.time() + 5
+
+	# sort in-place by NET
+	query_return.sort(key=lambda tup:tup[0])
+
+	'''
+	Create a list of notification send times, but also during launch to check for a postpone.
+	- notification times, if not sent (30 seconds before)
+	- as the launch is supposed to occur
+	- now + 20 minutes
+	'''
+	notif_times, time_map = set(), {0: 24*3600+30, 1: 12*3600+30, 2: 3600+30, 3: 5*60+30}
+	for launch_row in query_return:
+		notif_times.add(launch_row[0])
+		for enum, notif_bool in enumerate(launch_row[1::]):
+			if not notif_bool:
+				# time for check
+				check_time = launch_row[0] - time_map[enum]
+
+				# if less than 30 sec until next check, skip if ignore_30 flag is set
+				if check_time - int(time.time()) < 30 and ignore_30:
+					pass
+				else:
+					notif_times.add(check_time)
+
+
+	# add scheduled +20 min check to comparison
+	notif_times.add(int(time.time()) + 15) # 20*60
+
+	# pick min
+	next_api_update = min(notif_times)
+	next_update_dt = datetime.datetime.fromtimestamp(next_api_update)
+
+	# schedule next API update
+	scheduler.add_job(ll2_api_call, 'date', run_date=next_update_dt, args=[db_path, scheduler])
+	print('Next API update scheduled for', next_update_dt)
 
 
 if __name__ == '__main__':
-	print('Starting API calls...')
-	ll2_api_call()
-	print('\n✅ Done!')
+	DATA_DIR = 'data'
+
+	# init and start scheduler
+	scheduler = BackgroundScheduler()
+	scheduler.start()
+
+	print('➡️ Testing scheduling...')
+	api_call_scheduler(db_path=DATA_DIR, ignore_30=False, scheduler=scheduler)
+
+	while True:
+		time.sleep(5)
 
