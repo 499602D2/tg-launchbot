@@ -28,19 +28,19 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 
 ## **Bot roadmap**
 
-### 0.1 / first implementation (November)
+### 1.0 / first implementation (November)
 
 	- ✅ implemented uncached API requests
 	
 	- ✅ implemented the request of next launch via a direct API call
 
-### 0.2 / basic features (December)
+### 1.2 / basic features (December)
 
 	- ✅ implement /next using DB calls
 	
 	- ✅ implement support for SpaceX core information
 
-### 0.3 / user-facing features (January)
+### 1.3 / user-facing features (January)
 	
 	- ✅ add "next" and "previous" button(s) to /next command
 	
@@ -54,7 +54,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ change launch database index from tminus to net
 
-### 0.4 / basic improvements (February ->)
+### 1.4 / basic improvements (February ->)
 
 	- ✅ Notify users of a launch being postponed if a notification has already been sent
 	
@@ -64,9 +64,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ add location (i.e. state/country) below pad information (Florida, USA etc.)
 
-### 0.5 / user-facing features
-	
-	- ✅ **(moved to 0.6)** allow users to disable postpone notifications on a per-launch basis
+### 1.5 / user-facing features
 	
 	- ✅ delete older notification messages when a new one is sent
 	
@@ -74,25 +72,21 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ add probability of launch and launch location, separate from mission name etc. with \n\n
 	
-	- ✅ **(moved to 0.6)** handle notification send checks with schedule, instead of polling every 20-30 seconds (i.e. update schedule every time db is updated)
-	
-	- ✅ **(moved to 0.6)** unify spx-launch database and launch database into one file with separate tables
-	
 	- ✅ allow users to set their own notifications (i.e. 24h/12h/...)
 	
 	- ✅ allow users to set their own timezone
 	
-### 0.6 / major back-end improvements and changes
+### 1.6 / major back-end improvements and changes
 	
 	- ✅ upgrade to the LL2 API (LL1 closes at the end of October)
 	
-	- perform API requests intelligently, as the monthly request quota is enough for only one request every 8 minutes
+	- ✅ perform API requests intelligently, as the monthly request quota is enough for only one request every 8 minutes
 	
 		- don't update API on startup, unless it has been sufficiently long since last check: store requests in memory + storage
 		
-		- use schedule to schedule requests: just before a launch is due, plus for when notifications are supposed to be sent
+		- ✅ use schedule to schedule requests: just before a launch is due, plus for when notifications are supposed to be sent
 		
-		- a raw update schedule of once every 15 - 60 minutes
+		- ✅ a raw update schedule of once every 15 - 60 minutes
 		
 	- check for launch notifications intelligently
 		
@@ -106,15 +100,17 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 		- or, replace /help with /info?
 	
-	- combine all separate database files into one file with multiple tables
+	- ✅ combine all separate database files into one file with multiple tables
 	
-	- attempt to split the monolithic file into multiple separate files, starting with the API request functions
+	- ✅ attempt to split the monolithic file into multiple separate files, starting with the API request functions
 	
 	- ✅ index launches by the new unique launch ID instead of launch name
 
 	- improve json-parsing performance by using pooling
 	
-### 0.7 more backend changes
+	- allow users to disable postpone notifications on a per-launch basis
+	
+### 1.7 more backend changes
 
 	- update from telepot Telegram API wrapper to python-telegram-bot
 	
