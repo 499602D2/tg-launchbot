@@ -4,6 +4,8 @@ import datetime
 import sqlite3
 import logging
 
+from apscheduler.schedulers.background import BackgroundScheduler
+
 # handle sending of postpone notifications; done in a separate function so we can retry more easily and handle exceptions
 def send_postpone_notification(chat, notification, launch_id, keywords):
 	try:
@@ -493,7 +495,7 @@ def remove_previous_notification(launch_id, keyword):
 
 
 # gets a request to send a notification about launch X from launch_update_check()
-def notification_handler(launch_row, notif_class, NET_slip):
+def notification_handler(db_path: str, launch_unique_ids: set()):
 	# handle notification sending; done in a separate function so we can retry more easily and handle exceptions
 	def send_notification(chat, notification, launch_id, keywords, vid_link, notif_class):
 		# send early notifications silently
@@ -588,6 +590,8 @@ def notification_handler(launch_row, notif_class, NET_slip):
 					logging.exception(f'⚠️ Unhandled telepot.exception.TelegramError in send_notification: {error}')
 
 				return False
+
+	# TODO pull launch info
 
 	launch_id = launch_row[1]
 	keywords = int(launch_row[2])
@@ -909,7 +913,12 @@ def notification_handler(launch_row, notif_class, NET_slip):
 	store_notification_identifiers(launch_id, msg_identifiers)
 
 
-def clear_missed_notifications(db_path, launch_ids):
+def notification_pseudo_handler(db_path: str, launch_id_set: set()):
+	logging.info('🎉 notification_pseudo_handler ran successfully!')
+	logging.info(f'📨 launch_id_set: {launch_id_set}')
+
+
+def clear_missed_notifications(db_path: str, launch_ids: set()):
 	# open db connection
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	cursor = conn.cursor()
@@ -948,7 +957,7 @@ def clear_missed_notifications(db_path, launch_ids):
 	logging.info(f'✅ Cleared {len(launch_ids)} missed notifitcations!')
 
 
-def notification_send_scheduler(db_path, next_api_update_time):
+def notification_send_scheduler(db_path: str, next_api_update_time: int, scheduler: BackgroundScheduler):
 	'''Summary
 	Notification checks are performed right after an API update, so they're always
 	up to date when the scheduling is performed. There should be only one of each
@@ -1001,9 +1010,20 @@ def notification_send_scheduler(db_path, next_api_update_time):
 				else:
 					notif_send_times[send_time].add(uid)
 
+	# clear previously stored notifications
+	logging.info(f'🚮 Clearing previously queued notifications...')
+	cleared_count = 0
+	for job in scheduler.get_jobs():
+		if 'notification' in job.id:
+			scheduler.remove_job(job.id)
+			cleared_count += 1
+
+	# cleared!
+	logging.info(f'✅ Cleared {cleared_count} notifications!')
+
 	# add notifications to schedule queue until we hit the next scheduled API update
 	# this allows us to queue the minimum amount of notifications
-	notification_queue, missed_notifications = [], set()
+	scheduled_notifications, missed_notifications = 0, set()
 	for send_time, launch_id_set in notif_send_times.items():
 		# if send time is later than next API update, ignore
 		if send_time > next_api_update_time:
@@ -1012,12 +1032,20 @@ def notification_send_scheduler(db_path, next_api_update_time):
 			# if notifications have been missed, add to missed set
 			missed_notifications = missed_notifications.union(launch_id_set)
 		else:
-			logging.info(f'📨 Adding launch_ids to notification queue: {launch_id_set}')
-			notification_queue.append({send_time: launch_id_set})
+			# convert to a datetime object
+			notification_dt = datetime.datetime.fromtimestamp(unix_timestamp)
+
+			# schedule next API update, and we're done: next update will be scheduled after the API update
+			scheduler.add_job(
+				notification_pseudo_handler, 'date', id=f'notification-{send_time}',
+				run_date=notification_dt, args=[db_path, launch_id_set])
+
+			# done, log
+			logging.info(f'📨 Scheduled {len(launch_id_set)} notifications for {notification_dt}')
+			scheduled_notifications += 1
 
 	# if we've missed any notifications, clear them
 	if len(missed_notifications) != 0:
 		clear_missed_notifications(db_path, missed_notifications)
 
-	logging.info(f'Notification queueing done! Queued {len(notification_queue)} notifications.')
-	return notification_queue
+	logging.info(f'Notification scheduling done! Queued {scheduled_notifications} notifications.')
