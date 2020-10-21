@@ -12,7 +12,8 @@ import ujson as json
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # local imports
-from db import update_launch_db
+from db import update_launch_db, create_launch_db
+from notifications import notification_send_scheduler
 
 class LaunchLibrary2Launch:
 	'''Description
@@ -177,7 +178,7 @@ def timestamp_to_unix(timestamp):
 	# convert to a datetime object. Ex. 2020-10-18T12:25:00Z
 	utc_dt = datetime.datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%S%fZ')
 
-	# convert UTC datetime to seconds since the Epoch, return
+	# convert UTC datetime to integer seconds since the unix epoch, return
 	return int((utc_dt - datetime.datetime(1970, 1, 1)).total_seconds())
 
 
@@ -198,7 +199,7 @@ def ll2_api_call(data_dir, scheduler):
 	DEBUG_API = True
 
 	# debug print
-	print('➡️ Running API call...')
+	logging.debug('➡️ Running API call...')
 
 	# datetime, so we can only get launches starting today
 	now = datetime.datetime.now()
@@ -208,7 +209,7 @@ def ll2_api_call(data_dir, scheduler):
 	API_URL = 'https://ll.thespacedevs.com'
 	API_VERSION = '2.0.0'
 	API_REQUEST = 'launch/upcoming'
-	PARAMS = {'mode': 'detailed', 'limit': 250}
+	PARAMS = {'mode': 'detailed', 'limit': 50}
 
 	# construct the call URL
 	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{construct_params(PARAMS)}' #&{fields}
@@ -221,14 +222,14 @@ def ll2_api_call(data_dir, scheduler):
 		with open(os.path.join(data_dir, 'll2-json.json'), 'r') as json_file:
 			api_json = json.load(json_file)
 
-		print('⚠️ API call skipped!')
+		logging.warning('⚠️ API call skipped!')
 		time.sleep(1.5)
 	else:
 		try:
 			API_RESPONSE = requests.get(API_CALL, headers=headers)
 		except Exception as error:
-			print(f'🛑 Error in LL API request: {error}')
-			print('⚠️ Trying again after 3 seconds...')
+			logging.warning(f'🛑 Error in LL API request: {error}')
+			logging.warning('⚠️ Trying again after 3 seconds...')
 
 			time.sleep(3)
 			return ll2_api_call()
@@ -236,7 +237,7 @@ def ll2_api_call(data_dir, scheduler):
 		try:
 			api_json = json.loads(API_RESPONSE.text)
 		except Exception as json_parse_error:
-			print('⚠️ Error parsing json')
+			logging.warning('⚠️ Error parsing json')
 
 		# dump json
 		with open('ll2-json.json', 'w') as json_file:
@@ -248,23 +249,23 @@ def ll2_api_call(data_dir, scheduler):
 		launch_obj_set.add(LaunchLibrary2Launch(launch_json))
 
 	# success?
-	print(f'✅ Parsed {len(launch_obj_set)} launches into launch_obj_set.')
+	logging.debug(f'✅ Parsed {len(launch_obj_set)} launches into launch_obj_set.')
 
 	# update database with the launch objects
 	update_launch_db(launch_set=launch_obj_set, db_path=data_dir)
-	print('✅ DB update complete!')
+	logging.debug('✅ DB update complete!')
 
 	# schedule next API call
-	api_call_scheduler(db_path=data_dir, scheduler=scheduler, ignore_30=True)
+	next_api_update = api_call_scheduler(db_path=data_dir, scheduler=scheduler, ignore_60=True)
 
 	# TODO update schedule for checking for pending notifications
-	notification_send_scheduler()
+	notification_send_scheduler(db_path=data_dir, next_api_update_time=next_api_update)
 	
 	# success
 	return True
 
 
-def api_call_scheduler(db_path, scheduler, ignore_30):
+def api_call_scheduler(db_path, scheduler, ignore_60):
 	"""Summary
 	Schedules upcoming API calls for when they'll be required.
 	Calls are scheduled with the following logic:
@@ -274,9 +275,21 @@ def api_call_scheduler(db_path, scheduler, ignore_30):
 
 	The function returns the timestamp for when the next API call should be run.
 	Whenever an API call is performed, the next call should be scheduled.
+
+	TODO improve checking for overlapping jobs, especially when notification checks
+	are scheduled. Keep track of scheduled job IDs. LaunchBot-class in main thread?
 	"""
+	def schedule_call(unix_timestamp):
+		# convert to a datetime object
+		next_update_dt = datetime.datetime.fromtimestamp(unix_timestamp)
+
+		# schedule next API update, and we're done: next update will be scheduled after the API update
+		scheduler.add_job(ll2_api_call, 'date', run_date=next_update_dt, args=[db_path, scheduler])
+		logging.debug('Next API update scheduled for %s', next_update_dt)
+		return unix_timestamp
+
 	# debug print
-	print('⏲ Starting api_call_scheduler...')
+	logging.debug('⏲ Starting api_call_scheduler...')
 
 	# load the next upcoming launch from the database
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
@@ -284,60 +297,71 @@ def api_call_scheduler(db_path, scheduler, ignore_30):
 
 	# pull all launches with a net greater than or equal to current time
 	select_fields = 'net_unix, notify_24h, notify_12h, notify_60min, notify_5min'
-	cursor.execute(f'SELECT {select_fields} FROM launches WHERE net_unix >= ?', (int(time.time()),))
+	try:
+		cursor.execute(f'SELECT {select_fields} FROM launches WHERE net_unix >= ?', (int(time.time()),))
+		query_return = cursor.fetchall()
+	except sqlite3.OperationalError:
+		query_return = set()
 
-	query_return = cursor.fetchall()
 	conn.close()
 
 	if len(query_return) == 0:
-		print('⚠️ No launches found for scheduling: running in 5 seconds...')
-		return time.time() + 5
+		logging.warning('⚠️ No launches found for scheduling: running in 5 seconds...')
+		os.rename(
+			os.path.join(db_path, 'launchbot-data.db'),
+			os.path.join(db_path, f'launchbot-data-sched-error-{int(time.time())}.db'))
+		return schedule_call(int(time.time()) + 5)
+
 
 	# sort in-place by NET
 	query_return.sort(key=lambda tup:tup[0])
 
 	'''
 	Create a list of notification send times, but also during launch to check for a postpone.
-	- notification times, if not sent (30 seconds before)
+	- notification times, if not sent (60 seconds before)
 	- as the launch is supposed to occur
 	- now + 20 minutes
 	'''
-	notif_times, time_map = set(), {0: 24*3600+30, 1: 12*3600+30, 2: 3600+30, 3: 5*60+30}
+	notif_times, time_map = set(), {0: 24*3600+60, 1: 12*3600+60, 2: 3600+60, 3: 5*60+60}
 	for launch_row in query_return:
 		notif_times.add(launch_row[0])
 		for enum, notif_bool in enumerate(launch_row[1::]):
 			if not notif_bool:
-				# time for check
+				# time for check: launch time - notification time (before launch time)
 				check_time = launch_row[0] - time_map[enum]
 
-				# if less than 30 sec until next check, skip if ignore_30 flag is set
-				if check_time - int(time.time()) < 30 and ignore_30:
+				# if less than 60 sec until next check, pass if ignore_60 flag is set
+				if check_time - int(time.time()) < 30 and ignore_60:
+					pass
+				elif check_time < time.time():
 					pass
 				else:
 					notif_times.add(check_time)
 
 
 	# add scheduled +20 min check to comparison
-	notif_times.add(int(time.time()) + 15) # 20*60
+	# ⚠️ currently 15 seconds
+	notif_times.add(int(time.time()) + 15) # 20*60 or 30*60
 
-	# pick min
+	# pick minimum of all possible API updates, convert to a datetime object
 	next_api_update = min(notif_times)
-	next_update_dt = datetime.datetime.fromtimestamp(next_api_update)
 
-	# schedule next API update
-	scheduler.add_job(ll2_api_call, 'date', run_date=next_update_dt, args=[db_path, scheduler])
-	print('Next API update scheduled for', next_update_dt)
+	# schedule
+	return schedule_call(next_api_update)
 
 
 if __name__ == '__main__':
 	DATA_DIR = 'data'
 
+	# init log
+	logging.basicConfig(level=logging.DEBUG,format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
+
 	# init and start scheduler
 	scheduler = BackgroundScheduler()
 	scheduler.start()
 
-	print('➡️ Testing scheduling...')
-	api_call_scheduler(db_path=DATA_DIR, ignore_30=False, scheduler=scheduler)
+	logging.debug('➡️ Testing scheduling...')
+	api_call_scheduler(db_path=DATA_DIR, ignore_60=False, scheduler=scheduler)
 
 	while True:
 		time.sleep(5)
