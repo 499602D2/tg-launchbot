@@ -13,7 +13,7 @@ def create_notify_database(db_path):
 
 	try:
 		# chat ID - keyword - UNIX timestamp - enabled true/false
-		cursor.execute("CREATE TABLE notify (chat TEXT, keyword TEXT, muted_launches TEXT, enabled INTEGER, PRIMARY KEY (chat, keyword))")
+		cursor.execute("CREATE TABLE notify (chat TEXT, keyword TEXT, muted_launches TEXT, enabled INT, PRIMARY KEY (chat, keyword))")
 		cursor.execute("CREATE INDEX enabledchats ON notify (chat, enabled)")
 	except Exception as error:
 		print('⚠️ Error creating notify-table:', error)
@@ -29,7 +29,7 @@ def store_notification_identifiers(launch_id, msg_identifiers):
 	c = conn.cursor()
 
 	try:
-		c.execute("CREATE TABLE sent_notification_identifiers (id INTEGER, msg_identifiers TEXT, PRIMARY KEY (id))")
+		c.execute("CREATE TABLE sent_notification_identifiers (id INT, msg_identifiers TEXT, PRIMARY KEY (id))")
 		c.execute("CREATE INDEX id_identifiers ON notify (id, identifiers)")
 		if debug_log:
 			logging.info(f'✨ sent-notifications.db created!')
@@ -46,11 +46,10 @@ def store_notification_identifiers(launch_id, msg_identifiers):
 
 
 # create launch database
-def create_launch_db(db_path):
-	# open connection
-	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
-	cursor = conn.cursor()
-
+def create_launch_db(db_path, cursor):
+	'''Summary
+	Creates the launch database. Only ran when the table doesn't exist.
+	'''
 	try:
 		cursor.execute('''CREATE TABLE launches
 			(name TEXT, unique_id TEXT, ll_id INT, net_unix INT, status_id INT, status_state TEXT,
@@ -88,16 +87,9 @@ def create_launch_db(db_path):
 		cursor.execute("CREATE INDEX unique_id_to_lsp_short ON launches (unique_id, lsp_short)")
 		cursor.execute("CREATE INDEX net_unix_to_lsp_short ON launches (net_unix, lsp_short)")
 
-		conn.commit()
-		conn.close()
-		return True
-
 	except sqlite3.OperationalError as e:
 		if debug_log:
 			logging.exception(f'⚠️ Error in create_launch_database: {e}')
-
-		conn.close()
-		return False
 
 
 # update launch database
@@ -107,15 +99,18 @@ def update_launch_db(launch_set, db_path):
 		if not os.path.isdir(db_path):
 			os.makedirs(db_path)
 
-		success = create_launch_db(db_path=db_path)
+		create_launch_db(db_path=db_path, cursor=cursor)
 		logging.info(f"{'✅ Created launch db' if success else '⚠️ Failed to create launch db'}")
 
 	# open connection
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	cursor = conn.cursor()
 
-	# make sure the table exists
-	#cursor.execute('SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}';')
+	# verify table exists
+	cursor.execute('SELECT name FROM sqlite_master WHERE type = ? AND name = ?', ('table', 'launches'))
+	if len(cursor.fetchall()) == 0:
+		logging.warning("⚠️ Launches table doesn't exists: creating...")
+		create_launch_db(db_path=db_path, cursor=cursor)
 
 	# loop over launch objcets in launch_set
 	for launch_object in launch_set:
@@ -164,10 +159,12 @@ def create_stats_db(db_path):
 	try:
 		# chat ID - keyword - UNIX timestamp - enabled true/false
 		cursor.execute('''CREATE TABLE stats 
-			(notifications INT, API_requests INT, db_updates INT, commands INT,
-			data INT, db_calls INT, PRIMARY KEY (notifications, API_requests))''')
+			(notifications INT, api_requests INT, db_updates INT, commands INT,
+			data INT, db_calls INT, last_api_update INT, PRIMARY KEY (notifications, api_requests))''')
 
-		cursor.execute("INSERT INTO stats (notifications, API_requests, db_updates, commands, data, db_calls) VALUES (0, 0, 0, 0, 0, 0)")
+		cursor.execute('''INSERT INTO stats 
+			(notifications, api_requests, db_updates, commands, data, db_calls, last_api_update)
+			VALUES (0, 0, 0, 0, 0, 0, 0)''')
 	except sqlite3.OperationalError:
 		pass
 
@@ -184,6 +181,12 @@ def update_stats_db(stats_update, db_path):
 	# Establish connection
 	stats_conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	stats_cursor = stats_conn.cursor()
+
+	# verify table exists
+	stats_cursor.execute('SELECT name FROM sqlite_master WHERE type = ? AND name = ?', ('table', 'stats'))
+	if len(stats_cursor.fetchall()) == 0:
+		logging.warning("⚠️ Statistics table doesn't exists: creating...")
+		create_stats_db(db_path)
 
 	# Update stats with the provided data
 	for stat, val in stats_update.items():
