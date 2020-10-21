@@ -917,6 +917,50 @@ def notification_pseudo_handler(db_path: str, launch_id_set: set()):
 	logging.info('🎉 notification_pseudo_handler ran successfully!')
 	logging.info(f'📨 launch_id_set: {launch_id_set}')
 
+	# db connection
+	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+	conn.row_factory = sqlite3.Row
+	cursor = conn.cursor()
+
+	# select launches with matching IDs, execute query
+	query_string = f"SELECT * FROM launches WHERE unique_id in ({','.join(['?']*len(launch_id_set))})"
+	cursor.execute(query_string, tuple(launch_id_set))
+
+	# convert rows into dictionaries for super easy parsing
+	query_return = [dict(row) for row in cursor.fetchall()]
+
+	# loop over the launches we got, construct a dumb and simple message for testing
+	for launch in query_return:
+		# figure out the notification we need to send
+		net = launch['net_unix']
+		notification_times = {
+			'notify_24h': net - 3600*24, 'notify_12h': net - 3600*12,
+			'notify_60min': net - 3600, 'notify_5min': net - 60*5}
+
+		toggle_classes = []
+		for notification, send_time in notification_times.items():
+			if time.time() <= send_time + 60:
+				toggle_classes.append(notification)
+
+		# the notification we'll be sending
+		send_notif = toggle_classes[-1]
+
+		# toggle all notifications to 1 in launch db
+		for notification_class in toggle_classes:
+			cursor.execute(f"UPDATE launches SET {notification_class} = 1")
+
+		# log, commit changes
+		logging.info(f'🚩 Toggled notification flags to 1 for {", ".join(toggle_classes)}')
+		conn.commit()
+
+		# map send_notif to a legible string
+		t_minus = {
+			'notify_24h': '24 hours', 'notify_12h': '12 hours',
+			'notify_60min': '60 minutes', 'notify_5min': '5 minutes'}
+
+		message = f'🚀 {launch["name"]} is launching in {t_minus[send_notif]}'
+		logging.info(message)
+
 
 def clear_missed_notifications(db_path: str, launch_ids: set()):
 	# open db connection
@@ -942,10 +986,13 @@ def clear_missed_notifications(db_path: str, launch_ids: set()):
 			'notify_24h': net - 3600*24, 'notify_12h': net - 3600*12,
 			'notify_60min': net - 3600, 'notify_5min': net - 60*5}
 
+		miss_margin = 60*5
 		for notif_type, notif_time in notification_times.items():
-			if notif_time < time.time() - 60*5:
-				logging.info(f'{notif_type} notification missed by more than 300 seconds for id={launch_row[1]}')
+			if time.time() - miss_margin - notif_time > 300:
+				missed_by = int(time.time() - miss_margin - notif_time)
 				missed_notifications.add(notif_type)
+
+				logging.info(f'{notif_type} missed by {missed_by} seconds for id={launch_row[1]}')
 
 		if len(missed_notifications) != 0:
 			# construct insert statement for the missed notifications: all will be set to True
@@ -954,7 +1001,8 @@ def clear_missed_notifications(db_path: str, launch_ids: set()):
 
 	conn.commit()
 	conn.close()
-	logging.info(f'✅ Cleared {len(launch_ids)} missed notifitcations!')
+
+	logging.info(f'✅ Cleared {len(launch_ids)} missed notifications!')
 
 
 def notification_send_scheduler(db_path: str, next_api_update_time: int, scheduler: BackgroundScheduler):
@@ -1032,12 +1080,18 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 			# if notifications have been missed, add to missed set
 			missed_notifications = missed_notifications.union(launch_id_set)
 		else:
+			# verify we're not already past send_time
+			if send_time < time.time():
+				send_time_offset = int(time.time() - send_time)
+				logging.warn(f'Missed send_time by {send_time_offset} sec! Sending in 5 sec.')
+				send_time = time.time() + 5
+
 			# convert to a datetime object
-			notification_dt = datetime.datetime.fromtimestamp(unix_timestamp)
+			notification_dt = datetime.datetime.fromtimestamp(send_time)
 
 			# schedule next API update, and we're done: next update will be scheduled after the API update
 			scheduler.add_job(
-				notification_pseudo_handler, 'date', id=f'notification-{send_time}',
+				notification_pseudo_handler, 'date', id=f'notification-{int(send_time)}',
 				run_date=notification_dt, args=[db_path, launch_id_set])
 
 			# done, log
