@@ -1,3 +1,8 @@
+import os
+import time
+import datetime
+import sqlite3
+import logging
 
 # handle sending of postpone notifications; done in a separate function so we can retry more easily and handle exceptions
 def send_postpone_notification(chat, notification, launch_id, keywords):
@@ -902,3 +907,117 @@ def notification_handler(launch_row, notif_class, NET_slip):
 	# store msg_identifiers
 	msg_identifiers = ','.join(msg_identifiers)
 	store_notification_identifiers(launch_id, msg_identifiers)
+
+
+def clear_missed_notifications(db_path, launch_ids):
+	# open db connection
+	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+	cursor = conn.cursor()
+
+	# select_fields, generate query_string
+	select_fields = 'net_unix, unique_id, notify_24h, notify_12h, notify_60min, notify_5min, launched'
+	query_string = f"SELECT {select_fields} FROM launches WHERE unique_id in ({','.join(['?']*len(launch_ids))})"
+
+	# execute query
+	cursor.execute(query_string, tuple(launch_ids))
+	query_return = cursor.fetchall()
+
+	# check which notifications we've missed
+	for launch_row in query_return:
+		# notifications we'll toggle
+		missed_notifications = set()
+		
+		# calculate the missed notifications
+		net = launch_row[0]
+		notification_times = {
+			'notify_24h': net - 3600*24, 'notify_12h': net - 3600*12,
+			'notify_60min': net - 3600, 'notify_5min': net - 60*5}
+
+		for notif_type, notif_time in notification_times.items():
+			if notif_time < time.time() - 60*5:
+				logging.info(f'{notif_type} notification missed by more than 300 seconds for id={launch_row[1]}')
+				missed_notifications.add(notif_type)
+
+		if len(missed_notifications) != 0:
+			# construct insert statement for the missed notifications: all will be set to True
+			insert_statement = '=1,'.join(missed_notifications) + '=1'
+			cursor.execute(f'''UPDATE launches SET {insert_statement} WHERE unique_id = ?''', (launch_row[1],))
+
+	conn.commit()
+	conn.close()
+	logging.info(f'✅ Cleared {len(launch_ids)} missed notifitcations!')
+
+
+def notification_send_scheduler(db_path, next_api_update_time):
+	'''Summary
+	Notification checks are performed right after an API update, so they're always
+	up to date when the scheduling is performed. There should be only one of each
+	notification in the schedule at all times. Thus, the notification jobs should
+	be tagged accordingly.
+	'''
+
+	# debug print
+	logging.debug('📩 Running notification_send_scheduler...')
+	
+	# load notification statuses for launches
+	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+	cursor = conn.cursor()
+
+	select_fields = 'net_unix, unique_id, notify_24h, notify_12h, notify_60min, notify_5min'
+
+	try:
+		cursor.execute(f'SELECT {select_fields} FROM launches WHERE net_unix >= ?', (int(time.time()),))
+		query_return = cursor.fetchall()
+	except sqlite3.OperationalError:
+		query_return = set()
+
+	if len(query_return) == 0:
+		logging.info('⚠️ No launches found for scheduling notifications!')
+		return
+
+	# sort in-place by NET
+	query_return.sort(key=lambda tup:tup[0])
+
+	# create a dict of notif_send_time: launch(es) tags
+	notif_send_times, time_map = {}, {0: 24*3600+30, 1: 12*3600+30, 2: 3600+30, 3: 5*60+30}
+	for launch_row in query_return:
+		for enum, notif_bool in enumerate(launch_row[2::]):
+			if not notif_bool:
+				# time for check: launch time - notification time (before launch time)
+				send_time = launch_row[0] - time_map[enum]
+
+				# launch id
+				uid = launch_row[1]
+
+				'''
+				send_time -> launches to notify for.
+				This isn't necessarily required, but there might be some unique case
+				where two notifications are needed to be sent at the exact same time. Previously
+				this wasn't relevant, as pending notifications were checked for continuously,
+				but now this could result in a notification not being sent.
+				'''
+				if send_time not in notif_send_times:
+					notif_send_times[send_time] = {uid}
+				else:
+					notif_send_times[send_time].add(uid)
+
+	# add notifications to schedule queue until we hit the next scheduled API update
+	# this allows us to queue the minimum amount of notifications
+	notification_queue, missed_notifications = [], set()
+	for send_time, launch_id_set in notif_send_times.items():
+		# if send time is later than next API update, ignore
+		if send_time > next_api_update_time:
+			pass
+		elif send_time < time.time() - 60*5:
+			# if notifications have been missed, add to missed set
+			missed_notifications = missed_notifications.union(launch_id_set)
+		else:
+			logging.info(f'📨 Adding launch_ids to notification queue: {launch_id_set}')
+			notification_queue.append({send_time: launch_id_set})
+
+	# if we've missed any notifications, clear them
+	if len(missed_notifications) != 0:
+		clear_missed_notifications(db_path, missed_notifications)
+
+	logging.info(f'Notification queueing done! Queued {len(notification_queue)} notifications.')
+	return notification_queue
