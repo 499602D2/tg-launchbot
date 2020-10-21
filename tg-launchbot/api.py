@@ -12,7 +12,7 @@ import ujson as json
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # local imports
-from db import update_launch_db, create_launch_db
+from db import update_launch_db, update_stats_db
 from notifications import notification_send_scheduler
 
 class LaunchLibrary2Launch:
@@ -174,7 +174,7 @@ class LaunchLibrary2Launch:
 			self.orbital_nth_launch_year = None
 
 
-def timestamp_to_unix(timestamp):
+def timestamp_to_unix(timestamp: int) -> int:
 	# convert to a datetime object. Ex. 2020-10-18T12:25:00Z
 	utc_dt = datetime.datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%S%fZ')
 
@@ -182,7 +182,7 @@ def timestamp_to_unix(timestamp):
 	return int((utc_dt - datetime.datetime(1970, 1, 1)).total_seconds())
 
 
-def construct_params(PARAMS):
+def construct_params(PARAMS: dict) -> str:
 	param_url = ''
 	if PARAMS is not None:
 		for enum, keyvals in enumerate(PARAMS.items()):
@@ -192,7 +192,7 @@ def construct_params(PARAMS):
 	return param_url
 
 
-def ll2_api_call(data_dir, scheduler):
+def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler):
 	# bot params
 	BOT_USERNAME = 'rocketrybot'
 	VERSION = '1.6-alpha'
@@ -222,11 +222,13 @@ def ll2_api_call(data_dir, scheduler):
 		with open(os.path.join(data_dir, 'll2-json.json'), 'r') as json_file:
 			api_json = json.load(json_file)
 
+		rec_data = 0
 		logging.warning('⚠️ API call skipped!')
 		time.sleep(1.5)
 	else:
 		try:
 			API_RESPONSE = requests.get(API_CALL, headers=headers)
+			rec_data = len(API_RESPONSE.content)
 		except Exception as error:
 			logging.warning(f'🛑 Error in LL API request: {error}')
 			logging.warning('⚠️ Trying again after 3 seconds...')
@@ -243,6 +245,9 @@ def ll2_api_call(data_dir, scheduler):
 		with open('ll2-json.json', 'w') as json_file:
 			json.dump(api_json, json_file, indent=4)
 
+	# store update time
+	api_updated = int(time.time())
+
 	# parse the result json into a set of launch objects
 	launch_obj_set = set()
 	for launch_json in api_json['results']:
@@ -255,17 +260,23 @@ def ll2_api_call(data_dir, scheduler):
 	update_launch_db(launch_set=launch_obj_set, db_path=data_dir)
 	logging.debug('✅ DB update complete!')
 
+	# update statistics
+	update_stats_db(
+		db_path='data',
+		stats_update={
+			'api_requests': 1, 'db_updates': 1,
+			'data': rec_data, 'last_api_update': api_updated}
+	)
+
 	# schedule next API call
 	next_api_update = api_call_scheduler(db_path=data_dir, scheduler=scheduler, ignore_60=True)
 
-	# TODO update schedule for checking for pending notifications
-	notification_send_scheduler(db_path=data_dir, next_api_update_time=next_api_update)
-	
-	# success
-	return True
+	# schedule notifications
+	notification_send_scheduler(
+		db_path=data_dir, next_api_update_time=next_api_update, scheduler=scheduler)
 
 
-def api_call_scheduler(db_path, scheduler, ignore_60):
+def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: bool) -> int:
 	"""Summary
 	Schedules upcoming API calls for when they'll be required.
 	Calls are scheduled with the following logic:
@@ -279,14 +290,29 @@ def api_call_scheduler(db_path, scheduler, ignore_60):
 	TODO improve checking for overlapping jobs, especially when notification checks
 	are scheduled. Keep track of scheduled job IDs. LaunchBot-class in main thread?
 	"""
-	def schedule_call(unix_timestamp):
+	def schedule_call(unix_timestamp: int) -> int:
 		# convert to a datetime object
 		next_update_dt = datetime.datetime.fromtimestamp(unix_timestamp)
 
 		# schedule next API update, and we're done: next update will be scheduled after the API update
-		scheduler.add_job(ll2_api_call, 'date', run_date=next_update_dt, args=[db_path, scheduler])
-		logging.debug('Next API update scheduled for %s', next_update_dt)
+		scheduler.add_job(
+			ll2_api_call, 'date', run_date=next_update_dt,
+			args=[db_path, scheduler], id=f'api-{unix_timestamp}')
+
+		logging.debug('🔄 Next API update scheduled for %s', next_update_dt)
 		return unix_timestamp
+
+	def require_immediate_update(cursor) -> bool:
+		'''Summary
+		Load previous time on startup to figure out if we need to update right now
+		'''
+		try:
+			cursor.execute(f'SELECT last_api_update FROM stats')
+		except sqlite3.OperationalError:
+			return True
+
+		last_update = cursor.fetchall()[0][0]
+		return True if time.time() > last_update + 30 * 60 else False
 
 	# debug print
 	logging.debug('⏲ Starting api_call_scheduler...')
@@ -294,6 +320,11 @@ def api_call_scheduler(db_path, scheduler, ignore_60):
 	# load the next upcoming launch from the database
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	cursor = conn.cursor()
+
+	# verify we don't need an immediate API update
+	if require_immediate_update(cursor):
+		logging.info('⚠️ DB outdated: scheduling next API update 5 seconds from now...')
+		return schedule_call(int(time.time()) + 5)
 
 	# pull all launches with a net greater than or equal to current time
 	select_fields = 'net_unix, notify_24h, notify_12h, notify_60min, notify_5min'
@@ -311,7 +342,6 @@ def api_call_scheduler(db_path, scheduler, ignore_60):
 			os.path.join(db_path, 'launchbot-data.db'),
 			os.path.join(db_path, f'launchbot-data-sched-error-{int(time.time())}.db'))
 		return schedule_call(int(time.time()) + 5)
-
 
 	# sort in-place by NET
 	query_return.sort(key=lambda tup:tup[0])
@@ -339,9 +369,8 @@ def api_call_scheduler(db_path, scheduler, ignore_60):
 					notif_times.add(check_time)
 
 
-	# add scheduled +20 min check to comparison
-	# ⚠️ currently 15 seconds
-	notif_times.add(int(time.time()) + 15) # 20*60 or 30*60
+	# add scheduled check every 30 minutes to comparison
+	notif_times.add(int(time.time()) + 30 * 60)
 
 	# pick minimum of all possible API updates, convert to a datetime object
 	next_api_update = min(notif_times)
@@ -364,5 +393,5 @@ if __name__ == '__main__':
 	api_call_scheduler(db_path=DATA_DIR, ignore_60=False, scheduler=scheduler)
 
 	while True:
-		time.sleep(5)
+		time.sleep(1)
 
