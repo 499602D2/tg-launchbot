@@ -242,7 +242,7 @@ def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler):
 			logging.warning('⚠️ Error parsing json')
 
 		# dump json
-		with open('ll2-json.json', 'w') as json_file:
+		with open(os.path.join(data_dir, 'll2-json.json'), 'w') as json_file:
 			json.dump(api_json, json_file, indent=4)
 
 	# store update time
