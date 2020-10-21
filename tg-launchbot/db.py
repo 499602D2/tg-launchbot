@@ -26,20 +26,20 @@ def create_notify_database(db_path):
 def store_notification_identifiers(launch_id, msg_identifiers):
 	launch_dir = 'data'
 	conn = sqlite3.connect(os.path.join(launch_dir, 'launchbot-data.db'))
-	c = conn.cursor()
+	cursor = conn.cursor()
 
 	try:
-		c.execute("CREATE TABLE sent_notification_identifiers (id INT, msg_identifiers TEXT, PRIMARY KEY (id))")
-		c.execute("CREATE INDEX id_identifiers ON notify (id, identifiers)")
+		cursor.execute("CREATE TABLE sent_notification_identifiers (id INT, msg_identifiers TEXT, PRIMARY KEY (id))")
+		cursor.execute("CREATE INDEX id_identifiers ON notify (id, identifiers)")
 		if debug_log:
 			logging.info(f'✨ sent-notifications.db created!')
 	except sqlite3.OperationalError:
 		pass
 
 	try:
-		c.execute('''INSERT INTO sent_notification_identifiers (id, msg_identifiers) VALUES (?, ?)''',(launch_id, msg_identifiers))
+		cursor.execute('''INSERT INTO sent_notification_identifiers (id, msg_identifiers) VALUES (?, ?)''',(launch_id, msg_identifiers))
 	except:
-		c.execute('''UPDATE sent_notification_identifiers SET msg_identifiers = ? WHERE id = ?''', (msg_identifiers, launch_id))
+		cursor.execute('''UPDATE sent_notification_identifiers SET msg_identifiers = ? WHERE id = ?''', (msg_identifiers, launch_id))
 
 	conn.commit()
 	conn.close()
@@ -139,7 +139,6 @@ def update_launch_db(launch_set, db_path):
 
 			try:
 				cursor.execute(f"UPDATE launches SET {set_str} WHERE unique_id = ?", tuple(update_values) + (launch_object.unique_id,))
-				#print(f'Updated {launch_object.unique_id}!')
 			except Exception as error:
 				print(f'⚠️ Error updating field for unique_id={launch_object.unique_id}! Error: {error}')
 
@@ -157,16 +156,17 @@ def create_stats_db(db_path):
 	cursor = conn.cursor()
 
 	try:
-		# chat ID - keyword - UNIX timestamp - enabled true/false
+		# create table
 		cursor.execute('''CREATE TABLE stats 
 			(notifications INT, api_requests INT, db_updates INT, commands INT,
-			data INT, db_calls INT, last_api_update INT, PRIMARY KEY (notifications, api_requests))''')
+			data INT, last_api_update INT, PRIMARY KEY (notifications, api_requests))''')
 
+		# insert first (and only) row of data
 		cursor.execute('''INSERT INTO stats 
-			(notifications, api_requests, db_updates, commands, data, db_calls, last_api_update)
-			VALUES (0, 0, 0, 0, 0, 0, 0)''')
-	except sqlite3.OperationalError:
-		pass
+			(notifications, api_requests, db_updates, commands, data, last_api_update)
+			VALUES (0, 0, 0, 0, 0, 0)''')
+	except sqlite3.OperationalError as sqlite_error:
+		logging.warn('⚠️ Error creating stats database: %s', sqlite_error)
 
 	conn.commit()
 	conn.close()
