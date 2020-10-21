@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import logging
 
 # creates a new notifications database, if one doesn't exist
 def create_notify_database(db_path):
@@ -107,11 +108,14 @@ def update_launch_db(launch_set, db_path):
 			os.makedirs(db_path)
 
 		success = create_launch_db(db_path=db_path)
-		print(f"{'✅ Created launch db' if success else '⚠️ Failed to create launch db'}")
+		logging.info(f"{'✅ Created launch db' if success else '⚠️ Failed to create launch db'}")
 
 	# open connection
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	cursor = conn.cursor()
+
+	# make sure the table exists
+	#cursor.execute('SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}';')
 
 	# loop over launch objcets in launch_set
 	for launch_object in launch_set:
@@ -140,7 +144,7 @@ def update_launch_db(launch_set, db_path):
 
 			try:
 				cursor.execute(f"UPDATE launches SET {set_str} WHERE unique_id = ?", tuple(update_values) + (launch_object.unique_id,))
-				print(f'Updated {launch_object.unique_id}!')
+				#print(f'Updated {launch_object.unique_id}!')
 			except Exception as error:
 				print(f'⚠️ Error updating field for unique_id={launch_object.unique_id}! Error: {error}')
 
