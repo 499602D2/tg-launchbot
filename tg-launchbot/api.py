@@ -21,7 +21,7 @@ class LaunchLibrary2Launch:
 	A class for simplifying the handling of launch objects. Contains all the properties needed
 	by the bot.
 	'''
-	def __init__(self, launch_json):
+	def __init__(self, launch_json: dict):
 		# launch unique information
 		self.name = launch_json['name']
 		self.unique_id = launch_json['id']
@@ -193,7 +193,7 @@ def construct_params(PARAMS: dict) -> str:
 def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler, bot_username: str):
 	# params
 	VERSION = '1.6-alpha'
-	DEBUG_API = True
+	DEBUG_API = False
 
 	# debug print
 	logging.debug('➡️ Running API call...')
@@ -300,7 +300,7 @@ def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: 
 		logging.debug('🔄 Next API update scheduled for %s', next_update_dt)
 		return unix_timestamp
 
-	def require_immediate_update(cursor) -> tuple:
+	def require_immediate_update(cursor: sqlite3.Cursor) -> tuple:
 		'''Summary
 		Load previous time on startup to figure out if we need to update right now
 		'''
