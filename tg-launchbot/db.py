@@ -4,7 +4,6 @@ import sqlite3
 import logging
 import datetime
 
-import api
 from utils import time_delta_to_legible_eta, reconstruct_message_for_markdown
 
 # creates a new notifications database, if one doesn't exist
@@ -99,7 +98,7 @@ def create_launch_db(db_path: str, cursor: sqlite3.Cursor):
 
 # update launch database
 def update_launch_db(launch_set: set, db_path: str, bot_username: str):
-	def verify_no_net_slip(launch_object: api.LaunchLibrary2Launch, cursor: sqlite3.Cursor) -> bool:
+	def verify_no_net_slip(launch_object, cursor: sqlite3.Cursor) -> bool:
 		''' Summary
 		Verify the NET of the launch hasn't slipped forward: if it has,
 		verify that we haven't sent a notification: if we have, send a postpone
