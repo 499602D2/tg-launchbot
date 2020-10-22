@@ -262,7 +262,7 @@ def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler, bot_username: st
 		stats_update={
 			'api_requests': 1, 'db_updates': 1,
 			'data': rec_data, 'last_api_update': api_updated},
-		db_path='data'
+		db_path=data_dir
 	)
 
 	# schedule next API call
@@ -271,7 +271,7 @@ def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler, bot_username: st
 
 	# schedule notifications
 	notification_send_scheduler(
-		db_path=data_dir, next_api_update_time=next_api_update, scheduler=scheduler)
+		db_path=data_dir, next_api_update_time=next_api_update, scheduler=scheduler, bot_username=bot_username)
 
 
 def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: bool, bot_username: str) -> int:
@@ -335,6 +335,7 @@ def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: 
 
 	# pull all launches with a net greater than or equal to current time
 	select_fields = 'net_unix, notify_24h, notify_12h, notify_60min, notify_5min'
+
 	try:
 		cursor.execute(f'SELECT {select_fields} FROM launches WHERE net_unix >= ?', (int(time.time()),))
 		query_return = cursor.fetchall()
@@ -348,6 +349,7 @@ def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: 
 		os.rename(
 			os.path.join(db_path, 'launchbot-data.db'),
 			os.path.join(db_path, f'launchbot-data-sched-error-{int(time.time())}.db'))
+
 		return schedule_call(int(time.time()) + 5)
 
 	# sort in-place by NET
@@ -391,7 +393,11 @@ def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: 
 
 if __name__ == '__main__':
 	BOT_USERNAME = 'rocketrybot'
-	DATA_DIR = 'data'
+	DATA_DIR = 'launchbot'
+
+	# verify data_dir exists
+	if not os.path.isdir(DATA_DIR):
+		os.makedirs(DATA_DIR)
 
 	# init log
 	logging.basicConfig(level=logging.DEBUG,format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
