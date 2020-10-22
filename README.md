@@ -1,29 +1,31 @@
 # LaunchBot – a rocket launch information and notifications bot for Telegram 🚀
-LaunchBot keeps you up to date with what's happening in space launches. Reachable as [@rocketrybot](https://t.me/rocketrybot) on Telegram since 2019.
+LaunchBot keeps you up to date with what's being going up, around the clock, since 2019. Reachable as [@rocketrybot](https://t.me/rocketrybot) on Telegram.
 
-LaunchBot uses the LaunchLibrary2 API to fetch launch information on intelligently scheduled intervals due to a quite strict API call-count limit. The bot provides multiple forms of information: notifications, information about upcoming flights, and a simple flight schedule showing the upcoming flights at a glance. 
+LaunchBot uses the LaunchLibrary2 API to fetch launch information on intelligently scheduled intervals (due to a quite strict API call-count limit introduced with LL2). The bot provides multiple forms of information: notifications, information about upcoming flights, and a simple flight schedule showing the upcoming flights at a glance. 
 
 ✨ Other features include...
-- user-configurable notifications on a per-provider basis
+- user-configurable notifications on a per-provider and time basis
 - mutable launches
-- notifications of launch postpones
+- notifications of launches being postponed
+- a quick, easily digestible format
+- direct link to launch webcast
 - automatically cleared notification messages
 - neat statistics about the bot
 - direct feedback to the developer
 - smart spam management
 - simple information refresh with Telegram's message buttons,
 
-and many other things!
+and tons of other things!
 
-**Basic instructions**
+**📃 Basic instructions**
 
 Install the Python3 dependencies with pip, using the requirements.txt file found in the repository: `python3 -m pip install -R requirements.txt`.
 
 After the dependencies are installed, you can run the bot with `python3 launchbot.py -start`. For debugging purposes and running in the background with nohup, add `-debug`: this prevents the flooding of the `nohup.out` file.
 
-**Basic data structures**
+**🖥 Data structures**
 
-The bot creates supporting files under `../launchbot/`:
+The bot creates the following supporting files under `../launchbot/`:
 
 SQLite: `launchbot-data.db`: houses all data the bot needs to operate, including launch caching, notification storing, statistics, etc.
 
@@ -31,11 +33,13 @@ JSON: `bot-settings.json`: a file used for storing the Telegram bot API key, alo
 
 You can specify your account's Telegram user ID in bot_settings.json in the form `owner: your_user_id`. This disabled the logging of commands sent by the owner, and sends a notification of new feedback.
 
-**Privacy**
+**🔒 Privacy**
 
 The bot stores every interaction (i.e. command) sent to it if logging is enabled, alongside with a truncated, unsalted SHA-1 hash of the user ID. No text messages are stored, aside from text sent as a reply to a feedback request message. The bot's privacy settings forbid the bot from reading regular text, as in text messages which have not tagged the bot (@botusername) or are not a reply to a message sent by the bot (these are not logged, unless they're a reply to a feedback message.)
 
 Only information stored by the bot is the chat ID, which can also be the user ID of a user in the case of a private chat. This is the only user information stored, which is used to deliver notifications. If no notifications are enabled, no information is stored, aside from an in-memory chat ID for managing spam, which is automatically cleared when the program quits and is thus never stored.
+
+Please note, that the above only applies on a per-bot basis. The creator of the bot chooses whether to configure the bot to be able to read all text messages, not just ones directed at the bot. Telegram bots are, by nature, extremely privacy invasive: don't add unknown bots to group chats, unless it's hosted by you or someone you trust.
 
 ## **Bot roadmap**
 
@@ -93,19 +97,19 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ perform API requests intelligently, as the monthly request quota is enough for only one request every 8 minutes
 	
-		- don't update API on startup, unless it has been sufficiently long since last check: store requests in memory + storage
+		- ✅ don't update API on startup, unless it has been sufficiently long since last check: store requests in memory + storage
 		
 		- ✅ use schedule to schedule requests: just before a launch is due, plus for when notifications are supposed to be sent
 		
 		- ✅ a raw update schedule of once every 15 - 60 minutes
 		
-	- check for launch notifications intelligently
+	- ✅ check for launch notifications intelligently
 		
-		- on API update, check for updated launch times (notification send times) -> clear schedule queue -> schedule next checks for when a notification is supposed to be sent
+		- ✅ on API update, check for updated launch times (notification send times) -> clear schedule queue -> schedule next checks for when a notification is supposed to be sent
 		
 	- ✅ store LL2 and SpX API data in the same database
 	
-	**Other changes**
+	Other, less major changes
 
 	- add "show changelog" button under /help
 	
@@ -117,9 +121,13 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 	
 	- ✅ index launches by the new unique launch ID instead of launch name
 
+	- fully integrate new API and notifications systems with LaunchBot 1.5
+
 	- improve json-parsing performance by using pooling
 	
 	- allow users to disable postpone notifications on a per-launch basis
+
+	- open-source LaunchBot
 	
 ### 1.7 more backend changes
 
