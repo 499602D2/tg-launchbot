@@ -896,8 +896,8 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 
 	# TODO add orbits for TMI and TLI, once these pop up for the first time
 	orbit_map = {
-		'Sub Orbital': 'Sub-orbital', 'VLEO': 'Very low-Earth', 'LEO': 'Low-Earth',
-		'SSO': 'Sun-synchronous orbit', 'MEO': 'Medium-Earth', 'GEO': 'Geostationary (direct)',
+		'Sub Orbital': 'Sub-orbital', 'VLEO': 'Very low-Earth orbit', 'LEO': 'Low-Earth orbit',
+		'SSO': 'Sun-synchronous orbit', 'MEO': 'Medium-Earth orbit', 'GEO': 'Geostationary (direct)',
 		'GTO': 'Geostationary (transfer)', 'GSO': 'Geosynchronous orbit', 'LO': 'Lunar orbit'
 	}
 
@@ -906,6 +906,8 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 		orbit_str = orbit_map[launch['mission_orbit_abbrev']]
 	else:
 		orbit_str = launch['mission_orbit'] if launch['mission_orbit_abbrev'] is not None else 'Unknown'
+		if 'Starlink' in launch_name:
+			orbit_str = 'Very-low Earth orbit'
 
 	# launch probability to weather emoji
 	probability_map = {80: '☀️', 60: '🌤', 40: '🌥', 20: '☁️', 00: '⛈'}
@@ -927,7 +929,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 				reuse_count = {
 					1: 'first', 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth',
 					6: 'sixth', 7: 'seventh', 8: 'eighth', 9: 'ninth', 10: 'tenth'}[reuse_count]
-				reuse_str = f'({reuse_count} flight ♻️)'
+				reuse_str = f'{core_str} ({reuse_count} flight ♻️)'
 			else:
 				try:
 					if reuse_count in {11, 12, 13}:
@@ -937,9 +939,9 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 				except:
 					suffix = 'th'
 
-				reuse_str = f'({reuse_count}{suffix} flight ♻️)'
+				reuse_str = f'{core_str} ({reuse_count}{suffix} flight ♻️)'
 		else:
-			reuse_str = '(first flight ✨)'
+			reuse_str = f'{core_str} (first flight ✨)'
 
 		landing_loc_map = {
 			'OCISLY': 'Atlantic Ocean', 'JRTI': 'Atlantic Ocean', 'ASLOG': 'Pacific Ocean',
@@ -959,6 +961,8 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 		'''
 	else:
 		recovery_str = None
+
+	# TODO add "live_str" with link to webcast if 1 hour or 5 min
 
 	# map notif_class to a legible string
 	t_minus = {
@@ -1001,7 +1005,7 @@ def notification_pseudo_handler(db_path: str, launch_id_set: set, bot_username: 
 	# convert rows into dictionaries for super easy parsing
 	query_return = [dict(row) for row in cursor.fetchall()]
 
-	# loop over the launches we got, construct a dumb and simple message for testing
+	# loop over the launches we got
 	for launch in query_return:
 		# figure out the notification we need to send
 		net = launch['net_unix']
@@ -1013,12 +1017,12 @@ def notification_pseudo_handler(db_path: str, launch_id_set: set, bot_username: 
 
 		toggle_classes = []
 		for notification, send_time in notification_times.items():
-			if time.time() <= send_time + 60:
+			if send_time + 60 <= time.time():
 				toggle_classes.append(notification)
 
 		# toggle all notifications to 1 in launch db
 		for notification_class in toggle_classes:
-			cursor.execute(f"UPDATE launches SET {notification_class} = 1")
+			cursor.execute(f"UPDATE launches SET {notification_class} = 1 WHERE unique_id = ?", (launch.unique_id,))
 
 		# log, commit changes
 		logging.info(f'🚩 Toggled notification flags to 1 for {", ".join(toggle_classes)}')
@@ -1154,7 +1158,7 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 			# verify we're not already past send_time
 			if send_time < time.time():
 				send_time_offset = int(time.time() - send_time)
-				logging.warn(f'Missed send_time by {send_time_offset} sec! Sending in 5 sec.')
+				logging.warn(f'⚠️ Missed send_time by {send_time_offset} sec! Sending in 3 seconds.')
 				send_time = time.time() + 3
 
 			# convert to a datetime object, add 2 sec for margin
