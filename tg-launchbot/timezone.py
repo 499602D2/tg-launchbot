@@ -1,7 +1,7 @@
 import sqlite3
 import pytz
 
-def load_locale_string(chat):
+def load_locale_string(chat: str):
 	# connect to database
 	conn = sqlite3.connect(os.path.join('data', 'launchbot-data.db'))
 	c = conn.cursor()
@@ -22,7 +22,7 @@ def load_locale_string(chat):
 
 
 # remove time zone information for a chat
-def remove_time_zone_information(chat):
+def remove_time_zone_information(chat: str):
 	# connect to database
 	conn = sqlite3.connect(os.path.join('data', 'launchbot-data.db'))
 	c = conn.cursor()
@@ -39,7 +39,7 @@ def remove_time_zone_information(chat):
 	conn.commit()
 	conn.close()
 
-def update_time_zone_string(chat, time_zone):
+def update_time_zone_string(chat: str, time_zone: str):
 	# connect to database
 	conn = sqlite3.connect(os.path.join('data', 'launchbot-data.db'))
 	c = conn.cursor()
@@ -58,7 +58,7 @@ def update_time_zone_string(chat, time_zone):
 		logging.info(f'🌎 User successfully set their time zone locale to {time_zone}')
 
 
-def update_time_zone_value(chat, offset):
+def update_time_zone_value(chat: str, offset: str):
 	# connect to database
 	conn = sqlite3.connect(os.path.join('data', 'launchbot-data.db'))
 	c = conn.cursor()
@@ -90,7 +90,7 @@ def update_time_zone_value(chat, offset):
 	conn.close()
 
 
-def load_time_zone_status(chat, readable):
+def load_time_zone_status(chat: str, readable: bool):
 	conn = sqlite3.connect(os.path.join('data', 'launchbot-data.db'))
 	c = conn.cursor()
 
