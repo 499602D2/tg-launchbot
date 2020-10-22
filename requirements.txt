@@ -1,6 +1,6 @@
 telepot
 cursor
-schedule
 ujson
 uptime
 timezonefinder
+apscheduler
