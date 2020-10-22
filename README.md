@@ -23,7 +23,7 @@ After the dependencies are installed, you can run the bot with `python3 launchbo
 
 **Basic data structures**
 
-The bot creates multiple files, located under `../data`:
+The bot creates supporting files under `../launchbot/`:
 
 SQLite: `launchbot-data.db`: houses all data the bot needs to operate, including launch caching, notification storing, statistics, etc.
 
