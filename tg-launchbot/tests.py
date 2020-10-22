@@ -36,6 +36,7 @@ class TestLaunchBotFunctions(unittest.TestCase):
 		conn.row_factory = sqlite3.Row
 		cursor = conn.cursor()
 
+		# three SpX launches
 		test_id_tuple = (
 			'47c91a03-2e98-42c9-8751-d8fb36c89c99',
 			'0ede12be-ac6d-4571-9d0c-b2a85b5cf280',
@@ -43,13 +44,19 @@ class TestLaunchBotFunctions(unittest.TestCase):
 
 		test_id = test_id_tuple[0]
 
-		cursor.execute('SELECT * FROM launches WHERE unique_id = ?', (test_id,))
-		launch = [dict(row) for row in cursor.fetchall()][0]
+		# select all IDs in db
+		cursor.execute('SELECT unique_id from launches')
+		query_return = cursor.fetchall()
 
-		msg = create_notification_message(
-			launch=launch, notif_class='notify_24h', bot_username='rocketrybot')
+		# run for all launches
+		for row in query_return:
+			cursor.execute('SELECT * FROM launches WHERE unique_id = ?', (row[0],))
+			launch = [dict(row) for row in cursor.fetchall()][0]
 
-		print(msg)
+			msg = create_notification_message(
+				launch=launch, notif_class='notify_5min', bot_username='rocketrybot')
+
+			print('\n\n\n', msg)
 
 
 if __name__ == '__main__':
