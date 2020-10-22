@@ -1,6 +1,10 @@
 import os
+import time
 import sqlite3
 import logging
+import datetime
+
+from utils import time_delta_to_legible_eta, reconstruct_message_for_markdown
 
 # creates a new notifications database, if one doesn't exist
 def create_notify_database(db_path):
@@ -79,7 +83,6 @@ def create_launch_db(db_path, cursor):
 			orbital_nth_launch_year INT,
 
 			notify_24h BOOLEAN, notify_12h BOOLEAN, notify_60min BOOLEAN, notify_5min BOOLEAN,
-
 			PRIMARY KEY (unique_id))
 		''')
 
@@ -93,7 +96,117 @@ def create_launch_db(db_path, cursor):
 
 
 # update launch database
-def update_launch_db(launch_set, db_path):
+def update_launch_db(launch_set: set, db_path: str, bot_username: str):
+	def verify_no_net_slip(launch_object, cursor) -> bool:
+		'''Summary
+		Verify the NET of the launch hasn't slipped forward: if it has,
+		verify that we haven't sent a notification: if we have, send a postpone
+		notification to users.
+		'''
+
+		# load launch from db
+		cursor.execute('SELECT * FROM launches WHERE unique_id = ?', (launch_object.unique_id,))
+		query_return = [dict(row) for row in cursor.fetchall()]
+		launch_db = query_return[0]
+
+		# compare NETs: if they match, return
+		if launch_db['net_unix'] == launch_object.net_unix:
+			return False
+
+		# NETs don't match: calculate slip (diff), verify we haven't sent any notifications
+		net_diff = launch_object.net_unix - launch_db['net_unix']
+		notification_states = {
+			'notify_24h': launch_db['notify_24h'], 'notify_12h': launch_db['notify_12h'],
+			'notify_60min': launch_db['notify_60min'], 'notify_5min': launch_db['notify_5min']}
+
+		# map notification "presend" time to hour multiples (i.e. 3600 * X)
+		notif_pre_time_map = {
+			'notify_24h': 24, 'notify_12h': 12, 'notify_60min': 1, 'notify_5min': 5/60}
+
+		print(f'''
+			notification_states: {notification_states},
+			net_diff: {net_diff},
+			launch_object.launched: {launch_object.launched}
+			''')
+
+		# if we have at least one sent notification, the net has slipped >5 min, and we haven't launched
+		if 1 in notification_states.values() and net_diff >= 5*60 and launch_object.launched != True:
+			# iterate over the notification states loaded from the database
+			for key, status in notification_states.items():
+				# reset if net_diff > the notification send period (we're outside the window again)
+				if status == 1 and net_diff > 3600 * notif_pre_time_map[key]:
+					notification_states[key] = 0
+
+			# generate the postpone string
+			postpone_str = time_delta_to_legible_eta(time_delta=int(net_diff))
+
+			# we've got the pretty eta: log
+			logging.info(f'⏱ ETA string generated for net_diff={net_diff}: {postpone_str}')
+
+			# generate launch time (UTC) string TODO add support for user time zone
+			launch_dt = datetime.datetime.utcfromtimestamp(launch_object.net_unix)
+			launch_time = f'{launch_dt.hour}:{"0" if launch_dt.minute < 10 else ""}{launch_dt.minute}'
+
+			# lift-off date string in a pretty format
+			ymd_split = f'{launch_dt.year}-{launch_dt.month}-{launch_dt.day}'.split('-')
+			try:
+				suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(ymd_split[2])[-1])]
+			except:
+				suffix = 'th'
+
+			# map integer month number to string-format
+			month_map = {
+				1: 'January', 2: 'February', 3: 'March', 4: 'April',
+				5: 'May', 6: 'June', 7: 'July', 8: 'August',
+				9: 'September', 10: 'October', 11: 'November', 12: 'December'}
+
+			# construct launch date string
+			date_str = f'{month_map[int(ymd_split[1])]} {ymd_split[2]}{suffix}'
+
+			# calculate days until next launch attempt
+			eta_sec = launch_object.net_unix - time.time()
+			next_attempt_eta_str = time_delta_to_legible_eta(time_delta=int(eta_sec))
+
+			# launch name: handle possible IndexError as well, even while this should never happen
+			try:
+				launch_name = launch_object.name.split('|')[1]
+			except IndexError:
+				launch_name = launch_object.name
+
+			# construct the postpone message
+			postpone_message = f'''
+			📢 *{launch_name}* has been postponed by {postpone_str}.
+			*{launch_object.lsp_name}* is now targeting lift-off on *{date_str}* at *{launch_time} UTC*.\n\n
+			⏱ {next_attempt_eta_str} until next launch attempt.\n\n
+			'''
+
+			# reconstruct
+			postpone_message = reconstruct_message_for_markdown(postpone_message)
+
+			# append the manually escaped footer
+			postpone_message += f'''
+			ℹ️ _You will be re\-notified of this launch\. For detailed info\, use \/next\@{bot_username}\.
+			To disable\, mute this launch with the button below\._
+			'''
+
+			# TODO actually send postpone notification
+			logging.info(f'🎉 postpone_str generated: {postpone_message}')
+
+			# generate insert statement for db update
+			insert_statement = '=?,'.join(notification_states.keys()) + '=?'
+
+			# generate tuple for values: values for states + unique ID
+			values_tuple = tuple(notification_states.values()) + (launch_object.unique_id,)
+
+			# store updated notification states
+			cursor.execute(f'UPDATE launches SET {insert_statement} WHERE unique_id = ?', values_tuple)
+			
+			# log
+			logging.info(f'🚩 Notification states reset for launch_id={launch_object.unique_id}!')
+			logging.info(f'ℹ️ Postponed by {postpone_str}. New states: {notification_states}')
+
+			return True
+
 	# check if db exists
 	if not os.path.isfile(os.path.join(db_path, 'launchbot-data.db')):
 		if not os.path.isdir(db_path):
@@ -104,6 +217,7 @@ def update_launch_db(launch_set, db_path):
 
 	# open connection
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+	conn.row_factory = sqlite3.Row
 	cursor = conn.cursor()
 
 	# verify table exists
@@ -114,7 +228,7 @@ def update_launch_db(launch_set, db_path):
 
 	# loop over launch objcets in launch_set
 	for launch_object in launch_set:
-		try:
+		try: # try inserting as new
 			# set fields and values to be inserted according to available keys/values
 			insert_fields = ', '.join(vars(launch_object).keys()) + ', notify_24h, notify_12h, notify_60min, notify_5min'
 			field_values = tuple(vars(launch_object).values()) + (False, False, False, False)
@@ -126,7 +240,7 @@ def update_launch_db(launch_set, db_path):
 			# execute SQL
 			cursor.execute(f'INSERT INTO launches ({insert_fields}) VALUES ({values_string})', field_values)
 
-		except Exception as error: 
+		except Exception as error: # update, as the launch already exists
 			# if insert failed, update existing data: everything but unique ID and notification fields
 			obj_dict = vars(launch_object)
 
@@ -136,6 +250,9 @@ def update_launch_db(launch_set, db_path):
 
 			# generate the string for the SET command
 			set_str = ' = ?, '.join(update_fields) + ' = ?'
+
+			# verify launch hasn't been postponed
+			net_slipped = verify_no_net_slip(launch_object, cursor)
 
 			try:
 				cursor.execute(f"UPDATE launches SET {set_str} WHERE unique_id = ?", tuple(update_values) + (launch_object.unique_id,))
