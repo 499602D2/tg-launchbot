@@ -40,6 +40,9 @@ def shorten_monospaced_text(text: str) -> str:
 
 
 def map_country_code_to_flag(country_code: str) -> str:
+	''' Summary
+	Maps a country code to a corresponding emoji flag: truly modern.
+	'''
 	flag_map = {
 		'FRA': '🇪🇺', 'FR': '🇪🇺', 'USA': '🇺🇸', 'EU': '🇪🇺',
 		'RUS': '🇷🇺', 'CHN': '🇨🇳', 'IND': '🇮🇳', 'JPN': '🇯🇵',
