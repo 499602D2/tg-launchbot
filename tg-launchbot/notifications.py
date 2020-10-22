@@ -892,7 +892,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	location = f'{launch["pad_name"]}, {launch_site} {location_flag}'
 
 	# add mission information: type, orbit
-	mission_type = launch['mission_type'] if launch['mission_type'] is not None else 'Unknown'
+	mission_type = launch['mission_type'].capitalize() if launch['mission_type'] is not None else 'Unknown purpose'
 
 	# TODO add orbits for TMI and TLI, once these pop up for the first time
 	orbit_map = {
@@ -901,13 +901,17 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 		'GTO': 'Geostationary (transfer)', 'GSO': 'Geosynchronous orbit', 'LO': 'Lunar orbit'
 	}
 
-	orbit_info = '🌒' if 'LO' in launch['mission_orbit_abbrev'] else '🌍'
-	if launch['mission_orbit_abbrev'] in orbit_map.keys():
-		orbit_str = orbit_map[launch['mission_orbit_abbrev']]
-	else:
-		orbit_str = launch['mission_orbit'] if launch['mission_orbit_abbrev'] is not None else 'Unknown'
-		if 'Starlink' in launch_name:
-			orbit_str = 'Very-low Earth orbit'
+	try:
+		orbit_info = '🌒' if 'LO' in launch['mission_orbit_abbrev'] else '🌍'
+		if launch['mission_orbit_abbrev'] in orbit_map.keys():
+			orbit_str = orbit_map[launch['mission_orbit_abbrev']]
+		else:
+			orbit_str = launch['mission_orbit'] if launch['mission_orbit_abbrev'] is not None else 'Unknown'
+			if 'Starlink' in launch_name:
+				orbit_str = 'Very-low Earth orbit'
+	except:
+		orbit_info = '🌍'
+		orbit_str = 'Unknown orbit'
 
 	# launch probability to weather emoji
 	probability_map = {80: '☀️', 60: '🌤', 40: '🌥', 20: '☁️', 00: '⛈'}
