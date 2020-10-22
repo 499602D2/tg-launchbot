@@ -4,10 +4,11 @@ import sqlite3
 import logging
 import datetime
 
+import api
 from utils import time_delta_to_legible_eta, reconstruct_message_for_markdown
 
 # creates a new notifications database, if one doesn't exist
-def create_notify_database(db_path):
+def create_notify_database(db_path: str):
 	if not os.path.isdir(db_path):
 		os.makedirs(db_path)
 
@@ -27,7 +28,7 @@ def create_notify_database(db_path):
 
 
 # store sent message identifiers
-def store_notification_identifiers(launch_id, msg_identifiers):
+def store_notification_identifiers(launch_id: str, msg_identifiers: str):
 	launch_dir = 'data'
 	conn = sqlite3.connect(os.path.join(launch_dir, 'launchbot-data.db'))
 	cursor = conn.cursor()
@@ -50,10 +51,11 @@ def store_notification_identifiers(launch_id, msg_identifiers):
 
 
 # create launch database
-def create_launch_db(db_path, cursor):
+def create_launch_db(db_path: str, cursor: sqlite3.Cursor):
 	'''Summary
 	Creates the launch database. Only ran when the table doesn't exist.
 	'''
+
 	try:
 		cursor.execute('''CREATE TABLE launches
 			(name TEXT, unique_id TEXT, ll_id INT, net_unix INT, status_id INT, status_state TEXT,
@@ -97,8 +99,8 @@ def create_launch_db(db_path, cursor):
 
 # update launch database
 def update_launch_db(launch_set: set, db_path: str, bot_username: str):
-	def verify_no_net_slip(launch_object, cursor) -> bool:
-		'''Summary
+	def verify_no_net_slip(launch_object: api.LaunchLibrary2Launch, cursor: sqlite3.Cursor) -> bool:
+		''' Summary
 		Verify the NET of the launch hasn't slipped forward: if it has,
 		verify that we haven't sent a notification: if we have, send a postpone
 		notification to users.
@@ -122,12 +124,6 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str):
 		# map notification "presend" time to hour multiples (i.e. 3600 * X)
 		notif_pre_time_map = {
 			'notify_24h': 24, 'notify_12h': 12, 'notify_60min': 1, 'notify_5min': 5/60}
-
-		print(f'''
-			notification_states: {notification_states},
-			net_diff: {net_diff},
-			launch_object.launched: {launch_object.launched}
-			''')
 
 		# if we have at least one sent notification, the net has slipped >5 min, and we haven't launched
 		if 1 in notification_states.values() and net_diff >= 5*60 and launch_object.launched != True:
@@ -263,8 +259,11 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str):
 	conn.close()
 
 
-# create a statistics database
-def create_stats_db(db_path):
+def create_stats_db(db_path: str):
+	''' Summary
+	Creates a stats table in the launchbot-data.db database.
+	Never called directly: only by update_stats_db.
+	'''
 	if not os.path.isdir(db_path):
 		os.mkdir(db_path)
 
@@ -290,7 +289,7 @@ def create_stats_db(db_path):
 
 
 # updates our stats with the given input
-def update_stats_db(stats_update, db_path):
+def update_stats_db(stats_update: dict, db_path: str):
 	# check if the db exists
 	if not os.path.isfile(os.path.join(db_path, 'launchbot-data.db')):
 		create_stats_db(db_path=db_path)
