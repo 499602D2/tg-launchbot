@@ -293,7 +293,7 @@ def create_stats_db(db_path):
 def update_stats_db(stats_update, db_path):
 	# check if the db exists
 	if not os.path.isfile(os.path.join(db_path, 'launchbot-data.db')):
-		create_stats_database(db_path='data')
+		create_stats_db(db_path=db_path)
 
 	# Establish connection
 	stats_conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
