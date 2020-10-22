@@ -190,7 +190,10 @@ def update_stats_db(stats_update, db_path):
 
 	# Update stats with the provided data
 	for stat, val in stats_update.items():
-		stats_cursor.execute(f"UPDATE stats SET {stat} = {stat} + {val}")
+		if stat == 'last_api_update':
+			stats_cursor.execute(f"UPDATE stats SET {stat} = {val}")
+		else:
+			stats_cursor.execute(f"UPDATE stats SET {stat} = {stat} + {val}")
 
 	stats_conn.commit()
 	stats_conn.close()
