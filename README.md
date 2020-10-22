@@ -1,24 +1,35 @@
 # LaunchBot – a rocket launch information and notifications bot for Telegram 🚀
-A rocket launch info & notifications bot for Telegram. Reachable at [@rocketrybot](https://t.me/rocketrybot) on Telegram.
+A rocket launch info & notifications bot for Telegram. Reachable at [@rocketrybot](https://t.me/rocketrybot) on Telegram, since 2019.
 
-APIs used: Launch Library for flights, r/SpaceX API for extra data (orbits, recovery, booster)
+LaunchBot uses the LaunchLibrary2 API to fetch launch information on intelligently scheduled intervals due to a quite strict API call-count limit. The bot provides multiple forms of information: notifications, information about upcoming flights, and a simple flight schedule showing the upcoming flights at a glance. 
+
+Other features include... 
+- user-configurable notifications on a per-provider basis
+- mutable launches
+- notifications of launch postpones
+- automatically cleared notification messages
+- neat statistics about the bot
+- direct feedback to the developer
+- smart spam management
+- simple information refresh with Telegram's message buttons,
+
+and many other things!
 
 **Basic instructions**
 
-Install the Python3 dependencies with PIP, using the requirements.txt file found in the repository: `python3 -m pip install -R requirements.txt`
+Install the Python3 dependencies with pip, using the requirements.txt file found in the repository: `python3 -m pip install -R requirements.txt`.
 
-After the dependencies are installed, you can run the bot with `python3 launchbot.py -start`. If you need/want logging, add the `-log` flag. For debugging purposes and running with nohup, add `-debug`.
-
+After the dependencies are installed, you can run the bot with `python3 launchbot.py -start`. For debugging purposes and running in the background with nohup, add `-debug`: this prevents the flooding of the `nohup.out` file.
 
 **Basic data structures**
 
-The bot creates multiple files, located under `/data`:
+The bot creates multiple files, located under `../data`:
 
-SQLite: `statistics.db`, `launches.db`, `spx-launches.db`, `notifications.db`, `sent-notifications.db`, `preferences.db`
+SQLite: `launchbot-data.db`: houses all data the bot needs to operate, including launch caching, notification storing, statistics, etc.
 
-JSON: `bot_settings.json`
+JSON: `bot-settings.json`: a file used for storing the Telegram bot API key, alongside with some other configuration information.
 
-You can specify your Telegram user ID in bot_settings.json in the form `owner: your_user_id`. This disabled the logging of commands sent by the owner, as well as sends a notification of new feedback.
+You can specify your account's Telegram user ID in bot_settings.json in the form `owner: your_user_id`. This disabled the logging of commands sent by the owner, and sends a notification of new feedback.
 
 **Privacy**
 
