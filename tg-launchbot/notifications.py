@@ -3,6 +3,9 @@ import time
 import datetime
 import sqlite3
 import logging
+import inspect
+
+from utils import shorten_monospaced_text, map_country_code_to_flag
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -495,14 +498,11 @@ def remove_previous_notification(launch_id, keyword):
 
 
 # gets a request to send a notification about launch X from launch_update_check()
-def notification_handler(db_path: str, launch_unique_ids: set()):
+def notification_handler(db_path: str, launch_unique_id: str):
 	# handle notification sending; done in a separate function so we can retry more easily and handle exceptions
 	def send_notification(chat, notification, launch_id, keywords, vid_link, notif_class):
 		# send early notifications silently
-		if notif_class not in {'1h', '5m'}:
-			silent = True
-		else:
-			silent = False
+		silent = True if notif_class not in {'1h', '5m'} else False
 
 		# parse the message text for MarkdownV2
 		notification = reconstruct_message_for_markdown(notification)
@@ -519,19 +519,16 @@ def notification_handler(db_path: str, launch_unique_ids: set()):
 			# /mute/$provider/$launch_id/(0/1) | 1=muted (true), 0=not muted
 			keyboard = InlineKeyboardMarkup(
 				inline_keyboard = [[
-						InlineKeyboardButton(text=mute_key, callback_data=f'mute/{keywords}/{launch_id}/{mute_press}')
-				]])
+						InlineKeyboardButton(
+							text=mute_key, callback_data=f'mute/{keywords}/{launch_id}/{mute_press}')]])
 
-			if silent:
-				sent_msg = bot.sendMessage(chat, notification, parse_mode='MarkdownV2',
-										   reply_markup=keyboard, disable_notification=True)
-			else:
-				sent_msg = bot.sendMessage(chat, notification, parse_mode='MarkdownV2',
-										   reply_markup=keyboard, disable_notification=False)
+			sent_msg = bot.sendMessage(
+				chat, notification, parse_mode='MarkdownV2',
+				reply_markup=keyboard, disable_notification=silent)
 
 			# sent message is stored in sent_msg; store in db so we can edit messages
-			msg_identifier = f"{sent_msg['chat']['id']}:{sent_msg['message_id']}"
-			msg_identifiers.append(f'{msg_identifier}')
+			msg_identifier = f'{sent_msg["chat"]["id"]}:{sent_msg["message_id"]}'
+			msg_identifiers.append(str(msg_identifier))
 			return True
 		
 		except telepot.exception.BotWasBlockedError:
@@ -715,46 +712,7 @@ def notification_handler(db_path: str, launch_unique_ids: set()):
 		if time_format == 'minutes':
 			info_text += ' Godspeed Behnken & Hurley.'
 
-	# construct the "base" message
-	message_header = f'🚀 *{launch_name}* is launching in *{t_minus} {time_format}*\n'
-	message_header += f'*Launch provider* {lsp_str} {lsp_flag}\n*Vehicle* {vehicle_name}\n*Pad* {pad_name}'
-
-	# if it's a SpaceX launch, append the orbit to the header
-	if lsp_name == 'SpaceX':
-		if spx_orbit_info != '' and spx_orbit_info is not None:
-			orbit_map = {
-			'VLEO': 'Very low-Earth orbit', 'SO': 'Sub-orbital', 'LEO': 'Low-Earth orbit',
-			'SSO': 'Sun-synchronous (SSO)', 'MEO': 'Medium-Earth orbit', 'GEO': 'Geostationary (direct)',
-			'GTO': 'Geostationary (transfer)', 'ISS': 'International Space Station'
-			}
-
-			if spx_orbit_info in orbit_map.keys():
-				spx_orbit_info = ' '.join("`{}`".format(word) for word in orbit_map[spx_orbit_info].split(' '))
-			else:
-				spx_orbit_info = f'`{spx_orbit_info}`'
-
-			if 'ISS' not in spx_orbit_info:
-				message_header += f'\n*Orbit* {spx_orbit_info}'
-
-
-	# launch probability
-	launch_prob = query_return[0][22]
-	if launch_prob != -1 and launch_prob is not None:
-		if launch_prob >= 80:
-			prob_str = f'☀️ *{launch_prob} %* probability of launch'
-		elif launch_prob >= 60:
-			prob_str = f'🌤 *{launch_prob} %* probability of launch'
-		elif launch_prob >= 40:
-			prob_str = f'🌥 *{launch_prob} %* probability of launch'
-		elif launch_prob >= 20:
-			prob_str = f'☁️ *{launch_prob} %* probability of launch'
-		else:
-			prob_str = f'🌪 *{launch_prob} %* probability of launch'
-
-		prob_str += '\n'
-		message_footer = prob_str
-	else:
-		message_footer = ''
+	
 
 	# add the footer
 	message_footer += f'*🕓 The launch is scheduled* for LAUNCHTIMEHERE\n'
@@ -913,7 +871,121 @@ def notification_handler(db_path: str, launch_unique_ids: set()):
 	store_notification_identifiers(launch_id, msg_identifiers)
 
 
-def notification_pseudo_handler(db_path: str, launch_id_set: set()):
+def create_notification_message(launch: dict, notif_class: str, bot_username: str) -> str:
+	'''Summary
+	Generates the notification message body from the provided launch
+	database row.
+	'''
+
+	# shorten long launch service provider names
+	launch_name = launch['name'].split('|')[1]
+	lsp_name = launch['lsp_short'] if len(launch['lsp_name']) > len('Virgin Orbit') else launch['lsp_name']
+	lsp_flag = map_country_code_to_flag(launch['lsp_country_code'])
+
+	# shorten very common pad names
+	if 'LC-' not in launch['pad_name']:
+		launch['pad_name'] = launch['pad_name'].replace('Space Launch Complex ', 'SLC-').replace('Launch Complex ', 'LC-')
+
+	# generate location
+	launch_site = launch['location_name'].split(',')[0].strip()
+	location_flag = map_country_code_to_flag(launch['location_country_code'])
+	location = f'{launch["pad_name"]}, {launch_site} {location_flag}'
+
+	# add mission information: type, orbit
+	mission_type = launch['mission_type'] if launch['mission_type'] is not None else 'Unknown'
+
+	# TODO add orbits for TMI and TLI, once these pop up for the first time
+	orbit_map = {
+		'Sub Orbital': 'Sub-orbital', 'VLEO': 'Very low-Earth', 'LEO': 'Low-Earth',
+		'SSO': 'Sun-synchronous orbit', 'MEO': 'Medium-Earth', 'GEO': 'Geostationary (direct)',
+		'GTO': 'Geostationary (transfer)', 'GSO': 'Geosynchronous orbit', 'LO': 'Lunar orbit'
+	}
+
+	orbit_info = '🌒' if 'LO' in launch['mission_orbit_abbrev'] else '🌍'
+	if launch['mission_orbit_abbrev'] in orbit_map.keys():
+		orbit_str = orbit_map[launch['mission_orbit_abbrev']]
+	else:
+		orbit_str = launch['mission_orbit'] if launch['mission_orbit_abbrev'] is not None else 'Unknown'
+
+	# launch probability to weather emoji
+	probability_map = {80: '☀️', 60: '🌤', 40: '🌥', 20: '☁️', 00: '⛈'}
+	if launch['probability'] not in (-1, None):
+		for prob_range_start, prob_str in probability_map.items():
+			if launch['probability'] >= prob_range_start:
+				probability = f"{prob_str} *{int(launch['probability'])} %* probability of launch"
+	else:
+		probability = None
+
+	# if there's a landing attempt, generate the string for the booster
+	if launch['launcher_landing_attempt']:
+		core_str = launch['launcher_serial_number']
+		core_str = 'Unknown' if core_str is None else core_str
+
+		if launch['launcher_is_flight_proven']:
+			reuse_count = launch['launcher_stage_flight_number']
+			if reuse_count < 10:
+				reuse_count = {
+					1: 'first', 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth',
+					6: 'sixth', 7: 'seventh', 8: 'eighth', 9: 'ninth', 10: 'tenth'}[reuse_count]
+				reuse_str = f'({reuse_count} flight ♻️)'
+			else:
+				try:
+					if reuse_count in {11, 12, 13}:
+						suffix = 'th'
+					else:
+						suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(reuse_count)[-1])]
+				except:
+					suffix = 'th'
+
+				reuse_str = f'({reuse_count}{suffix} flight ♻️)'
+		else:
+			reuse_str = '(first flight ✨)'
+
+		landing_loc_map = {
+			'OCISLY': 'Atlantic Ocean', 'JRTI': 'Atlantic Ocean', 'ASLOG': 'Pacific Ocean',
+			'LZ-1': 'CCAFS RTLS', 'LZ-2': 'CCAFS RTLS', 'LZ-4': 'VAFB RTLS'}
+
+		if launch['launcher_landing_location'] in landing_loc_map.keys():
+			landing_type = landing_loc_map[launch['launcher_landing_location']]
+			landing_str = f"{launch['launcher_landing_location']} ({landing_type})"
+		else:
+			landing_type = launch['landing_type']
+			landing_str = f"{launch['launcher_landing_location']} ({landing_type})"
+
+		recovery_str = f'''
+		*Booster information* 🚀
+		*Core* {shorten_monospaced_text(reuse_str)}
+		*Landing* {shorten_monospaced_text(landing_str)}\n
+		'''
+	else:
+		recovery_str = None
+
+	# map notif_class to a legible string
+	t_minus = {
+		'notify_24h': '24 hours', 'notify_12h': '12 hours',
+		'notify_60min': '60 minutes', 'notify_5min': '5 minutes'}
+
+	# construct the base message
+	message = f'''
+	🚀 *{launch_name}* is launching in *{t_minus[notif_class]}*
+	*Launch provider* {shorten_monospaced_text(lsp_name)} {lsp_flag}
+	*Vehicle* {shorten_monospaced_text(launch["rocket_name"])}
+	*Pad* {shorten_monospaced_text(location)}
+
+	*Mission information* {orbit_info}
+	*Type* {shorten_monospaced_text(mission_type)}
+	*Orbit* {shorten_monospaced_text(orbit_str)}
+
+	{recovery_str if recovery_str is not None else ""}
+	{probability if probability is not None else ""}
+	*🕓 The launch is scheduled* for LAUNCHTIMEHERE
+	*🔕 To disable* use /notify@{bot_username}
+	'''
+
+	return inspect.cleandoc(message)
+
+
+def notification_pseudo_handler(db_path: str, launch_id_set: set, bot_username: str):
 	logging.info('🎉 notification_pseudo_handler ran successfully!')
 	logging.info(f'📨 launch_id_set: {launch_id_set}')
 
@@ -933,6 +1005,8 @@ def notification_pseudo_handler(db_path: str, launch_id_set: set()):
 	for launch in query_return:
 		# figure out the notification we need to send
 		net = launch['net_unix']
+
+		# map notification types to their exact send time
 		notification_times = {
 			'notify_24h': net - 3600*24, 'notify_12h': net - 3600*12,
 			'notify_60min': net - 3600, 'notify_5min': net - 60*5}
@@ -942,9 +1016,6 @@ def notification_pseudo_handler(db_path: str, launch_id_set: set()):
 			if time.time() <= send_time + 60:
 				toggle_classes.append(notification)
 
-		# the notification we'll be sending
-		send_notif = toggle_classes[-1]
-
 		# toggle all notifications to 1 in launch db
 		for notification_class in toggle_classes:
 			cursor.execute(f"UPDATE launches SET {notification_class} = 1")
@@ -953,13 +1024,14 @@ def notification_pseudo_handler(db_path: str, launch_id_set: set()):
 		logging.info(f'🚩 Toggled notification flags to 1 for {", ".join(toggle_classes)}')
 		conn.commit()
 
-		# map send_notif to a legible string
-		t_minus = {
-			'notify_24h': '24 hours', 'notify_12h': '12 hours',
-			'notify_60min': '60 minutes', 'notify_5min': '5 minutes'}
+		# the notification we'll be sending
+		send_notif = toggle_classes[-1]
 
-		message = f'🚀 {launch["name"]} is launching in {t_minus[send_notif]}'
-		logging.info(message)
+		# create the notification message TODO add astronaut/spacecraft info
+		notification_message = create_notification_message(
+			launch=launch, notif_class=send_notif, bot_username=bot_username)
+
+		logging.info(notification_message)
 
 
 def clear_missed_notifications(db_path: str, launch_ids: set()):
@@ -992,7 +1064,7 @@ def clear_missed_notifications(db_path: str, launch_ids: set()):
 				missed_by = int(time.time() - miss_margin - notif_time)
 				missed_notifications.add(notif_type)
 
-				logging.info(f'{notif_type} missed by {missed_by} seconds for id={launch_row[1]}')
+				logging.info(f'⚠️ {notif_type} missed by {missed_by} seconds for id={launch_row[1]}')
 
 		if len(missed_notifications) != 0:
 			# construct insert statement for the missed notifications: all will be set to True
@@ -1002,10 +1074,10 @@ def clear_missed_notifications(db_path: str, launch_ids: set()):
 	conn.commit()
 	conn.close()
 
-	logging.info(f'✅ Cleared {len(launch_ids)} missed notifications!')
+	logging.info(f'✅ Cleared missed notifications!')
 
 
-def notification_send_scheduler(db_path: str, next_api_update_time: int, scheduler: BackgroundScheduler):
+def notification_send_scheduler(db_path: str, next_api_update_time: int, scheduler: BackgroundScheduler, bot_username: str):
 	'''Summary
 	Notification checks are performed right after an API update, so they're always
 	up to date when the scheduling is performed. There should be only one of each
@@ -1020,6 +1092,7 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	cursor = conn.cursor()
 
+	# fields to be selected
 	select_fields = 'net_unix, unique_id, notify_24h, notify_12h, notify_60min, notify_5min'
 
 	try:
@@ -1046,13 +1119,11 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 				# launch id
 				uid = launch_row[1]
 
-				'''
-				send_time -> launches to notify for.
+				''' send_time -> launches to notify for.
 				This isn't necessarily required, but there might be some unique case
 				where two notifications are needed to be sent at the exact same time. Previously
 				this wasn't relevant, as pending notifications were checked for continuously,
-				but now this could result in a notification not being sent.
-				'''
+				but now this could result in a notification not being sent. '''
 				if send_time not in notif_send_times:
 					notif_send_times[send_time] = {uid}
 				else:
@@ -1067,10 +1138,10 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 			cleared_count += 1
 
 	# cleared!
-	logging.info(f'✅ Cleared {cleared_count} notifications!')
+	logging.info(f'✅ Cleared {cleared_count} queued notifications!')
 
-	# add notifications to schedule queue until we hit the next scheduled API update
-	# this allows us to queue the minimum amount of notifications
+	''' add notifications to schedule queue until we hit the next scheduled API update
+	this allows us to queue the minimum amount of notifications '''
 	scheduled_notifications, missed_notifications = 0, set()
 	for send_time, launch_id_set in notif_send_times.items():
 		# if send time is later than next API update, ignore
@@ -1084,15 +1155,15 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 			if send_time < time.time():
 				send_time_offset = int(time.time() - send_time)
 				logging.warn(f'Missed send_time by {send_time_offset} sec! Sending in 5 sec.')
-				send_time = time.time() + 5
+				send_time = time.time() + 3
 
-			# convert to a datetime object
-			notification_dt = datetime.datetime.fromtimestamp(send_time)
+			# convert to a datetime object, add 2 sec for margin
+			notification_dt = datetime.datetime.fromtimestamp(send_time + 2)
 
 			# schedule next API update, and we're done: next update will be scheduled after the API update
 			scheduler.add_job(
 				notification_pseudo_handler, 'date', id=f'notification-{int(send_time)}',
-				run_date=notification_dt, args=[db_path, launch_id_set])
+				run_date=notification_dt, args=[db_path, launch_id_set, bot_username])
 
 			# done, log
 			logging.info(f'📨 Scheduled {len(launch_id_set)} notifications for {notification_dt}')
