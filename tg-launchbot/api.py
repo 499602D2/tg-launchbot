@@ -12,6 +12,7 @@ import ujson as json
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # local imports
+from utils import timestamp_to_unix
 from db import update_launch_db, update_stats_db
 from notifications import notification_send_scheduler
 
@@ -68,31 +69,34 @@ class LaunchLibrary2Launch:
 				print('⚠️⚠️⚠️ more than one launcher_stage')
 				print(launch_json['rocket']['launcher_stage'])
 
+			launcher_json = launch_json['rocket']['launcher_stage'][0]
+
 			# id, type, reuse status, flight number
-			self.launcher_stage_id = launch_json['rocket']['launcher_stage'][0]['id']
-			self.launcher_stage_type = launch_json['rocket']['launcher_stage'][0]['type']
-			self.launcher_stage_is_reused = launch_json['rocket']['launcher_stage'][0]['reused']
-			self.launcher_stage_flight_number = launch_json['rocket']['launcher_stage'][0]['launcher_flight_number']
-			self.launcher_stage_turn_around = launch_json['rocket']['launcher_stage'][0]['turn_around_time_days']
+			self.launcher_stage_id = launcher_json['id']
+			self.launcher_stage_type = launcher_json['type']
+			self.launcher_stage_is_reused = launcher_json['reused']
+			self.launcher_stage_flight_number = launcher_json['launcher_flight_number']
+			self.launcher_stage_turn_around = launcher_json['turn_around_time_days']
 
 			# flight proven and serial number
-			self.launcher_is_flight_proven = launch_json['rocket']['launcher_stage'][0]['launcher']['flight_proven']
-			self.launcher_serial_number = launch_json['rocket']['launcher_stage'][0]['launcher']['serial_number']
+			self.launcher_is_flight_proven = launcher_json['launcher']['flight_proven']
+			self.launcher_serial_number = launcher_json['launcher']['serial_number']
 
 			# first flight and maiden flight
 			try:
-				self.launcher_maiden_flight = timestamp_to_unix(launch_json['rocket']['launcher_stage'][0]['launcher']['first_launch_date'])
-				self.launcher_last_flight = timestamp_to_unix(launch_json['rocket']['launcher_stage'][0]['launcher']['last_launch_date'])
+				self.launcher_maiden_flight = timestamp_to_unix(launcher_json['launcher']['first_launch_date'])
+				self.launcher_last_flight = timestamp_to_unix(launcher_json['launcher']['last_launch_date'])
 			except:
 				self.launcher_maiden_flight = None
 				self.launcher_last_flight = None
 
 			# landing attempt, landing location, landing type, landing count at location
-			if launch_json['rocket']['launcher_stage'][0]['landing'] is not None:
-				self.launcher_landing_attempt = launch_json['rocket']['launcher_stage'][0]['landing']['attempt']
-				self.launcher_landing_location = launch_json['rocket']['launcher_stage'][0]['landing']['location']['abbrev']
-				self.landing_type = launch_json['rocket']['launcher_stage'][0]['landing']['type']['abbrev']
-				self.launcher_landing_location_nth_landing = launch_json['rocket']['launcher_stage'][0]['landing']['location']['successful_landings']
+			if launcher_json['landing'] is not None:
+				landing_json = launcher_json['landing']
+				self.launcher_landing_attempt = landing_json['attempt']
+				self.launcher_landing_location = landing_json['location']['abbrev']
+				self.landing_type = landing_json['type']['abbrev']
+				self.launcher_landing_location_nth_landing = landing_json['location']['successful_landings']
 			else:
 				self.launcher_landing_attempt = None
 				self.launcher_landing_location = None
@@ -114,21 +118,23 @@ class LaunchLibrary2Launch:
 			self.launcher_landing_location_nth_landing = None
 
 		if launch_json['rocket']['spacecraft_stage'] not in (None, []):
-			self.spacecraft_id = launch_json['rocket']['spacecraft_stage']['id']
-			self.spacecraft_sn = launch_json['rocket']['spacecraft_stage']['spacecraft']['serial_number']
-			self.spacecraft_name = launch_json['rocket']['spacecraft_stage']['spacecraft']['spacecraft_config']['name']
+			spacecraft = launch_json['rocket']['spacecraft_stage']
+			self.spacecraft_id = spacecraft['id']
+			self.spacecraft_sn = spacecraft['spacecraft']['serial_number']
+			self.spacecraft_name = spacecraft['spacecraft']['spacecraft_config']['name']
 
 			# parse mission crew, if applicable
-			if launch_json['rocket']['spacecraft_stage']['launch_crew'] not in (None, []):
+			if spacecraft['launch_crew'] not in (None, []):
 				astronauts = set()
-				for crew_member in launch_json['rocket']['spacecraft_stage']['launch_crew']:
+				for crew_member in spacecraft['launch_crew']:
 					astronauts.add(f"{crew_member['astronaut']['name']}:{crew_member['role']}")
 
 				self.spacecraft_crew = ','.join(astronauts)
 				self.spacecraft_crew_count = len(astronauts)
 			
 			try:
-				self.spacecraft_maiden_flight = timestamp_to_unix(launch_json['rocket']['spacecraft_stage']['spacecraft']['spacecraft_config']['maiden_flight'])
+				self.spacecraft_maiden_flight = timestamp_to_unix(
+					spacecraft['spacecraft']['spacecraft_config']['maiden_flight'])
 			except:
 				self.spacecraft_maiden_flight = None
 		else:
@@ -174,17 +180,9 @@ class LaunchLibrary2Launch:
 			self.orbital_nth_launch_year = None
 
 
-def timestamp_to_unix(timestamp: int) -> int:
-	# convert to a datetime object. Ex. 2020-10-18T12:25:00Z
-	utc_dt = datetime.datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%S%fZ')
-
-	# convert UTC datetime to integer seconds since the unix epoch, return
-	return int((utc_dt - datetime.datetime(1970, 1, 1)).total_seconds())
-
-
 def construct_params(PARAMS: dict) -> str:
 	param_url = ''
-	if PARAMS is not None:
+	if PARAMS is not None:	
 		for enum, keyvals in enumerate(PARAMS.items()):
 			key, val = keyvals[0], keyvals[1]
 			param_url += f'?{key}={val}' if enum == 0 else f'&{key}={val}'
@@ -192,9 +190,8 @@ def construct_params(PARAMS: dict) -> str:
 	return param_url
 
 
-def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler):
-	# bot params
-	BOT_USERNAME = 'rocketrybot'
+def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler, bot_username: str):
+	# params
 	VERSION = '1.6-alpha'
 	DEBUG_API = True
 
@@ -234,7 +231,7 @@ def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler):
 			logging.warning('⚠️ Trying again after 3 seconds...')
 
 			time.sleep(3)
-			return ll2_api_call()
+			return ll2_api_call(data_dir=data_dir, scheduler=scheduler, bot_username=bot_username)
 
 		try:
 			api_json = json.loads(API_RESPONSE.text)
@@ -257,26 +254,27 @@ def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler):
 	logging.debug(f'✅ Parsed {len(launch_obj_set)} launches into launch_obj_set.')
 
 	# update database with the launch objects
-	update_launch_db(launch_set=launch_obj_set, db_path=data_dir)
+	update_launch_db(launch_set=launch_obj_set, db_path=data_dir, bot_username=bot_username)
 	logging.debug('✅ DB update complete!')
 
 	# update statistics
 	update_stats_db(
-		db_path='data',
 		stats_update={
 			'api_requests': 1, 'db_updates': 1,
-			'data': rec_data, 'last_api_update': api_updated}
+			'data': rec_data, 'last_api_update': api_updated},
+		db_path='data'
 	)
 
 	# schedule next API call
-	next_api_update = api_call_scheduler(db_path=data_dir, scheduler=scheduler, ignore_60=True)
+	next_api_update = api_call_scheduler(
+		db_path=data_dir, scheduler=scheduler, ignore_60=True, bot_username=bot_username)
 
 	# schedule notifications
 	notification_send_scheduler(
 		db_path=data_dir, next_api_update_time=next_api_update, scheduler=scheduler)
 
 
-def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: bool) -> int:
+def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: bool, bot_username: str) -> int:
 	"""Summary
 	Schedules upcoming API calls for when they'll be required.
 	Calls are scheduled with the following logic:
@@ -297,34 +295,43 @@ def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: 
 		# schedule next API update, and we're done: next update will be scheduled after the API update
 		scheduler.add_job(
 			ll2_api_call, 'date', run_date=next_update_dt,
-			args=[db_path, scheduler], id=f'api-{unix_timestamp}')
+			args=[db_path, scheduler, bot_username], id=f'api-{unix_timestamp}')
 
 		logging.debug('🔄 Next API update scheduled for %s', next_update_dt)
 		return unix_timestamp
 
-	def require_immediate_update(cursor) -> bool:
+	def require_immediate_update(cursor) -> tuple:
 		'''Summary
 		Load previous time on startup to figure out if we need to update right now
 		'''
 		try:
 			cursor.execute(f'SELECT last_api_update FROM stats')
 		except sqlite3.OperationalError:
-			return True
+			return (True, None)
 
 		last_update = cursor.fetchall()[0][0]
-		return True if time.time() > last_update + 30 * 60 else False
+		return (True, None) if time.time() > last_update + 15 * 60 else (False, last_update)
 
 	# debug print
-	logging.debug('⏲ Starting api_call_scheduler...')
+	logging.info('⏲ Starting api_call_scheduler...')
 
 	# load the next upcoming launch from the database
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	cursor = conn.cursor()
 
 	# verify we don't need an immediate API update
-	if require_immediate_update(cursor):
+	db_status = require_immediate_update(cursor)
+	update_immediately, last_update = db_status[0], db_status[1]
+
+	if update_immediately:
 		logging.info('⚠️ DB outdated: scheduling next API update 5 seconds from now...')
 		return schedule_call(int(time.time()) + 5)
+	else:
+		update_delta = int(time.time()) - last_update
+		to_next_update = 15 * 60 - update_delta
+		next_auto_update = int(time.time()) + to_next_update
+
+		logging.info(f'🔀 DB up-to-date! Updating in {int(to_next_update / 60)} minutes.')
 
 	# pull all launches with a net greater than or equal to current time
 	select_fields = 'net_unix, notify_24h, notify_12h, notify_60min, notify_5min'
@@ -370,28 +377,36 @@ def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: 
 
 
 	# add scheduled check every 30 minutes to comparison
-	notif_times.add(int(time.time()) + 30 * 60)
+	notif_times.add(next_auto_update)
 
 	# pick minimum of all possible API updates, convert to a datetime object
 	next_api_update = min(notif_times)
+
+	if next_api_update == next_auto_update:
+		logging.info(f'📨 No notifications coming up before next API update.')
 
 	# schedule
 	return schedule_call(next_api_update)
 
 
 if __name__ == '__main__':
+	BOT_USERNAME = 'rocketrybot'
 	DATA_DIR = 'data'
 
 	# init log
 	logging.basicConfig(level=logging.DEBUG,format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
 
+	# disable logging for urllib and requests because jesus fuck they make a lot of spam
+	logging.getLogger('requests').setLevel(logging.CRITICAL)
+	logging.getLogger('urllib3').setLevel(logging.CRITICAL)
+	logging.getLogger('chardet.charsetprober').setLevel(logging.CRITICAL)
+
 	# init and start scheduler
 	scheduler = BackgroundScheduler()
 	scheduler.start()
 
-	logging.debug('➡️ Testing scheduling...')
-	api_call_scheduler(db_path=DATA_DIR, ignore_60=False, scheduler=scheduler)
+	# start API and notification scheduler
+	api_call_scheduler(db_path=DATA_DIR, ignore_60=False, scheduler=scheduler, bot_username=BOT_USERNAME)
 
 	while True:
-		time.sleep(1)
-
+		time.sleep(10)
