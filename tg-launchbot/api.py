@@ -254,7 +254,10 @@ def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler, bot_username: st
 	logging.debug(f'✅ Parsed {len(launch_obj_set)} launches into launch_obj_set.')
 
 	# update database with the launch objects
-	update_launch_db(launch_set=launch_obj_set, db_path=data_dir, bot_username=bot_username)
+	update_launch_db(
+		launch_set=launch_obj_set, db_path=data_dir,
+		bot_username=bot_username, api_update=api_updated)
+
 	logging.debug('✅ DB update complete!')
 
 	# update statistics
