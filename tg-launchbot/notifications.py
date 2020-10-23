@@ -5,7 +5,7 @@ import sqlite3
 import logging
 import inspect
 
-from utils import shorten_monospaced_text, map_country_code_to_flag
+from utils import short_monospaced_text, map_country_code_to_flag, reconstruct_link_for_markdown
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -323,103 +323,14 @@ def toggle_launch_mute(chat, launch_provider, launch_id, toggle):
 	conn.close()
 
 
-def get_notify_list(lsp, launch_id, notif_class):
-	# pull all with matching keyword (LSP ID), matching country code notification, or an "all" marker (and no exclusion for this ID/country)
-	# Establish connection
-	data_dir = 'data'
-	if not os.path.isfile(os.path.join(data_dir,'launchbot-data.db')):
-		create_notify_database()
-
-	conn = sqlite3.connect(os.path.join(data_dir,'launchbot-data.db'))
-	c = conn.cursor()
-
-	# pull all where keyword = LSP or "All"
-	c.execute('SELECT * FROM notify WHERE keyword == ? OR keyword == ?',(lsp, 'All'))
-	query_return = c.fetchall()
-
-	# parse for possible mutes
-	parsed_query_return = set()
-	muted_chats = set()
-	for row in query_return:
-		append = True
-		if row[2] is not None:
-			if row[2] != '':
-				split = row[2].split(',')
-				for muted_id in split:
-					if muted_id == str(launch_id):
-						append = False
-						muted_chats.add(row[0])
-
-		if append:
-			if row[0] not in muted_chats:
-				parsed_query_return.add(row)
-
-	query_return = parsed_query_return
-	parsed_query_return, muted_this_launch = set(), set()
-	for row in query_return:
-		if row[0] in muted_chats:
-			muted_this_launch.add(row[0])
-		else:
-			parsed_query_return.add(row)
-
-	query_return = parsed_query_return
-
-	if debug_log and len(muted_this_launch) > 0:
-		logging.info(f'🔇 Not notifying {len(muted_this_launch)} chat(s) due to mute status')
-
-	# parse output
-	notify_dict, notify_list = {}, set() # chat: id: toggle
-	for row in query_return:
-		chat = row[0]
-		if chat not in notify_dict:
-			notify_dict[chat] = {}
-
-		notify_dict[chat][row[1]] = row[3] # lsp: 0/1, or All: 0/1
-
-	# if All is enabled, and lsp is disabled
-	for chat, val in notify_dict.items(): # chat, dictionary (dict is in the form of LSP: toggle)
-		enabled, disabled = set(), set()
-		for l, e in val.items(): # lsp, enabled
-			if e == 1:
-				enabled.add(l)
-			else:
-				disabled.add(l)
-
-		if lsp in disabled and 'All' in enabled:
-			if debug_log:
-				logging.info(f'🔕 Not notifying {anonymize_id(chat)} about {lsp} due to disabled flag. All flag was enabled.')
-				try:
-					logging.info(f'ℹ️ notify_dict[{anonymize_id(chat)}]: {notify_dict[chat]} | lsp: {lsp} | enabled: {enabled} | disabled: {disabled}')
-				except:
-					logging.info(f'⚠️ KeyError getting notify_dict[chat]. notify_dict: {notify_dict}')
-
-		elif lsp in enabled or 'All' in enabled:
-			notify_list.add(chat)
-
-	if notif_class is not None:
-		# parse for chats which have possibly disabled this notification type
-		final_list, ignored_due_to_pref = set(), set()
-		index = {'24h': 0, '12h': 1, '1h': 2, '5m': 3}[notif_class]
-		for chat in notify_list:
-			if list(get_notif_preference(chat))[index] == 1:
-				final_list.add(chat)
-			else:
-				ignored_due_to_pref.add(chat)
-
-		if debug_log:
-			logging.info(f'🔕 Not notifying {len(ignored_due_to_pref)} chat(s) due to notification preferences.')
-	else:
-		final_list = notify_list
-
-	return final_list
-
-
 # load mute status for chat and launch
-def load_mute_status(chat, launch_id, keywords):
+def load_mute_status(chat: str, launch_id: str, lsp_name: str):
 	data_dir = 'data'
 	conn = sqlite3.connect(os.path.join(data_dir,'launchbot-data.db'))
 	c = conn.cursor()
-	c.execute("SELECT muted_launches FROM notify WHERE chat = ? AND keyword = ?", (chat, keywords))
+
+	# pull launch mute status for chat
+	c.execute("SELECT muted_launches FROM notify WHERE chat = ? AND keyword = ?", (chat, lsp_name))
 	query_return = c.fetchall()
 
 	if len(query_return) == 0:
@@ -498,7 +409,7 @@ def remove_previous_notification(launch_id, keyword):
 
 
 # gets a request to send a notification about launch X from launch_update_check()
-def notification_handler(db_path: str, launch_unique_id: str):
+def notification_handler_old(db_path: str, launch_unique_id: str):
 	# handle notification sending; done in a separate function so we can retry more easily and handle exceptions
 	def send_notification(chat, notification, launch_id, keywords, vid_link, notif_class):
 		# send early notifications silently
@@ -854,7 +765,7 @@ def notification_handler(db_path: str, launch_unique_id: str):
 
 	except Exception as e:
 		if debug_log:
-			logging.exception(f'''⚠️ Error disabling notification in notification_handler().
+			logging.exception(f'''⚠️ Error disabling notification in notification_handler_old().
 			t_minus={t_minus}, launch_id={launch_id}. Notifications sent: {len(notify_list)}.
 			Exception: {e}. Disabling all further notifications.''')
 
@@ -871,6 +782,181 @@ def notification_handler(db_path: str, launch_unique_id: str):
 	store_notification_identifiers(launch_id, msg_identifiers)
 
 
+def get_notify_list(lsp, launch_id, notif_class):
+	# pull all with matching keyword (LSP ID), matching country code notification, or an "all" marker (and no exclusion for this ID/country)
+	# Establish connection
+	data_dir = 'data'
+	if not os.path.isfile(os.path.join(data_dir,'launchbot-data.db')):
+		create_notify_database()
+
+	conn = sqlite3.connect(os.path.join(data_dir,'launchbot-data.db'))
+	c = conn.cursor()
+
+	# pull all where keyword = LSP or "All"
+	c.execute('SELECT * FROM notify WHERE keyword == ? OR keyword == ?',(lsp, 'All'))
+	query_return = c.fetchall()
+
+	# parse for possible mutes
+	parsed_query_return = set()
+	muted_chats = set()
+	for row in query_return:
+		append = True
+		if row[2] is not None:
+			if row[2] != '':
+				split = row[2].split(',')
+				for muted_id in split:
+					if muted_id == str(launch_id):
+						append = False
+						muted_chats.add(row[0])
+
+		if append:
+			if row[0] not in muted_chats:
+				parsed_query_return.add(row)
+
+	query_return = parsed_query_return
+	parsed_query_return, muted_this_launch = set(), set()
+	for row in query_return:
+		if row[0] in muted_chats:
+			muted_this_launch.add(row[0])
+		else:
+			parsed_query_return.add(row)
+
+	query_return = parsed_query_return
+
+	if debug_log and len(muted_this_launch) > 0:
+		logging.info(f'🔇 Not notifying {len(muted_this_launch)} chat(s) due to mute status')
+
+	# parse output
+	notify_dict, notify_list = {}, set() # chat: id: toggle
+	for row in query_return:
+		chat = row[0]
+		if chat not in notify_dict:
+			notify_dict[chat] = {}
+
+		notify_dict[chat][row[1]] = row[3] # lsp: 0/1, or All: 0/1
+
+	# if All is enabled, and lsp is disabled
+	for chat, val in notify_dict.items(): # chat, dictionary (dict is in the form of LSP: toggle)
+		enabled, disabled = set(), set()
+		for l, e in val.items(): # lsp, enabled
+			if e == 1:
+				enabled.add(l)
+			else:
+				disabled.add(l)
+
+		if lsp in disabled and 'All' in enabled:
+			if debug_log:
+				logging.info(f'🔕 Not notifying {anonymize_id(chat)} about {lsp} due to disabled flag. All flag was enabled.')
+				try:
+					logging.info(f'ℹ️ notify_dict[{anonymize_id(chat)}]: {notify_dict[chat]} | lsp: {lsp} | enabled: {enabled} | disabled: {disabled}')
+				except:
+					logging.info(f'⚠️ KeyError getting notify_dict[chat]. notify_dict: {notify_dict}')
+
+		elif lsp in enabled or 'All' in enabled:
+			notify_list.add(chat)
+
+	if notif_class is not None:
+		# parse for chats which have possibly disabled this notification type
+		final_list, ignored_due_to_pref = set(), set()
+		index = {'24h': 0, '12h': 1, '1h': 2, '5m': 3}[notif_class]
+		for chat in notify_list:
+			if list(get_notif_preference(chat))[index] == 1:
+				final_list.add(chat)
+			else:
+				ignored_due_to_pref.add(chat)
+
+		if debug_log:
+			logging.info(f'🔕 Not notifying {len(ignored_due_to_pref)} chat(s) due to notification preferences.')
+	else:
+		final_list = notify_list
+
+	return final_list
+
+
+
+def send_notification(chat: str, message: str, launch_id: str, lsp_name: str, notif_class):
+	# send early notifications silently
+	silent = True if notif_class not in {'1h', '5m'} else False
+
+	try:
+		# load mute status, generate keys
+		mute_status = load_mute_status(chat, launch_id, lsp_name)
+		mute_press = 0 if mute_status == 1 else 1
+		mute_key = {0:f'🔇 Mute this launch',1:'🔊 Unmute this launch'}[mute_status]
+
+		# /mute/$provider/$launch_id/(0/1) | 1=muted (true), 0=not muted
+		keyboard = InlineKeyboardMarkup(
+			inline_keyboard = [[
+					InlineKeyboardButton(
+						text=mute_key, callback_data=f'mute/{keywords}/{launch_id}/{mute_press}')]])
+
+		sent_msg = bot.sendMessage(
+			chat, notification, parse_mode='MarkdownV2',
+			reply_markup=keyboard, disable_notification=silent)
+
+		# sent message is stored in sent_msg; store in db so we can edit messages
+		msg_identifier = f'{sent_msg["chat"]["id"]}:{sent_msg["message_id"]}'
+		msg_identifiers.append(str(msg_identifier))
+		return True
+	
+	except telepot.exception.BotWasBlockedError:
+		if debug_log:
+			logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat)} – cleaning notify database...')
+
+		clean_notify_database(chat)
+		return True
+
+	except telepot.exception.TelegramError as error:
+		# Bad Request: chat not found
+		if error.error_code == 400 and 'not found' in error.description:
+			if debug_log:
+				logging.exception(f'⚠️ Chat {anonymize_id(chat)} not found – cleaning notify database... Error: {error}')
+
+			clean_notify_database(chat)
+			return True
+
+		elif error.error_code == 403:
+			if 'user is deactivated' in error.description:
+				if debug_log:
+					logging.exception(f'⚠️ User {anonymize_id(chat)} was deactivated – cleaning notify database... Error: {error}')
+
+				clean_notify_database(chat)
+				return True
+
+			elif 'bot was kicked from the supergroup chat' in error.description:
+				if debug_log:
+					logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database... Error: {error}')
+
+				clean_notify_database(chat)
+				return True
+
+			elif 'Forbidden: bot is not a member of the supergroup chat' in error.description:
+				if debug_log:
+					logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database... Error: {error}')
+
+				clean_notify_database(chat)
+				return True
+
+			else:
+				if debug_log:
+					logging.exception(f'⚠️ Unhandled 403 telepot.exception.TelegramError in send_notification: {error}')
+
+		# Rate limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
+		elif error.error_code == 429:
+			if debug_log:
+				logging.exception(f'🚧 Rate-limited (429) - sleeping for 5 seconds and continuing. Error: {error}')
+
+			time.sleep(5)
+			return False
+
+		# Something else
+		else:
+			if debug_log:
+				logging.exception(f'⚠️ Unhandled telepot.exception.TelegramError in send_notification: {error}')
+
+			return False
+
+
 def create_notification_message(launch: dict, notif_class: str, bot_username: str) -> str:
 	'''Summary
 	Generates the notification message body from the provided launch
@@ -885,6 +971,9 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	# shorten very common pad names
 	if 'LC-' not in launch['pad_name']:
 		launch['pad_name'] = launch['pad_name'].replace('Space Launch Complex ', 'SLC-').replace('Launch Complex ', 'LC-')
+
+	if 'air launch' in launch['pad_name'].lower():
+		launch['pad_name'] = 'Air launch to orbit'
 
 	# generate location
 	launch_site = launch['location_name'].split(',')[0].strip()
@@ -960,13 +1049,36 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 
 		recovery_str = f'''
 		*Booster information* 🚀
-		*Core* {shorten_monospaced_text(reuse_str)}
-		*Landing* {shorten_monospaced_text(landing_str)}\n
+		*Core* {short_monospaced_text(reuse_str)}
+		*Landing* {short_monospaced_text(landing_str)}\n
 		'''
 	else:
 		recovery_str = None
 
 	# TODO add "live_str" with link to webcast if 1 hour or 5 min
+	if notif_class in {'notify_60min', 'notify_5min'}:
+		vid_url = None
+		try:
+			urls = launch['webcast_url_list'].split(',')
+		except AttributeError:
+			urls = set()
+
+		if len(urls) == 0:
+			link_text = '🔇 *No live video* available.'
+		else:
+			for url in urls:
+				if 'youtube' in url:
+					vid_url = url
+					break
+
+			if vid_url is None:
+				vid_url = urls[0]
+
+			link_text = f'🔴 *Watch the launch* LinkTextGoesHere'
+			link_text = link_text.replace(
+				'LinkTextGoesHere', f'[live\!]({reconstruct_link_for_markdown(vid_url)})')
+	else:
+		link_text = None
 
 	# map notif_class to a legible string
 	t_minus = {
@@ -976,16 +1088,17 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	# construct the base message
 	message = f'''
 	🚀 *{launch_name}* is launching in *{t_minus[notif_class]}*
-	*Launch provider* {shorten_monospaced_text(lsp_name)} {lsp_flag}
-	*Vehicle* {shorten_monospaced_text(launch["rocket_name"])}
-	*Pad* {shorten_monospaced_text(location)}
+	*Launch provider* {short_monospaced_text(lsp_name)} {lsp_flag}
+	*Vehicle* {short_monospaced_text(launch["rocket_name"])}
+	*Pad* {short_monospaced_text(location)}
 
 	*Mission information* {orbit_info}
-	*Type* {shorten_monospaced_text(mission_type)}
-	*Orbit* {shorten_monospaced_text(orbit_str)}
+	*Type* {short_monospaced_text(mission_type)}
+	*Orbit* {short_monospaced_text(orbit_str)}
 
 	{recovery_str if recovery_str is not None else ""}
 	{probability if probability is not None else ""}
+	{link_text if link_text is not None else ""}
 	*🕓 The launch is scheduled* for LAUNCHTIMEHERE
 	*🔕 To disable* use /notify@{bot_username}
 	'''
@@ -993,8 +1106,56 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	return inspect.cleandoc(message)
 
 
-def notification_pseudo_handler(db_path: str, launch_id_set: set, bot_username: str):
-	logging.info('🎉 notification_pseudo_handler ran successfully!')
+def notification_handler(db_path: str, launch_id_set: set, bot_username: str):
+	''' Summary
+	Handles the flow associated with sending a notification.
+	'''
+	def verify_launch_is_up_to_date(launch_uid: str, cursor: sqlite3.Cursor):
+		''' Summary
+		Function verifies that the last time the launch info was update is equal
+		to the last time the API was updated. If these two don't match,
+		the launch may have moved so much forward that we don't "see" it anymore.
+		'''
+		# verify update times match: if not, remove launch and return false
+		cursor.execute('SELECT last_updated FROM launches WHERE unique_id = ?', (launch_uid,))
+		query_return = cursor.fetchall()
+
+		if len(query_return) == 0:
+			logging.warning(f'verify_launch_is_up_to_date couldn\'t find launch with id={launch_uid}')
+			return False
+
+		# integer unix time stamp of when the launch was last updated
+		launch_last_update = query_return[0][0]
+
+		# pull last time the DB was updated from statistics database
+		cursor.execute('SELECT last_api_update FROM stats')
+
+		try:
+			last_api_update = cursor.fetchall()[0][0]
+		except KeyError as error:
+			logging.exception('Error pulling last_api_update from stats database!')
+			return False
+
+		# if equal, we're good
+		if launch_last_update == last_api_update:
+			return True
+
+		# if not, uh oh...
+		logging.warning(
+			f'''
+			🛑 [verify_launch_is_up_to_date] launch_last_update != last_api_update!
+			🛑 launch_uid={launch_uid}
+			🛑 launch_last_update={launch_last_update}
+			🛑 last_api_update={last_api_update}
+			''')
+
+		# remove launch from db
+		cursor.execute('DELETE FROM launches WHERE unique_id = ?', (launch_uid,))
+		logging.warning(f'⚠️ launch_id={launch_uid} successfully removed from database!')
+
+		return False
+
+	logging.info('🎉 notification_handler ran successfully!')
 	logging.info(f'📨 launch_id_set: {launch_id_set}')
 
 	# db connection
@@ -1019,10 +1180,23 @@ def notification_pseudo_handler(db_path: str, launch_id_set: set, bot_username: 
 			'notify_24h': net - 3600*24, 'notify_12h': net - 3600*12,
 			'notify_60min': net - 3600, 'notify_5min': net - 60*5}
 
-		toggle_classes = []
+		toggle_classes, skipped_classes = [], {}
 		for notification, send_time in notification_times.items():
-			if send_time + 60 <= time.time():
+			if send_time + 60 >= time.time():
 				toggle_classes.append(notification)
+			else:
+				# debug logging
+				logging.info(f'Skipping {notification}: send_time={send_time}, time={time.time()}')
+				skipped_classes[notification] = send_time
+
+		# debug logging
+		if len(skipped_classes) != 0:
+			logging.info('🔀 Skipped notifications: %s', skipped_classes)
+
+		# debug logging
+		if len(toggle_classes) == 0:
+			logging.info('🛑 toggle_classes len=0!')
+			logging.info(f'now_time: {int(time.time())}, notification_times: {notification_times}')
 
 		# toggle all notifications to 1 in launch db
 		for notification_class in toggle_classes:
@@ -1032,14 +1206,35 @@ def notification_pseudo_handler(db_path: str, launch_id_set: set, bot_username: 
 		logging.info(f'🚩 Toggled notification flags to 1 for {", ".join(toggle_classes)}')
 		conn.commit()
 
-		# the notification we'll be sending
+		# the notification we'll be sending (e.g. notify_24h)
 		send_notif = toggle_classes[-1]
+
+		''' Right before sending, verify launch was actually updated in the last API update:
+		if it wasn't, the launch may have slipped so much forward that it's not included within
+		the 50 launches we request. In this case, delete the launch row from the database.
+		'''
+		up_to_date = verify_launch_is_up_to_date(launch_uid=launch.unique_id, cursor=cursor)
+
+		# if launch isn't up to date, uh oh
+		if not up_to_date:
+			logging.warning(f'⚠️ Launch info isn\'t up to date! launch_id={launch.unique_id}')
+			logging.warning(f'⚠️ Commiting database change and returning...')
+			
+			conn.commit()
+			conn.close()
+			return
+
+		# info is up to date!
+		logging.info('✅ Launch info is up to date! Proceeding with sending notification...')
 
 		# create the notification message TODO add astronaut/spacecraft info
 		notification_message = create_notification_message(
 			launch=launch, notif_class=send_notif, bot_username=bot_username)
 
 		logging.info(notification_message)
+
+	# close db connection at exit
+	conn.close()
 
 
 def clear_missed_notifications(db_path: str, launch_ids: set()):
@@ -1078,11 +1273,11 @@ def clear_missed_notifications(db_path: str, launch_ids: set()):
 			# construct insert statement for the missed notifications: all will be set to True
 			insert_statement = '=1,'.join(missed_notifications) + '=1'
 			cursor.execute(f'''UPDATE launches SET {insert_statement} WHERE unique_id = ?''', (launch_row[1],))
+	
+	logging.info(f'✅ Cleared missed notifications!')
 
 	conn.commit()
 	conn.close()
-
-	logging.info(f'✅ Cleared missed notifications!')
 
 
 def notification_send_scheduler(db_path: str, next_api_update_time: int, scheduler: BackgroundScheduler, bot_username: str):
@@ -1170,7 +1365,7 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 
 			# schedule next API update, and we're done: next update will be scheduled after the API update
 			scheduler.add_job(
-				notification_pseudo_handler, 'date', id=f'notification-{int(send_time)}',
+				notification_handler, 'date', id=f'notification-{int(send_time)}',
 				run_date=notification_dt, args=[db_path, launch_id_set, bot_username])
 
 			# done, log
@@ -1182,3 +1377,6 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 		clear_missed_notifications(db_path, missed_notifications)
 
 	logging.info(f'Notification scheduling done! Queued {scheduled_notifications} notifications.')
+
+	# close db connection at exit
+	conn.close()
