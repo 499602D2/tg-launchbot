@@ -1,3 +1,16 @@
+'''
+Includes various functions related to common database operations.
+
+Classes:
+	None
+
+Functions:
+
+Misc variables:
+	None
+'''
+
+
 import os
 import time
 import sqlite3
@@ -6,8 +19,17 @@ import datetime
 
 from utils import time_delta_to_legible_eta, reconstruct_message_for_markdown
 
-# creates a new notifications database, if one doesn't exist
+
 def create_notify_database(db_path: str):
+	'''
+	Creates a new notifications database, if one doesn't exist.
+
+	Keyword arguments:
+		db_path (str): relative database path
+
+	Returns:
+		None
+	'''
 	if not os.path.isdir(db_path):
 		os.makedirs(db_path)
 
@@ -16,8 +38,8 @@ def create_notify_database(db_path: str):
 	cursor = conn.cursor()
 
 	try:
-		# chat ID - keyword - UNIX timestamp - enabled true/false
-		cursor.execute("CREATE TABLE notify (chat TEXT, keyword TEXT, muted_launches TEXT, enabled INT, PRIMARY KEY (chat, keyword))")
+		# chat ID - lsp_name - UNIX timestamp - enabled true/false
+		cursor.execute("CREATE TABLE notify (chat TEXT, lsp_name TEXT, muted_launches TEXT, enabled INT, PRIMARY KEY (chat, lsp_name))")
 		cursor.execute("CREATE INDEX enabledchats ON notify (chat, enabled)")
 	except Exception as error:
 		print('⚠️ Error creating notify-table:', error)
@@ -26,8 +48,18 @@ def create_notify_database(db_path: str):
 	conn.close()
 
 
-# store sent message identifiers
 def store_notification_identifiers(launch_id: str, msg_identifiers: str):
+	'''
+	Stores the identifiers for sent message, which allows us to delete
+	them later, if needed.
+
+	Keyword arguments:
+		launch_id (str): launch ID to store the notification identifiers for
+		msg_identifiers (str): string of identifiers for all sent messages
+
+	Returns:
+		None
+	'''
 	launch_dir = 'data'
 	conn = sqlite3.connect(os.path.join(launch_dir, 'launchbot-data.db'))
 	cursor = conn.cursor()
@@ -49,10 +81,16 @@ def store_notification_identifiers(launch_id: str, msg_identifiers: str):
 	conn.close()
 
 
-# create launch database
 def create_launch_db(db_path: str, cursor: sqlite3.Cursor):
-	'''Summary
+	'''
 	Creates the launch database. Only ran when the table doesn't exist.
+
+	Keyword arguments:
+		db_path (str): relative database path
+		cursor (sqlite3.Cursor): sqlite3 db cursor we use
+
+	Returns:
+		None
 	'''
 
 	try:
@@ -81,9 +119,13 @@ def create_launch_db(db_path: str, cursor: sqlite3.Cursor):
 			spacecraft_crew_count INT, spacecraft_maiden_flight INT,
 
 			pad_nth_launch INT, location_nth_launch INT, agency_nth_launch INT, agency_nth_launch_year INT,
-			orbital_nth_launch_year INT,
+			orbital_nth_launch_year INT, 
+
+			last_updated INT,
 
 			notify_24h BOOLEAN, notify_12h BOOLEAN, notify_60min BOOLEAN, notify_5min BOOLEAN,
+
+			muted_by TEXT, sent_notification_ids TEXT,
 			PRIMARY KEY (unique_id))
 		''')
 
@@ -96,12 +138,23 @@ def create_launch_db(db_path: str, cursor: sqlite3.Cursor):
 			logging.exception(f'⚠️ Error in create_launch_database: {e}')
 
 
-# update launch database
-def update_launch_db(launch_set: set, db_path: str, bot_username: str):
-	def verify_no_net_slip(launch_object, cursor: sqlite3.Cursor) -> bool:
-		''' Summary
-		Verify the NET of the launch hasn't slipped forward: if it has,
-		verify that we haven't sent a notification: if we have, send a postpone
+def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_update: int):
+	'''
+	Updates the launch table with whatever data the API call provides.
+
+	Keyword arguments:
+		launch_set (set): set of launch objects we use to update the database
+		db_path (str): relative database path
+		bot_username (str): username of the bot
+		api_update (int): unix timestamp of the time the db was updated
+
+	Returns:
+		None
+	'''
+	def verify_no_net_slip(launch_object: 'LaunchLibrary2Launch', cursor: sqlite3.Cursor) -> bool:
+		'''
+		Verify the NET of the launch hasn't slipped forward: if it has, verify
+		that we haven't sent a notification: if we have, send a postpone
 		notification to users.
 		'''
 
@@ -225,17 +278,18 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str):
 	for launch_object in launch_set:
 		try: # try inserting as new
 			# set fields and values to be inserted according to available keys/values
-			insert_fields = ', '.join(vars(launch_object).keys()) + ', notify_24h, notify_12h, notify_60min, notify_5min'
-			field_values = tuple(vars(launch_object).values()) + (False, False, False, False)
+			insert_fields = ', '.join(vars(launch_object).keys())
+			insert_fields += ', last_updated, notify_24h, notify_12h, notify_60min, notify_5min'
+			field_values = tuple(vars(launch_object).values()) + (api_update, False, False, False, False)
 			
 			# set amount of value-characers (?) equal to amount of keys + 4 (notify fields)
-			values_string = '?,' * (len(vars(launch_object).keys()) + 4)
+			values_string = '?,' * (len(vars(launch_object).keys()) + 5)
 			values_string = values_string[0:-1]
 
 			# execute SQL
 			cursor.execute(f'INSERT INTO launches ({insert_fields}) VALUES ({values_string})', field_values)
 
-		except Exception as error: # update, as the launch already exists
+		except sqlite3.IntegrityError: # update, as the launch already exists
 			# if insert failed, update existing data: everything but unique ID and notification fields
 			obj_dict = vars(launch_object)
 
@@ -247,21 +301,27 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str):
 			set_str = ' = ?, '.join(update_fields) + ' = ?'
 
 			# verify launch hasn't been postponed
-			net_slipped = verify_no_net_slip(launch_object, cursor)
+			net_slipped = verify_no_net_slip(launch_object=launch_object, cursor=cursor)
 
 			try:
 				cursor.execute(f"UPDATE launches SET {set_str} WHERE unique_id = ?", tuple(update_values) + (launch_object.unique_id,))
+				cursor.execute(f"UPDATE launches SET last_updated = ? WHERE unique_id = ?", (api_update,) + (launch_object.unique_id,))
 			except Exception as error:
-				print(f'⚠️ Error updating field for unique_id={launch_object.unique_id}! Error: {error}')
+				logging.exception(f'⚠️ Error updating field for unique_id={launch_object.unique_id}!')
 
 	conn.commit()
 	conn.close()
 
 
 def create_stats_db(db_path: str):
-	''' Summary
+	'''
 	Creates a stats table in the launchbot-data.db database.
-	Never called directly: only by update_stats_db.
+
+	Keyword arguments:
+		db_path (str): relative database path
+
+	Returns:
+		None
 	'''
 	if not os.path.isdir(db_path):
 		os.mkdir(db_path)
@@ -287,8 +347,17 @@ def create_stats_db(db_path: str):
 	conn.close()
 
 
-# updates our stats with the given input
 def update_stats_db(stats_update: dict, db_path: str):
+	'''
+	Updates the stats table with the given stats.
+
+	Keyword arguments:
+		stats_update (dict): dictionary of key-values to update
+		db_path (str): relative database path
+
+	Returns:
+		None
+	'''
 	# check if the db exists
 	if not os.path.isfile(os.path.join(db_path, 'launchbot-data.db')):
 		create_stats_db(db_path=db_path)
