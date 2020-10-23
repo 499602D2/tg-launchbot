@@ -13,7 +13,6 @@ import random
 import sqlite3
 import difflib
 import signal
-from hashlib import sha1
 from timeit import default_timer as timer
 
 import requests
@@ -22,6 +21,8 @@ import cursor
 import schedule
 import pytz
 import ujson as json
+
+from utils import (anonymize_id, time_delta_to_legible_eta)
 
 from db import (
 	update_stats_db, create_notify_database, store_notification_identifiers)
@@ -61,8 +62,7 @@ def handle(msg):
 		if 'poll' in msg:
 			return
 
-		if debug_log:
-			logging.exception(f'KeyError in handle(): {msg}')
+		logging.exception(f'KeyError in handle(): {msg}')
 
 		return
 
@@ -80,15 +80,14 @@ def handle(msg):
 		This exception is effectively only triggered if we're handling a message
 		_after_ the bot has been kicked, e.g. after a bot restart.
 		'''
-		conn = sqlite3.connect(os.path.join('data', 'launchbot-data.db'))
+		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 		c = conn.cursor()
 
 		c.execute("DELETE FROM notify WHERE chat = ?", (chat,))
 		conn.commit()
 		conn.close()
 
-		if debug_log:
-			logging.info(f'⚠️ Bot removed from chat {anonymize_id(chat)} – notifications database cleaned [1]')
+		logging.info(f'⚠️ Bot removed from chat {anonymize_id(chat)} – notifications database cleaned [1]')
 		return
 
 	# group upgraded to a supergroup; migrate data
@@ -96,12 +95,11 @@ def handle(msg):
 		old_ID = chat
 		new_ID = msg['migrate_to_chat_id']
 
-		if debug_log:
-			logging.info(f'⚠️ Group {anonymize_id(old_ID)} migrated to {anonymize_id(new_ID)} - '
-						 f'starting database migration...')
+		logging.info(f'⚠️ Group {anonymize_id(old_ID)} migrated to {anonymize_id(new_ID)} - '
+					 f'starting database migration...')
 
 		# Establish connection
-		conn = sqlite3.connect(os.path.join('data', 'launchbot-data.db'))
+		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 		c = conn.cursor()
 
 		# replace old IDs with new IDs
@@ -109,21 +107,19 @@ def handle(msg):
 		conn.commit()
 		conn.close()
 
-		if debug_log:
-			logging.info('✅ Chat data migration complete!')
+		logging.info('✅ Chat data migration complete!')
 
 	# bot removed from chat
 	elif 'left_chat_member' in msg and msg['left_chat_member']['id'] == BOT_ID:
 		# bot kicked; remove corresponding chat IDs from notification database
-		conn = sqlite3.connect(os.path.join('data', 'launchbot-data.db'))
+		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 		c = conn.cursor()
 
 		c.execute("DELETE FROM notify WHERE chat = ?", (chat,))
 		conn.commit()
 		conn.close()
 
-		if debug_log:
-			logging.info(f'⚠️ Bot removed from chat {anonymize_id(chat)} – notifications database cleaned [2]')
+		logging.info(f'⚠️ Bot removed from chat {anonymize_id(chat)} – notifications database cleaned [2]')
 		return
 
 	# detect if bot added to a new chat
@@ -176,8 +172,7 @@ def handle(msg):
 
 		notify(msg)
 
-		if debug_log:
-			logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat)}. Sent user the new inline keyboard. [1]')
+		logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat)}. Sent user the new inline keyboard. [1]')
 
 		return
 
@@ -186,28 +181,25 @@ def handle(msg):
 	except KeyError:
 		pass
 	except Exception as error:
-		if debug_log:
-			logging.exception(f'🛑 Error generating command split, returning. {error}')
-			logging.info(f'msg object: {msg}')
+		logging.exception(f'🛑 Error generating command split, returning. {error}')
+		logging.info(f'msg object: {msg}')
 		return
 
 	# verify that the user who sent this is not in spammers
 	try:
 		if msg['from']['id'] in ignored_users:
-			if debug_log:
-				logging.info('😎 Message from spamming user ignored successfully')
+			logging.info('😎 Message from spamming user ignored successfully')
 
 			return
 	except: # all users don't have a user ID, so check for the regular username as well
 		if 'author_signature' in msg:
 			if msg['author_signature'] in ignored_users:
-				if debug_log:
-					logging.info('😎 Message from spamming user (no UID) ignored successfully')
+				logging.info('😎 Message from spamming user (no UID) ignored successfully')
 
 			return
 
 	# regular text — check if it's feedback. If not, return.
-	if content_type == 'text' and command_split[0][0] != '/' and debug_log:
+	if content_type == 'text' and command_split[0][0] != '/':
 		if 'reply_to_message' in msg:
 			if msg['reply_to_message']['message_id'] in feedback_message_IDs and 'text' in msg:
 				logging.info(f'✍️ Received feedback: {msg["text"]}')
@@ -219,8 +211,7 @@ def handle(msg):
 					try: # remove the original feedback message
 						bot.deleteMessage((chat, msg['reply_to_message']['message_id']))
 					except Exception as error:
-						if debug_log:
-							logging.exception(f'Unable to remove sent feedback message with params chat={chat}, message_id={msg["reply_to_message"]["message_id"]} {error}')
+						logging.exception(f'Unable to remove sent feedback message with params chat={chat}, message_id={msg["reply_to_message"]["message_id"]} {error}')
 
 					if OWNER != 0:
 						bot.sendMessage(OWNER,
@@ -274,8 +265,7 @@ def handle(msg):
 
 
 		else:
-			if debug_log:
-				logging.info(f'🗺 Location received, but chat not in time_zone_setup_chats.keys()')
+			logging.info(f'🗺 Location received, but chat not in time_zone_setup_chats.keys()')
 
 	# sees a valid command
 	if content_type == 'text':
@@ -294,8 +284,7 @@ def handle(msg):
 
 			# check timers
 			if not timer_handle(command, chat, sent_by):
-				if debug_log:
-					logging.info(f'✋ Spam prevented from chat {anonymize_id(chat)} by {anonymize_id(msg["from"]["id"])}. Command: {command}, returning.')
+				logging.info(f'✋ Spam prevented from chat {anonymize_id(chat)} by {anonymize_id(msg["from"]["id"])}. Command: {command}, returning.')
 				return
 
 			# check if sender is an admin/creator, and/or if we're in a public chat
@@ -313,18 +302,15 @@ def handle(msg):
 						if bot_chat_specs['status'] == 'administrator':
 							try:
 								success = bot.deleteMessage((chat, msg['message_id']))
-								if debug_log:
-									if success:
-										logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): successfully deleted message! ✅')
-									else:
-										logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): unable to delete message (success != True. Type:{type(success)}, val:{success}) ⚠️')
+								if success:
+									logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): successfully deleted message! ✅')
+								else:
+									logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): unable to delete message (success != True. Type:{type(success)}, val:{success}) ⚠️')
 							except Exception as error:
-								if debug_log:
-									logging.exception(f'⚠️ Could not delete message sent by non-admin: {error}')
+								logging.exception(f'⚠️ Could not delete message sent by non-admin: {error}')
 
 						else:
-							if debug_log:
-								logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): could not remove.')
+							logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): could not remove.')
 
 						return
 
@@ -366,8 +352,7 @@ def handle(msg):
 				if command == '/start':
 					notify(msg)
 
-					if debug_log:
-						logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat)}. Sent user the new inline keyboard. [2]')
+					logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat)}. Sent user the new inline keyboard. [2]')
 
 			# /next
 			elif command == '/next':
@@ -379,7 +364,7 @@ def handle(msg):
 
 			# /statistics
 			elif command == '/statistics':
-				update_stats_db(stats_update={'commands':1}, db_path='data')
+				update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
 				statistics(chat, 'cmd')
 
 			# /schedule)
@@ -390,17 +375,16 @@ def handle(msg):
 			elif command == '/feedback':
 				feedback(msg)
 
-			if debug_log:
-				t_elapsed = timer() - start
-				if msg['from']['id'] != OWNER and command != '/start':
-					try:
-						logging.info(f'🕹 {command} called by {anonymize_id(chat)} | args: {command_split[1:]} | {(1000*t_elapsed):.0f} ms')
-					except:
-						logging.info(f'🕹 {command} called by {anonymize_id(chat)} | args: [] | {(1000*t_elapsed):.0f} ms')
+			t_elapsed = timer() - start
+			if msg['from']['id'] != OWNER and command != '/start':
+				try:
+					logging.info(f'🕹 {command} called by {anonymize_id(chat)} | args: {command_split[1:]} | {(1000*t_elapsed):.0f} ms')
+				except:
+					logging.info(f'🕹 {command} called by {anonymize_id(chat)} | args: [] | {(1000*t_elapsed):.0f} ms')
 
 			# store statistics here, so our stats database can't be spammed either
 			if command != '/statistics':
-				update_stats_db(stats_update={'commands':1}, db_path='data')
+				update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
 
 		else:
 			return
@@ -556,7 +540,7 @@ def callback_handler(msg):
 		# now we have the keyboard; update the previous keyboard
 		bot.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
 
-		if debug_log and chat != OWNER:
+		if chat != OWNER:
 			logging.info(f'🔀 {flag_map[country_code]}-view loaded for {anonymize_id(chat)}')
 
 		return
@@ -565,8 +549,7 @@ def callback_handler(msg):
 		query_id, from_id, query_data = telepot.glance(msg, flavor='callback_query')
 
 	except Exception as caught_exception:
-		if debug_log:
-			logging.exception(f'⚠️ Exception in callback_handler: {caught_exception}')
+		logging.exception(f'⚠️ Exception in callback_handler: {caught_exception}')
 
 		return
 
@@ -595,25 +578,19 @@ def callback_handler(msg):
 				try:
 					bot.answerCallbackQuery(query_id, text="⚠️ This button is only callable by admins! ⚠️")
 				except Exception as error:
-					if debug_log:
-						logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-				if debug_log:
-					logging.info(f'✋ Callback query called by a non-admin in {anonymize_id(chat)}, returning | {(1000*(timer() - start)):.0f} ms')
-
+				logging.info(f'✋ Callback query called by a non-admin in {anonymize_id(chat)}, returning | {(1000*(timer() - start)):.0f} ms')
 				return
 
 	# callbacks only supported for notify at the moment; verify it's a notify command
 	if input_data[0] not in ('notify', 'mute', 'next_flight', 'schedule', 'prefs', 'stats'):
-		if debug_log:
-			logging.info(f'⚠️ Incorrect input data in callback_handler! input_data={input_data} | {(1000*(timer() - start)):.0f} ms')
-
+		logging.info(f'⚠️ Incorrect input data in callback_handler! input_data={input_data} | {(1000*(timer() - start)):.0f} ms')
 		return
 
 	# check if notification database exists
-	data_dir = 'data'
-	if not os.path.isfile(os.path.join(data_dir,'launchbot-data.db')):
-		create_notify_database(data_dir)
+	if not os.path.isfile(os.path.join(DATA_DIR,'launchbot-data.db')):
+		create_notify_database(DATA_DIR)
 
 	flag_map = {
 		'USA': '🇺🇸',
@@ -635,8 +612,7 @@ def callback_handler(msg):
 			try:
 				provider_list = provider_by_cc[country_code]
 			except:
-				if debug_log:
-					logging.info(f'Error finding country code {country_code} from provider_by_cc!')
+				logging.info(f'Error finding country code {country_code} from provider_by_cc!')
 				return
 
 			update_list_view(msg, chat, provider_list)
@@ -644,8 +620,7 @@ def callback_handler(msg):
 			try:
 				bot.answerCallbackQuery(query_id, text=f'{flag_map[country_code]}')
 			except Exception as error:
-				if debug_log:
-					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
 		# user requests to return to the main menu; send the main keyboard
 		elif input_data[1] == 'main_menu':
@@ -658,10 +633,9 @@ def callback_handler(msg):
 			try:
 				bot.answerCallbackQuery(query_id, text='⏮ Returned to main menu')
 			except Exception as error:
-				if debug_log:
-					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-			if debug_log and chat != OWNER:
+			if chat != OWNER:
 				logging.info(f'⏮ {anonymize_id(chat)} (main-view update) | {(1000*(timer() - start)):.0f} ms')
 
 		# user requested to toggle a notification
@@ -724,10 +698,9 @@ def callback_handler(msg):
 			try:
 				bot.answerCallbackQuery(query_id, text=reply_text, show_alert=True)
 			except Exception as error:
-				if debug_log:
-					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-			if debug_log and chat != OWNER:
+			if chat != OWNER:
 				logging.info(f'{anonymize_id(chat)} {reply_text} | {(1000*(timer() - start)):.0f} ms')
 
 			# update list view if an lsp button was pressed
@@ -736,8 +709,7 @@ def callback_handler(msg):
 				try:
 					provider_list = provider_by_cc[country_code]
 				except:
-					if debug_log:
-						logging.info(f'Error finding country code {country_code} from provider_by_cc!')
+					logging.info(f'Error finding country code {country_code} from provider_by_cc!')
 					return
 
 				# update keyboard list view
@@ -760,10 +732,9 @@ def callback_handler(msg):
 			try:
 				bot.answerCallbackQuery(query_id, text=reply_text)
 			except Exception as error:
-				if debug_log:
-					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-			if debug_log and chat != OWNER:
+			if chat != OWNER:
 				logging.info(f'💫 {anonymize_id(chat)} finished setting notifications with the "Done" button! | {(1000*(timer() - start)):.0f} ms')
 
 	elif input_data[0] == 'mute':
@@ -789,24 +760,21 @@ def callback_handler(msg):
 			try:
 				bot.answerCallbackQuery(query_id, text=callback_text)
 			except Exception as error:
-				if debug_log:
-					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-			if debug_log and chat != OWNER:
+			if chat != OWNER:
 				if new_toggle_state == 0:
 					logging.info(f'🔇 {anonymize_id(chat)} muted a launch for {input_data[1]} (launch_id={input_data[2]}) | {(1000*(timer() - start)):.0f} ms')
 				else:
 					logging.info(f'🔊 {anonymize_id(chat)} unmuted a launch for {input_data[1]} (launch_id={input_data[2]}) | {(1000*(timer() - start)):.0f} ms')
 
 		except Exception as exception:
-			if debug_log:
-				logging.exception(f'⚠️ User attempted to mute/unmute a launch, but no reply could be provided (sending message...): {exception}')
+			logging.exception(f'⚠️ User attempted to mute/unmute a launch, but no reply could be provided (sending message...): {exception}')
 
 			try:
 				bot.sendMessage(chat, callback_text, parse_mode='Markdown')
 			except Exception as exception:
-				if debug_log:
-					logging.exception(f'🛑 Ran into an error sending the mute/unmute message to chat={chat}! {exception}')
+				logging.exception(f'🛑 Ran into an error sending the mute/unmute message to chat={chat}! {exception}')
 
 		# toggle the mute here, so we can give more responsive feedback
 		toggle_launch_mute(chat, input_data[1], input_data[2], input_data[3])
@@ -816,8 +784,7 @@ def callback_handler(msg):
 		# next_flight/{next/prev}/{current_index}/{cmd}
 		# next_flight/refresh/0/{cmd}'
 		if input_data[1] not in {'next', 'prev', 'refresh'}:
-			if debug_log:
-				logging.info(f'⚠️ Error with callback_handler input_data[1] for next_flight. input_data={input_data}')
+			logging.info(f'⚠️ Error with callback_handler input_data[1] for next_flight. input_data={input_data}')
 			return
 
 		current_index, cmd = input_data[2], input_data[3]
@@ -838,12 +805,10 @@ def callback_handler(msg):
 				inline_keyboard.append([InlineKeyboardButton(text='🔎 Search for all flights', callback_data=f'next_flight/refresh/0/all')])
 				keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
-				if debug_log:
-					logging.info(f'🔎 No launches found after next refresh. Sent user the "No launches found" message.')
+				logging.info(f'🔎 No launches found after next refresh. Sent user the "No launches found" message.')
 
 			except Exception as e:
-				if debug_log:
-					logging.exception(f'⚠️ No launches found after refresh! {e}')
+				logging.exception(f'⚠️ No launches found after refresh! {e}')
 
 		# query reply text
 		query_reply_text = {'next': 'Next flight ⏩', 'prev': '⏪ Previous flight', 'refresh': '🔄 Refreshed data!'}[input_data[1]]
@@ -855,16 +820,14 @@ def callback_handler(msg):
 			if exception.error_code == 400 and 'Bad Request: message is not modified' in exception.description:
 				pass
 			else:
-				if debug_log:
-					logging.exception(f'⚠️ TelegramError updating message text: {exception}')
+				logging.exception(f'⚠️ TelegramError updating message text: {exception}')
 
 		try:
 			bot.answerCallbackQuery(query_id, text=query_reply_text)
 		except Exception as error:
-			if debug_log:
-				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+			logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-		if debug_log and chat != OWNER:
+		if chat != OWNER:
 			logging.info(f'{anonymize_id(chat)} pressed "{query_reply_text}" button in /next | {(1000*(timer() - start)):.0f} ms')
 
 	elif input_data[0] == 'schedule':
@@ -897,12 +860,10 @@ def callback_handler(msg):
 					query_reply_text = '🔄 Schedule refreshed – no changes detected!'
 					bot.answerCallbackQuery(query_id, text=query_reply_text)
 				except Exception as error:
-					if debug_log:
-						logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 				pass
 			else:
-				if debug_log:
-					logging.exception(f'⚠️ TelegramError updating message text: {exception}')
+				logging.exception(f'⚠️ TelegramError updating message text: {exception}')
 
 	elif input_data[0] == 'prefs':
 		if input_data[1] not in ('timezone', 'notifs', 'cmds', 'done', 'main_menu'):
@@ -1205,7 +1166,7 @@ def callback_handler(msg):
 
 	elif input_data[0] == 'stats':
 		if input_data[1] == 'refresh':
-			if debug_log and chat != OWNER:
+			if chat != OWNER:
 				logging.info(f'🔄 {anonymize_id(chat)} refreshed statistics')
 
 			new_text = inspect.cleandoc(statistics(chat, 'refresh'))
@@ -1221,11 +1182,14 @@ def callback_handler(msg):
 
 	# update stats, except if command was a stats refresh
 	if input_data[0] != 'stats':
-		update_stats_db(stats_update={'commands':1}, db_path='data')
+		update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
 
 
-# restrict command send frequency to avoid spam
 def timer_handle(command, chat, user):
+	''' Summary
+	Restrict command send frequency to avoid spam, by storing
+	user IDs and when they have called a command in memory.
+	'''
 	# remove the '/' command prefix
 	command = command.strip('/')
 	chat = str(chat)
@@ -1301,15 +1265,13 @@ def timer_handle(command, chat, user):
 			if spammer is not None:
 				spammer.add_offense()
 
-				if debug_log:
-					logging.info(f'⚠️ User {anonymize_id(user)} now has {spammer.get_offenses()} spam offenses.')
+				logging.info(f'⚠️ User {anonymize_id(user)} now has {spammer.get_offenses()} spam offenses.')
 
 				if spammer.get_offenses() >= 10:
 					run_time = datetime.datetime.now() - STARTUP_TIME
 					if run_time.seconds > 60:
 						ignored_users.add(user)
-						if debug_log:
-							logging.info(f'⚠️⚠️⚠️ User {anonymize_id(user)} is now ignored due to excessive spam!')
+						logging.info(f'⚠️⚠️⚠️ User {anonymize_id(user)} is now ignored due to excessive spam!')
 
 						bot.sendMessage(
 							chat,
@@ -1324,8 +1286,7 @@ def timer_handle(command, chat, user):
 
 			else:
 				spammers.add(Spammer(user))
-				if debug_log:
-					logging.info(f'⚠️ Added user {anonymize_id(user)} to spammers.')
+				logging.info(f'⚠️ Added user {anonymize_id(user)} to spammers.')
 
 			return False
 
@@ -1342,8 +1303,8 @@ def chat_preferences(chat):
 	- set notification times
 	- allow/disallow regular users to call bot's commands
 	'''
-	if not os.path.isfile(os.path.join('data', 'preferences.db')):
-		conn = sqlite3.connect(os.path.join('data', 'preferences.db'))
+	if not os.path.isfile(os.path.join(DATA_DIR, 'launchbot-data.db')):
+		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 		c = conn.cursor()
 		try:
 			# chat - notififcations - postpone - timezone - commands
@@ -1393,17 +1354,12 @@ def chat_preferences(chat):
 		)
 
 
-def anonymize_id(chat):
-	return sha1(str(chat).encode('utf-8')).hexdigest()[0:6]
-
-
-def name_from_provider_id(provider_id):
-	data_dir = 'data'
-	conn = sqlite3.connect(os.path.join(data_dir,'launches.db'))
+def name_from_provider_id(lsp_id):
+	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 	c = conn.cursor()
 
 	# get provider name corresponding to this ID
-	c.execute("SELECT lsp_name FROM launches WHERE keywords = ?",(provider_id,))
+	c.execute("SELECT lsp_name FROM launches WHERE lsp_id = ?",(provider_id,))
 	query_return = c.fetchall()
 
 	if len(query_return) != 0:
@@ -1414,11 +1370,10 @@ def name_from_provider_id(provider_id):
 
 def notify(msg):
 	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
-	data_dir = 'data'
 
 	# check if notification database exists
-	if not os.path.isfile(os.path.join(data_dir, 'launchbot-data.db')):
-		create_notify_database(data_dir)
+	if not os.path.isfile(os.path.join(DATA_DIR, 'launchbot-data.db')):
+		create_notify_database(DATA_DIR)
 
 	# send the user the base keyboard where we start working up from.
 	message_text = f'''
@@ -1469,8 +1424,10 @@ def notify(msg):
 		)
 
 
-# receive feedback from users. Mainly as ForceReply and inline-features practice, though.
 def feedback(msg):
+	'''
+	Receive feedback from users.
+	'''
 	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
 
 	# feedback called by $chat; send the user a message with ForceReply in it, so we can get a response
@@ -1488,15 +1445,17 @@ def feedback(msg):
 	feedback_message_IDs.add(ret['message_id'])
 
 
-# display a very simple schedule for upcoming flights (all)
 def flight_schedule(msg, command_invoke, call_type):
+	'''
+	Display a very simple schedule for all upcoming flights.
+	'''
 	if command_invoke:
 		content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
 	else:
 		chat = msg['message']['chat']['id']
 
 	# open db connection
-	conn = sqlite3.connect(os.path.join('data', 'launch', 'launches.db'))
+	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 	c = conn.cursor()
 
 	# perform the select; if cmd == all, just pull the next launch
@@ -1674,7 +1633,6 @@ def flight_schedule(msg, command_invoke, call_type):
 
 # handles /next by polling the launch database
 def next_flight(msg, current_index, command_invoke, cmd):
-	data_dir = 'data'
 	if command_invoke:
 		content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
 		command_split = msg['text'].strip().split(" ")
@@ -1704,13 +1662,13 @@ def next_flight(msg, current_index, command_invoke, cmd):
 
 	# if command was "all", no need to perform a special select
 	# if no command, we'll need to figure out what LSPs the user has set notifs for
-	notify_conn = sqlite3.connect(os.path.join(data_dir, 'launchbot-data.db'))
+	notify_conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 	notify_cursor = notify_conn.cursor()
 
 	try:
 		notify_cursor.execute('''SELECT * FROM notify WHERE chat = ?''', (chat,))
 	except:
-		create_notify_database(data_dir)
+		create_notify_database(DATA_DIR)
 
 	query_return = notify_cursor.fetchall()
 	notify_conn.close()
@@ -1748,7 +1706,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 		cmd = 'all'
 
 	# open db connection
-	conn = sqlite3.connect(os.path.join(data_dir, 'launches.db'))
+	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 	c = conn.cursor()
 
 	# datetimes
@@ -1793,9 +1751,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 		try:
 			query_return = query_return[current_index]
 		except Exception as error:
-			if debug_log:
-				logging.exception(f'⚠️ Exception setting query_return: {error}')
-
+			logging.exception(f'⚠️ Exception setting query_return: {error}')
 			query_return = query_return[0]
 	else:
 		msg_text = '🔄 No launches found! Try enabling notifications for other providers, or searching for all flights.'
@@ -1805,9 +1761,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 		bot.sendMessage(chat, msg_text, reply_markup=keyboard)
-
-		if debug_log:
-			logging.info('🔎 No launches found in next. Sent user the "No launches found" message.')
+		logging.info('🔎 No launches found in next. Sent user the "No launches found" message.')
 
 		return
 
@@ -1838,8 +1792,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 	if lsp_name == 'SpaceX':
 		# spx_info_str, spx_orbit_info = spx_info_str_gen(launch_name, 0, utc_timestamp)
 
-		if debug_log:
-			logging.info(f'Next of SpX launch: calling spx_info_str_gen with ({launch_name}, 0, {utc_timestamp})')
+		logging.info(f'Next of SpX launch: calling spx_info_str_gen with ({launch_name}, 0, {utc_timestamp})')
 
 		spx_info_str, spx_orbit_info = spx_info_str_gen(mission_name, 0, flight_unix_net)
 		if spx_info_str is not None:
@@ -1873,8 +1826,7 @@ def next_flight(msg, current_index, command_invoke, cmd):
 		elif lsp_name in disabled or lsp_short in disabled:
 			user_notif_enabled = False
 		else:
-			if debug_log:
-				logging.info(f'⚠️ failed to set user_notif_enabled: lsp: {lsp_name}, diff: {difflib.get_close_matches(lsp_name, notif_providers)}\
+			logging.info(f'⚠️ failed to set user_notif_enabled: lsp: {lsp_name}, diff: {difflib.get_close_matches(lsp_name, notif_providers)}\
 					, notif_providers: {notif_providers}')
 			user_notif_enabled = False
 
@@ -2169,1075 +2121,97 @@ def next_flight(msg, current_index, command_invoke, cmd):
 	return
 
 
-# handles API update requests and decides on which notification to send
-def launch_update_check():
-	# compare data to data found in local launch database
-	# send a notification if launch time is approaching
-
-	data_dir = 'data'
-	if not os.path.isfile(os.path.join(data_dir, 'launches.db')):
-		create_launch_database()
-		get_launch_updates(None)
-
-	# Establish connection to the launch database
-	conn = sqlite3.connect(os.path.join(data_dir, 'launches.db'))
-	c = conn.cursor()
-
-	# Select all launches from the database that have a T- of less than 24 hours and 15 seconds
-	Tminus_threshold_24h = 24*3600 + 15
-	Tminus_threshold_12h = 12*3600 + 15
-	Tminus_threshold_1h = 1*3600 + 15
-	Tminus_threshold_5m = 5*60 + 15
-
-	# current unix time, also construct the unix time ranges
-	now_timestamp = time.mktime(datetime.datetime.today().timetuple())
-	unix_24h_threshold = now_timestamp + Tminus_threshold_24h
-	unix_12h_threshold = now_timestamp + Tminus_threshold_12h
-	unix_60m_threshold = now_timestamp + Tminus_threshold_1h
-	unix_5m_threshold = now_timestamp + Tminus_threshold_5m
-
-	c.execute(f'''SELECT * FROM launches 
-		WHERE 
-		NET <= {unix_24h_threshold} AND NET >= {now_timestamp} AND notify24h = 0 OR
-		NET <= {unix_12h_threshold} AND NET >= {now_timestamp} AND notify12h = 0 OR 
-		NET <= {unix_60m_threshold} AND NET >= {now_timestamp} AND notify60min = 0 OR
-		NET <= {unix_5m_threshold} AND NET >= {now_timestamp} AND notify5min = 0
-		''')
-
-	query_return = c.fetchall()
-	if len(query_return) == 0:
-		return
-
-	# we presumably have at least one launch now that has an unsent notification
-	# update the database, then check again
-	if debug_log:
-		logging.info(f'⏰ Found {len(query_return)} pending notification(s)... Updating database to verify.')
-	
-	get_launch_updates(None)
-	c.execute(f'''SELECT * FROM launches 
-		WHERE 
-		NET <= {unix_24h_threshold} AND NET >= {now_timestamp} AND notify24h = 0 OR
-		NET <= {unix_12h_threshold} AND NET >= {now_timestamp} AND notify12h = 0 OR 
-		NET <= {unix_60m_threshold} AND NET >= {now_timestamp} AND notify60min = 0 OR
-		NET <= {unix_5m_threshold} AND NET >= {now_timestamp} AND notify5min = 0''')
-	
-	query_return = c.fetchall()
-	if len(query_return) == 0:
-		if debug_log:
-			logging.info(f'❓ No notifications found after re-check. Returning.')
-		return
-
-	for row in query_return:
-		# decide which notification to send
-		curr_Tminus = query_return[0][10]
-		NET = query_return[0][9]
-		status_24h, status_12h, status_1h, status_5m = query_return[0][11], query_return[0][12], query_return[0][13], query_return[0][14]
-
-		notif_class = []
-		if NET <= unix_24h_threshold and status_24h == 0:
-			notif_class.append('24h')
-		if NET <= unix_12h_threshold and status_12h == 0:
-			notif_class.append('12h')
-		if NET <= unix_60m_threshold and status_1h == 0:
-			notif_class.append('1h')
-		if NET <= unix_5m_threshold and status_5m == 0:
-			# if the launch already happened, don't notify
-			if now_timestamp - NET > 0:
-				if now_timestamp - NET > 600:
-					notif_class = []
-					if debug_log:
-						logging.info(f'🛑 Launch happened {now_timestamp - NET} seconds ago; aborted notification sending. id: {row[1]}')
-
-					return
-				else:
-					notif_class.append('5m')
-			else:
-				notif_class.append('5m')
-		
-		if len(notif_class) == 0:
-			if debug_log:
-				logging.info(f'⚠️ Error setting notif_class in notification_handler(): curr_Tminus:{curr_Tminus}, launch:{query_return[0][1]}.\
-				 24h: {status_24h}, 12h: {status_12h}, 1h: {status_1h}, 5m: {status_5m}')
-			
-			return
-
-		else:
-			if debug_log:
-				logging.info(f'✅ Set {len(notif_class)} notif_classes. Timestamp: {now_timestamp}, flt NET: {NET}')
-
-		# send the notifications
-		notification_handler(row, notif_class, False)
-
-	return
-
-
-def spx_info_str_gen(launch_name, run_count, launch_net):
+def statistics(chat: str, mode: str):
 	'''
-	Gets the name of a launch from launches.db and attempts to find the corresponding launch name
-	from spx-launches.db with diffing, then generate the SpaceX launch specific information string.
+	Return statistics for LaunchBot.
 	'''
-
-	# manual matches for certain launches
-	if 'DM2' in launch_name:
-		launch_name = 'cctcap demo mission 2'
-	elif 'Starlink' in launch_name:
-		split = launch_name.split(' ')
-		launch_name = f'{split[0]}-{split[1]}'.lower()
-
-	# open the database connection and check if the launch exists in the database
-	# if not, update
-	data_dir = 'data'
-	if not os.path.isfile(os.path.join(data_dir, 'spx-launches.db')):
-		create_spx_database()
-		spx_api_handler()
-
-	# open connection
-	conn = sqlite3.connect(os.path.join(data_dir, 'spx-launches.db'))
-	c = conn.cursor()
-
-	# unix time for NET
-	today_unix = time.mktime(datetime.datetime.today().timetuple())
-
-	# manual launch name matching for cases where automatic parsing fails
-	# MAKE SURE THE KEYS ARE IN lower_case!!!!
-	manual_name_matches = {
-		'starlink-9': 'starlink-9 (v1.0) & blacksky global 5-6'
-	}
-
-	if launch_name.lower() in manual_name_matches.keys():
-		launch_name = manual_name_matches[launch_name.lower()]
-
-	# perform a raw select; if not found, pull all and do some diffing
-	# launch names are stored in lower case
-	c.execute('''SELECT * FROM launches WHERE launch_name = ?''', (launch_name.lower(),))
-	query_return = c.fetchall()
-
-	if len(query_return) == 0:
-		# try pulling all launches, diff them, sort by NET
-		c.execute('''SELECT * FROM launches WHERE NET >= ?''', (launch_net - 3600*24*60,))
-		query_return = c.fetchall()
-
-		launch_names = {} # launch name -> NET dictionary
-		for row in query_return:
-			if row[1] not in launch_names:
-				launch_names[row[1]] = row[2]
-
-		# perform the diffing; strip keys of parantheses for more accurate results
-		stripped_keys = []
-		for key in launch_names.keys():
-			stripped_keys.append(key.replace('(','').replace(')',''))
-
-		# diff
-		close_matches = difflib.get_close_matches(launch_name, stripped_keys)
-		if len(close_matches) == 0:
-			alt_matches = difflib.get_close_matches(launch_name, launch_names)
-			if len(alt_matches) != 0:
-				close_matches = alt_matches
-
-		# no matches, use the stripped keys
-		launch_name_stripped = launch_name.replace('(','').replace(')','').lower()
-		if len(close_matches) == 0:
-			close_matches = difflib.get_close_matches(launch_name_stripped, stripped_keys)
-			if len(close_matches) == 1:
-				diff_match = close_matches[0]
-
-			elif len(close_matches) == 0:
-				# parse manually
-				manual_matches = []
-				for key in stripped_keys:
-					if launch_name_stripped in key:
-						manual_matches.append(key)
-
-				if len(manual_matches) == 1:
-					diff_match = manual_matches[0]
-				else:
-					if debug_log:
-						logging.info(f'🛑 Error finding {launch_name_stripped} from keys (tried manually)!\nStripped_keys: {stripped_keys}')
-						logging.info(f'🛑 Manual try: match_count={len(manual_matches)}, matches={manual_matches}')
-
-					return None, None
-
-			elif len(close_matches) > 1:
-				manual_matches = []
-				for key in stripped_keys:
-					if launch_name_stripped in key:
-						manual_matches.append(key)
-
-				if len(manual_matches) == 1:
-					diff_match = manual_matches[0]
-
-				else:
-					smallest_net, net_index = close_matches[0][2], 0
-					for row, i in zip(close_matches, range(len(close_matches))):
-						if row[2] < smallest_net:
-							smallest_net, net_index = row[2], i
-
-					diff_match = close_matches[net_index]
-
-		# only one diff match; use it
-		elif len(close_matches) == 1:
-			diff_match = close_matches[0]
-
-		# if we have more than one diffed match, sort launches by NET
-		elif len(close_matches) > 1:
-			smallest_net, net_index = close_matches[0][2], 0
-			for row, i in zip(close_matches, range(len(close_matches))):
-				if row[2] < smallest_net:
-					smallest_net, net_index = row[2], i
-
-			diff_match = close_matches[net_index]
-
-		else:
-			if run_count == 0:
-				if debug_log:
-					logging.info(f'🛑 Error in spx_info_str_gen: unable to find launches \
-						with a NET >= {today_unix}. Updating and trying again...')
-
-				spx_api_handler()
-				spx_info_str_gen(launch_name, 1, launch_net)
-			else:
-				if debug_log:
-					logging.info(f'🛑 Error in spx_info_str_gen: unable to find launches \
-						with a NET >= {today_unix}. Tried once before, not trying again.')
-
-			return None, None
-
-	elif len(query_return) == 1:
-		db_match = query_return[0]
-		diff_match = None
-
-	else:
-		if debug_log:
-			logging.info(f'⚠️ Error in spx_info_str_gen(): got more than one launch. \
-				query: {launch_name}, return: {query_return}')
-
-		return None, None
-
-	# if we got a diff_match, pull the launch manually from the spx database
-	if diff_match is not None:
-		c.execute('''SELECT * FROM launches WHERE launch_name = ?''', (diff_match,))
-		query_return = c.fetchall()
-
-		if len(query_return) == 1:
-			db_match = query_return[0]
-		else:
-			# no match; check launch names that have parantheses
-			close_matches = difflib.get_close_matches(diff_match, launch_names)
-			if len(close_matches) >= 1:
-				diff_match = close_matches[0]
-				c.execute('''SELECT * FROM launches WHERE launch_name = ?''', (diff_match,))
-				query_return = c.fetchall()
-
-				if len(query_return) == 1:
-					db_match = query_return[0]
-				else:
-					if debug_log:
-						logging.info(f'🛑 [spx_info_str_gen] Found {len(query_return)} matches from db... Exiting')
-					return None, None
-			else:
-				if debug_log:
-					logging.info(f'🛑 [spx_info_str_gen] Found {len(query_return)} matches from db... Exiting')
-				return None, None
-
-	# same found in multi_parse
-	# use to extract info from db
-	# row stored in db_match
-	# flight_num 0, launch_name 1, NET 2, orbit 3, vehicle 4, core_serials 5
-	# core_reuses 6, landing_intents 7, fairing_reused 8, fairing_rec_attempt 9, fairing_ship 10
-
-	# get the orbit
-	destination_orbit = db_match[3]
-
-	if 'ISS' in destination_orbit:
-		destination_orbit = None
-
-	# booster information
-	if db_match[4] == 'FH': # a Falcon Heavy launch
-		reuses = db_match[6].split(',')
-		try:
-			int(reuses[0])
-			if int(reuses[0]) > 0:
-				center_reuses = f"`♻️x{int(reuses[0])}`"
-			else:
-				center_reuses = f'✨ `New`'
-		except:
-			center_reuses = f'`♻️x?`'
-
-		try:
-			int(reuses[1])
-			if int(reuses[1]) > 0:
-				booster1_reuses = f"`♻️x{int(reuses[1])}`"
-			else:
-				booster1_reuses = f'✨ `New`'
-		except:
-			booster1_reuses = f'`♻️x?`'
-
-		try:
-			int(reuses[2])
-			if int(reuses[2]) > 0:
-				booster2_reuses = f"`♻️x{int(reuses[2])}`"
-			else:
-				booster2_reuses = f'✨ `New`'
-		except:
-			booster2_reuses = f'`♻️x?`'
-
-		# pull serials from db, construct serial strings
-		serials = db_match[5].split(',')
-		core_serial = f"{serials[0]} {center_reuses}"
-		booster_serials = f"`{serials[1]}` {booster1_reuses} + `{serials[2]}` {booster2_reuses}"
-
-		landing_intents = db_match[7].split(',')
-		if landing_intents[0] != 'expend':
-			center_recovery = f"{landing_intents[0]}"
-		else:
-			center_recovery = f"*No recovery* `godspeed,` `{serials[0]}` 💫"
-
-		if landing_intents[1] != 'expend':
-			booster1_recovery= f"{landing_intents[1]}"
-		else:
-			booster1_recovery = f"*No recovery* `godspeed,` `{serials[1]}` 💫"
-
-		if landing_intents[2] != 'expend':
-			booster2_recovery = f"{landing_intents[2]}"
-		else:
-			booster2_recovery = f"*No recovery* `godspeed,` `{serials[2]}` 💫"
-
-
-	else: # single-stick
-		core_serial = db_match[5]
-
-		# recovery
-		landing_intents = db_match[7]
-
-		if 'OCISLY' in landing_intents:
-			landing_intents = 'OCISLY (Atlantic Ocean)'
-		elif 'JRTI' in landing_intents:
-			landing_intents = 'JRTI (Atlantic Ocean)'
-		elif 'ASLOG' in landing_intents:
-			landing_intents = 'ASLOG (Pacific Ocean)'
-		elif 'LZ-1' in landing_intents:
-			landing_intents = 'LZ-1 (RTLS)'
-
-		landing_intents = ' '.join("`{}`".format(word) for word in landing_intents.split(' '))
-
-		if landing_intents != 'expend':
-			if 'None' in landing_intents:
-				recovery_str = '*Recovery* `Unknown`'
-			else:
-				recovery_str = f"*Recovery* {landing_intents}"
-		else:
-			recovery_str = f'*No recovery* `godspeed,` `{core_serial}` 💫'
-
-	# construct the Falcon-specific information message
-	if db_match[4] == 'FH':
-		header = f'*Falcon Heavy configuration*\n*Center core* {core_serial}\n*Boosters* {booster_serials}'
-		if landing_intents[1] == 'expend' and landing_intents[2] == 'expend':
-			rec_str = f'*Recovery operations*\n*Center core* {center_recovery}'
-			boost_str = f'*Boosters* No recovery – godspeed, `{serials[1]}` & `{serials[2]}'
-			spx_info = f'{header}\n\n{rec_str}\n{boost_str}'
-
-		else:
-			rec_str = f'*Recovery operations*\n*Center core* {center_recovery}'
-			boost_str = f'*Boosters* {booster1_recovery} `&` {booster2_recovery}'
-			spx_info = f'{header}\n\n{rec_str}\n{boost_str}'
-
-		if core_serial == 'Unknown':
-			spx_info = f'ℹ️ No FH configuration information available yet'
-
-	# not a FH? Then it's _probably_ a F9
-	elif db_match[4] == 'F9':
-		reuses = db_match[6]
-		try:
-			reuses = int(reuses)
-			if reuses < 10:
-				reuse_count = {
-					0: 'first',
-					1: 'second',
-					2: 'third',
-					3: 'fourth',
-					4: 'fifth',
-					5: 'sixth',
-					6: 'seventh',
-					7: 'eighth',
-					8: 'ninth',
-					9: 'tenth'
-				}[reuses]
-
-			else:
-				try:
-					if reuses in {11, 12, 13}:
-						suffix = 'th'
-					else:
-						suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(reuses)[-1])]
-				except:
-					suffix = 'th'
-
-				reuse_count = f'{reuses}{suffix}'
-
-			reuses = '(' + reuse_count + ' flight ✨)' if reuses == 0 else '(' + reuse_count + ' flight ♻️)'
-			reuses = ' '.join("`{}`".format(word) for word in reuses.split(' '))
-
-		except:
-			reuses = f'`♻️x?`'
-
-		spx_info = f'*Booster information* 🚀\n*Core* `{core_serial}` {reuses}\n{recovery_str}'
-		if core_serial == 'Unknown':
-			spx_info = f'🚀 No booster information available yet'
-
-	else:
-		if debug_log:
-			logging.info(f'🛑 Error in spx_info_str_gen: vehicle not found ({db_match[4]})')
-
-		return None, None
-
-	# check if there is fairing recovery & orbit information available
-	if db_match[8] != '0' and db_match[8] != '1':
-		try:
-			if 'Dragon' in db_match[8]: # check if it's a Dragon flight
-				dragon_info = db_match[8].split('/')
-				dragon_serial = 'Unknown' if dragon_info[1] == 'None' else dragon_info[1]
-				dragon_reused = '♻️ `Reused`' if dragon_info[2] == 'True' else ' '.join("`{}`".format(word) for word in '(first flight ✨)'.split(' '))
-				dragon_crew = dragon_info[3]
-
-				crew_str = ''
-				if 'Crew' in dragon_info[0] and dragon_crew != 'None':
-					if int(dragon_crew) != 0:
-						for i in range(int(dragon_crew)):
-							crew_str += '👨‍🚀'
-					else:
-						crew_str = 'Unmanned'
-				elif 'Crew' in dragon_info[0] and dragon_crew == 'None':
-					crew_str = 'Unmanned/Unknown'
-				elif 'Crew' not in dragon_info[0]:
-					crew_str = 'Cargo mission'
-
-				# force text for DM-2
-				if db_match[1] == 'cctcap demo mission 2':
-					crew_str = '👨‍🚀👨‍🚀 Hurley & Behnken'
-
-				cap_type = ' '.join("`{}`".format(word) for word in dragon_info[0].split(' '))
-				fairing_info = f'*Dragon information* 🐉\n*Type* {cap_type}\n*Serial* `{dragon_serial}` {dragon_reused}\n*Crew* `{crew_str}`'
-				spx_info = spx_info + '\n\n' + fairing_info
-
-		except:
-			pass
-
-	''' UNCOMMENT TO ADD FAIRING INFORMATION BACK
-	else:
-		try:
-			if int(db_match[8]) == 1 or int(db_match[8]) == 0:
-				if db_match[9] is not None:
-					try: 
-						if int(db_match[9]) == 1:
-							if db_match[10] is not None:
-								rec_str = db_match[10]
-							else:
-								rec_str = 'Unknown'
-						else:
-							rec_str = 'No recovery'
-					except:
-						rec_str = 'Unknown'
-				else:
-					rec_str = 'Unknown'
-
-				status_str = '♻️ `Reused`' if db_match[8] == 1 else '✨ `New`'
-				fairing_info = f"*Fairing information*\n*Status* {status_str}\n*Recovery* `{rec_str}`"
-				spx_info = spx_info + '\n\n' + fairing_info
-
-		except Exception as e:
-			if debug_log:
-				logging.info(f'{e}')
-			pass
-	'''
-
-	return spx_info, destination_orbit
-
-
-# handles API requests from launch_update_check()
-def get_launch_updates(launch_ID):
-	def construct_params(PARAMS):
-		param_url, i = '', 0
-		if PARAMS is not None:
-			for key, val in PARAMS.items():
-				if i == 0:
-					param_url += f'?{key}={val}'
-				else:
-					param_url += f'&{key}={val}'
-				i += 1
-
-		return param_url
-
-
-	def multi_parse(json, launch_count):
-		# check if db exists
-		data_dir = 'data'
-		if not os.path.isfile(os.path.join(data_dir, 'launches.db')):
-			create_launch_database()
-
-		# open connection
-		conn = sqlite3.connect(os.path.join(data_dir, 'launches.db'))
-		c = conn.cursor()
-
-		# launch, id, keywords, countrycode, NET, T-, notify24hour, notify12hour, notify60min, notify5min, success, launched, hold
-		for i in range(0, launch_count):
-			# json of flight i
-			launch_json = json['launches'][i]
-
-			# extract stuff
-			launch_name = launch_json['name'].split('|')[1]
-			launch_id = launch_json['id']
-			status = launch_json['status']
-
-			# extract: lsp_name, vehicle, pad, info
-			try:
-				lsp_name = launch_json['lsp']['name']
-				lsp_short = launch_json['lsp']['abbrev']
-				vehicle = launch_json['rocket']['name']
-				location_name = launch_json['location']['pads'][0]['name']
-			except Exception as e:
-				if debug_log:
-					logging.exception(f'⚠️ Error in multi_parse (3334): {e}')
-
-				return
-
-			# NEW (2020): probability of launch + tbdtime/tbddate
-			tbd_date = launch_json['tbddate']
-			tbd_time = launch_json['tbdtime']
-			launch_prob = launch_json['probability']
-
-			# find a video url, preferably a youtube link
-			try:
-				if 'vidURLs' in launch_json:
-					urls = launch_json['vidURLs']
-					vid_url = None
-
-					for url in urls:
-						if 'youtube' in url:
-							vid_url = url
-							break
-
-					if vid_url is None:
-						vid_url = urls[0]
-			except:
-				vid_url = ''
-
-			if 'Unknown Pad' not in location_name:
-				pad = location_name.split(', ')[0]
-				try:
-					pad_loc = location_name.split(', ')[1]
-					pad = f'{pad}, {pad_loc}'
-				except:
-					pass
-			else:
-				pad = launch_json['location']['name']
-
-			try:
-				if launch_json['missions'][0]['description'] != '':
-					mission_text = launch_json['missions'][0]['description'].split('\n')[0]
-				else:
-					mission_text = None
-			except:
-				mission_text = None
-
-			# Integer (1 Green, 2 Red, 3 Success, 4 Failed) 5 = ?, 6 = in flight?
-			success = {0:0, 1:0, 2:0, 3:1, 4:-1, 5:0, 6:0}[status]
-			lsp = launch_json['lsp']['id']
-			countrycode = launch_json['lsp']['countryCode']
-
-			if success in {1, -1}:
-				launched, holding = 1, -1
-
-			elif success == 2:
-				launched, holding = 0, 1
-
-			elif success == 0:
-				launched, holding = 0, 0
-
-			today_unix = time.mktime(datetime.datetime.today().timetuple())
-			if launch_json['netstamp'] != 0:
-				# construct datetime from netstamp
-				net_unix = launch_json['netstamp']
-				net_stamp = datetime.datetime.fromtimestamp(net_unix)
-
-				if today_unix <= net_unix:
-					Tminus = abs(datetime.datetime.today() - net_stamp).seconds
-				else:
-					Tminus = 0
-
-			else:
-				# use the ISO date, which is effectively a NET date, while the above netstamp is the instantenious launch time
-				# 20200122T165900Z
-				if launch_json['isonet'] != 0:
-					# convert to datetime object
-					utc_dt = datetime.datetime.strptime(launch_json['isonet'], '%Y%m%dT%H%M%S%fZ')
-
-					# convert UTC datetime to seconds since the Epoch
-					net_unix = (utc_dt - datetime.datetime(1970, 1, 1)).total_seconds()
-					net_stamp = datetime.datetime.fromtimestamp(net_unix)
-
-					if today_unix <= net_unix:
-						Tminus = abs(datetime.datetime.today() - net_stamp).seconds
-					else:
-						Tminus = 0
-				else:
-					net_unix, Tminus = -1, -1
-
-			# update if launch ID found, insert if id not found
-			# launch, id, keywords, lsp_name, vehicle, pad, info, countrycode, NET, Tminus
-			# notify24h, notify12h, notify60min, notify5min, notifylaunch, success, launched, hold
-			# NEW: tbd_date tbd_time launch_prob
-			try: # launch not found, insert as new
-				c.execute('''INSERT INTO launches
-					(launch, id, keywords, lsp_name, lsp_short, vehicle, pad, info, countrycode, NET, Tminus,
-					notify24h, notify12h, notify60min, notify5min, notifylaunch, success, launched, hold, vid, tbd_date, tbd_time, launch_prob)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?)''',
-					(launch_name, launch_id, lsp, lsp_name, lsp_short, vehicle, pad, mission_text, countrycode, net_unix, Tminus, success, launched, holding, vid_url,
-						tbd_date, tbd_time, launch_prob))
-
-			except: # launch found
-				# Launch is already found; check if the new NET matches the old NET.
-				c.execute('SELECT NET, notify24h, notify12h, notify60min, notify5min, launched FROM launches WHERE id = ?',(launch_id,))
-				old_info = c.fetchall()[0]
-				old_NET = old_info[0]
-
-				# new net doesn't match old NET; decide what to do with the notification flags, if they have been set
-				new_NET = int(net_unix)
-
-				if old_NET != new_NET:
-					notification_statuses = {
-					'24h': old_info[1],
-					'12h': old_info[2],
-					'1h': old_info[3],
-					'5m': old_info[4]
-					}
-
-					net_diff = new_NET - old_NET
-
-					#if net_diff < 0:
-					#	if debug_log:
-					#		if net_diff <- 1:
-					#			logging.info(f'🕑 NET for launch {launch_id} moved left. Old NET: {old_NET}, new NET: {new_NET}, diff: {net_diff}')
-
-					# at least 1 notification has already been sent
-					if 1 in notification_statuses.values() and net_diff >= 5*60 and launched != 1:
-						disabled_statuses = set()
-						for key, status in notification_statuses.items():
-							if key == '24h' and status == 1:
-								if net_diff > 3600*24:
-									notification_statuses['24h'] = 0
-									disabled_statuses.add('24h')
-
-							elif key == '12h' and status == 1:
-								if net_diff >= 3600*12:
-									notification_statuses['12h'] = 0
-									disabled_statuses.add('12h')
-
-							elif key == '1h' and status == 1:
-								if net_diff >= 3600:
-									notification_statuses['1h'] = 0
-									disabled_statuses.add('1h')
-
-							elif key == '5m' and status == 1:
-								if net_diff >= 3600*(5/60):
-									notification_statuses['5m'] = 0
-									disabled_statuses.add('5m')
-
-						# construct the eta string
-						net_stamp = datetime.datetime.fromtimestamp(new_NET)
-						eta = abs(datetime.datetime.today() - net_stamp)
-						if eta.days >= 365: # over 1 year
-							t_y = math.floor(eta.days/365)
-							t_m = math.floor(t_y*365 - eta.days)
-
-							year_suff = 'year' if t_y == 1 else 'years'
-							month_suff = 'month' if t_m == 1 else 'months'
-							eta_str = f'{t_y} {year_suff}, {t_m} {month_suff}'
-
-						elif eta.days < 365 and eta.days >= 31: # over 1 month
-							t_m = math.floor(eta.days/30)
-							t_d = math.floor(eta.days - t_m*30)
-
-							month_suff = 'month' if t_m == 1 else 'months'
-							day_suff = 'day' if t_d == 1 else 'days'
-							eta_str = f'{t_m} {month_suff}, {t_d} {day_suff}'
-
-						elif eta.days >= 1 and eta.days < 31: # over a day
-							t_d = eta.days
-							t_h = math.floor(eta.seconds/3600)
-							t_m = math.floor((eta.seconds-t_h*3600)/60)
-
-							day_suff = f'day' if t_d == 1 else f'days'
-							min_suff = 'minute' if t_m == 1 else 'minutes'
-							h_suff = 'hour' if t_h == 1 else 'hours'
-							eta_str = f'{t_d} {day_suff}, {t_h} {h_suff}, {t_m} {min_suff}'
-
-						elif (eta.seconds/3600) < 24 and (eta.seconds/3600) >= 1: # under a day, more than an hour
-							t_h = math.floor(eta.seconds/3600)
-							t_m = math.floor((eta.seconds-t_h*3600)/60)
-							t_s = math.floor(eta.seconds-t_h*3600-t_m*60)
-
-							h_suff = 'hour' if t_h == 1 else 'hours'
-							min_suff = 'minute' if t_m == 1 else 'minutes'
-							s_suff = 'second' if t_s == 1 else 'seconds'
-							eta_str = f'{t_h} {h_suff}, {t_m} {min_suff}, {t_s} {s_suff}'
-
-						elif (eta.seconds/3600) < 1:
-							t_m = math.floor(eta.seconds/60)
-							t_s = math.floor(eta.seconds-t_m*60)
-
-							min_suff = 'minute' if t_m == 1 else 'minutes'
-							s_suff = 'second' if t_s == 1 else 'seconds'
-
-							if t_m > 0:
-								eta_str = f'{t_m} {min_suff}, {t_s} {s_suff}'
-							elif t_m == 0:
-								if t_s <= 10:
-									if t_s > 0:
-										eta_str = f'T-{t_s}, terminal countdown'
-									else:
-										if t_s == 0:
-											eta_str = 'T-0, launch commit'
-										else:
-											eta_str = 'T-0'
-								else:
-									eta_str = f'T- {t_s} {s_suff}'
-
-						# notify users with a message
-						launch_unix = datetime.datetime.utcfromtimestamp(new_NET)
-						if launch_unix.minute < 10:
-							launch_time = f'{launch_unix.hour}:0{launch_unix.minute}'
-						else:
-							launch_time = f'{launch_unix.hour}:{launch_unix.minute}'
-
-						# lift-off date
-						ymd_split = f'{launch_unix.year}-{launch_unix.month}-{launch_unix.day}'.split('-')
-						try:
-							suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(ymd_split[2])[-1])]
-						except:
-							suffix = 'th'
-
-						month_map = {
-							1: 'January', 2: 'February', 3: 'March', 4: 'April',
-							5: 'May', 6: 'June', 7: 'July', 8: 'August',
-							9: 'September', 10: 'October', 11: 'November', 12: 'December'}
-
-						date_str = f'{month_map[int(ymd_split[1])]} {ymd_split[2]}{suffix}'
-
-						# time-delta for postpone_str; net_diff is the time in seconds
-						if net_diff > 3600*24:
-							days = math.floor(net_diff/(3600*24))
-							hours = math.floor((net_diff - days*3600*24)/3600)
-							d_suff = 'day' if days == 1 else 'days'
-							h_suff = 'hour' if hours == 1 else 'hours'
-
-							if hours == 0:
-								postpone_str = f'{days} {d_suff}'
-							else:
-								postpone_str = f'{days} {d_suff} and {hours} {h_suff}'
-
-						elif net_diff == 3600*24:
-							postpone_str = '24 hours'
-
-						elif net_diff < 3600*24:
-							hours = math.floor(net_diff/3600)
-							mins = math.floor((net_diff-hours*3600)/60)
-							h_suff = 'hour' if hours == 1 else 'hours'
-							m_suff = 'minute' if mins == 1 else 'minutes'
-
-							if hours == 0:
-								postpone_str = f'{mins} {m_suff}'
-							else:
-								if mins == 0:
-									postpone_str = f'{hours} {h_suff}'
-								else:
-									postpone_str = f'{hours} {h_suff} and {mins} {m_suff}'
-
-						# construct message
-						msg_text = f'📢 *{launch_name}* has been postponed by {postpone_str}. '
-						msg_text += f'*{lsp_name}* is now targeting lift-off on *{date_str}* at *{launch_time} UTC*.\n\n'
-						msg_text += f'⏱ {eta_str} until next launch attempt.\n\n'
-						msg_text = reconstruct_message_for_markdown(msg_text)
-						msg_text += f'ℹ️ _You will be re\-notified of this launch\. For detailed info\, use \/next\@{BOT_USERNAME}\. '
-						msg_text += 'To disable\, mute this launch with the button below\._'
-
-						if lsp not in LSP_IDs.keys():
-							notify_list = get_notify_list(lsp_name, launch_id, None)
-						else:
-							notify_list = get_notify_list(LSP_IDs[lsp][0], launch_id, None)
-
-						active_chats, muted_chats = set(), set()
-						for chat in notify_list:
-							if load_mute_status(chat, launch_id, lsp) == 0:
-								active_chats.add(chat)
-							else:
-								muted_chats.add(chat)
-
-						# send the notifications
-						global msg_identifiers
-						msg_identifiers = []
-						for chat in active_chats:
-							ret = send_postpone_notification(chat, msg_text, launch_id, lsp)
-
-							if ret != True and debug_log:
-								logging.info(f'🛑 Error sending notification to chat={anonymize_id(chat)}! Exception: {ret}')
-
-							tries = 1
-							while ret != True:
-								time.sleep(2)
-								ret = send_postpone_notification(chat, msg_text, launch_id, lsp)
-								tries += 1
-
-								if ret:
-									if debug_log:
-										logging.info(f'✅ Notification sent successfully to chat={anonymize_id(chat)}! Took {tries} tries.')
-
-								elif ret != True and tries > 5:
-									if debug_log:
-										logging.info(f'⚠️ Tried to send notification to {anonymize_id(chat)} {tries} times – passing.')
-				
-									ret = True
-
-						if debug_log:
-							logging.info(f'📢 Notified {len(active_chats)} chats about the postpone ({postpone_str})'
-										 f' of launch {launch_id} by {lsp_name}')
-							logging.info(f'🔕 Did NOT notify {len(muted_chats)} chats about the postpone due to mute'
-										 f' status.')
-
-						# update stats with sent notifications
-						update_stats_db(stats_update={'notifications':len(active_chats)}, db_path='data')
-
-						# remove old notifs if possible
-						remove_previous_notification(launch_id, lsp_short if len(lsp_name) > len('Virgin Orbit') else lsp_name)
-
-						# convert identifiers to string, store
-						msg_identifiers = ','.join(msg_identifiers)
-						store_notification_identifiers(launch_id, msg_identifiers)
-
-						if debug_log:
-							logging.info(f'Storing identifiers (send_postpone_notification)... strlen: {len(msg_identifiers)}')
-
-						if debug_log:
-							if len(disabled_statuses) > 0:
-								disabled_notif_str = ', '.join(disabled_statuses)
-								logging.info(f'🚩 {disabled_notif_str} flags set to 0 for {launch_id} | lsp={lsp_short}, lname={launch_name}, net_diff={net_diff}')
-
-					c.execute('''UPDATE launches
-						SET NET = ?, Tminus = ?, success = ?, launched = ?, hold = ?, info = ?, pad = ?,
-						vid = ?, notify24h = ?, notify12h = ?, notify60min = ?, notify5min = ?, tbd_date = ?, tbd_time = ?, launch_prob = ?
-						WHERE id = ?''', (
-							net_unix, Tminus, success, launched, holding, mission_text, pad, vid_url,
-							notification_statuses['24h'], notification_statuses['12h'], notification_statuses['1h'], notification_statuses['5m'],
-							tbd_date, tbd_time, launch_prob, launch_id))
-
-				else:
-					c.execute('''UPDATE launches
-						SET NET = ?, Tminus = ?, success = ?, launched = ?, hold = ?, info = ?, pad = ?, vid = ?, tbd_date = ?, tbd_time = ?, launch_prob = ?
-						WHERE id = ?''', (net_unix, Tminus, success, launched, holding, mission_text, pad, vid_url, tbd_date, tbd_time, launch_prob, launch_id))
-
-		conn.commit()
-		conn.close()
-		return
-
-	# datetime, so we can only get launches starting today
-	now = datetime.datetime.now()
-	today_call = f'{now.year}-{now.month}-{now.day}'
-
-	# what we're throwing at the API
-	API_REQUEST = f'launch'
-	PARAMS = {'mode': 'verbose', 'limit': 250, 'startdate': today_call}
-	API_URL = 'https://launchlibrary.net'
-	API_VERSION = '1.4'
-
-	# construct the call URL
-	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{construct_params(PARAMS)}' #&{fields}
-
-	# perform the API call
-	headers = {'user-agent': f'telegram-{BOT_USERNAME}/{VERSION}'}
-
-	try:
-		API_RESPONSE = requests.get(API_CALL, headers=headers)
-	except Exception as error:
-		if debug_log:
-			logging.exception(f'🛑 Error in LL API request: {error}')
-			logging.info(f'⚠️ Trying again after 3 seconds...')
-
-		time.sleep(3)
-		get_launch_updates(None)
-
-		if debug_log:
-			logging.info(f'✅ Success!')
-
-		return
-
-	# pull json, dump for later inspection
-	try:
-		launch_json = json.loads(API_RESPONSE.text)
-	except Exception as e:
-		with open(os.path.join('data', 'json-parsing-error.txt'), 'w') as error_file:
-			error_file.write(traceback.format_exc())
-			error_file.write(f'\n---- API response follows (error: {e}) ----')
-			error_file.write(API_RESPONSE.text)
-
-		return
-
-	#with open(os.path.join('data', 'launch', 'launch-json.json'), 'w') as json_data:
-	#	json.dump(launch_json, json_data, indent=4)
-
-	# if we got nothing in return from the API
-	if 'launches' not in launch_json:
-		if debug_log:
-			logging.info(f'🛑 Error in LL API request (2)')
-			logging.info(f'⚠️ Trying again after 3 seconds...')
-
-		time.sleep(3)
-		get_launch_updates(None)
-		return
-
-	if len(launch_json['launches']) == 0:
-		if debug_log:
-			if API_RESPONSE.status_code == 404:
-				logging.info('⚠️ No launches found!')
-			else:
-				logging.info(f'⚠️ Failed request with status code {API_RESPONSE.status_code}')
-
-		return
-
-	# we got something, parse all of it
-	if len(launch_json['launches']) >= 1:
-		multi_parse(launch_json, len(launch_json['launches']))
-
-	update_stats_db(
-		stats_update={'API_requests':1, 'db_updates':1, 'data':len(API_RESPONSE.content)},
-		db_path='data')
-
-
-# MarkdownV2 requires some special handling, so parse the link here
-def reconstruct_link_for_markdown(link):
-	link_reconstruct, char_set = '', {')', '\\'}
-	for char in link:
-		if char in char_set:
-			link_reconstruct += f'\\{char}'
-		else:
-			link_reconstruct += char
-
-	return link_reconstruct
-
-
-# Same as above, but for the message text
-def reconstruct_message_for_markdown(message):
-	message_reconstruct = ''
-	char_set = {'[', ']', '(', ')', '~', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'}
-	for char in message:
-		if char in char_set:
-			message_reconstruct += f'\\{char}'
-		else:
-			message_reconstruct += char
-
-	return message_reconstruct
-
-
-# prints our stats
-def statistics(chat, mode):
 	# read stats db
-	stats_conn = sqlite3.connect(os.path.join('data','statistics.db'))
+	stats_conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
+	stats_conn.row_factory = sqlite3.Row
 	stats_cursor = stats_conn.cursor()
 
-	# notifications INTEGER, API_requests INTEGER, db_updates INTEGER, commands INTEGER
-	try: # pull stats from db
+	try:
+		# select stats field
 		stats_cursor.execute("SELECT * FROM stats")
+		stats = [dict(row) for row in stats_cursor.fetchall()][0]
 
 		# parse returned global data
-		query_return = stats_cursor.fetchall()
-		if len(query_return) != 0:
-			notifs = query_return[0][0]
-			api_reqs = query_return[0][1]
-			commands = query_return[0][3]
-			data = query_return[0][4]
-
-		else:
-			commands = notifs = api_reqs = data = 0
+		notifs = stats['notifications']
+		api_reqs = stats['api_requests']
+		db_updates = stats['db_updates']
+		commands = stats['commands']
+		data = stats['data']
+		last_db_update = stats['last_api_update']
 
 	except sqlite3.OperationalError:
-		commands = notifs = api_reqs = data = 0
-
-	# get system uptime
-	up = uptime()
-	updays = int(up/(3600*24))
-	uphours = int((up-updays*3600*24)/(3600))
-	upmins = int((up - updays*3600*24 - uphours*60*60)/(60))
-
-	if upmins < 10:
-		upmins = str(0) + str(upmins)
-	else:
-		upmins = str(upmins)
+		notifs = api_reqs = db_updates = commands = data = last_db_update = 0
 
 	# get system load average
-	load_avgs = os.getloadavg() # [x, y, z]
-	load_avg_str = f'Load {load_avgs[0]:.2f} {load_avgs[1]:.2f} {load_avgs[2]:.2f}'
+	load_avgs = os.getloadavg() # [1 min, 5 min, 15 min]
+	load_avg_str = f'{load_avgs[0]:.2f} {load_avgs[1]:.2f} {load_avgs[2]:.2f}'
 
-	if updays > 0:
-		up_str = f'Uptime {updays} days, {uphours} h {upmins} min'
-	else:
-		up_str = f'Uptime {uphours} hours {upmins} min'
+	# format transfered API data to MB, GB
+	data_suffix = 'GB' if data/10**9 >= 1 else 'MB'
+	data = data/10**9 if data/10**9 >= 1 else data/10**6
 
-	# format data to MB or GB
-	if data / 10**9 >= 1:
-		data, data_size_class = data/10**9, 'GB'
-	else:
-		data, data_size_class = data/10**6, 'MB'
-
-	# get database sizes
+	# get amount of stored data
 	try:
-		db_sizes = os.path.getsize(os.path.join('data','launch','launches.db'))
-		db_sizes += os.path.getsize(os.path.join('data','launch','spx-launches.db'))
-		db_sizes += os.path.getsize(os.path.join('data','launch','launchbot-data.db'))
-		db_sizes += os.path.getsize(os.path.join('data','launch','launchbot-data.db'))
-		db_sizes += os.path.getsize(os.path.join('data','bot-settings.json'))
-		db_sizes += os.path.getsize(os.path.join('data','statistics.db'))
-		db_sizes += os.path.getsize(os.path.join('data','log.log'))
+		db_storage = 0.00
+		db_storage += os.path.getsize(os.path.join(DATA_DIR, 'launchbot-data.db'))
+		db_storage += os.path.getsize(os.path.join(DATA_DIR, 'bot-settings.json'))
+		db_storage += os.path.getsize(os.path.join(DATA_DIR, 'log-file.log'))
 	except:
-		db_sizes = 0.00
+		db_storage = 0.00
 
-	if db_sizes / 10**9 >= 1:
-		db_sizes, db_size_class = db_sizes/10**9, 'GB'
-	else:
-		db_sizes, db_size_class = db_sizes/10**6, 'MB'
+	# format stored data to MB, GB
+	db_storage_prefix = 'GB' if db_storage/10**9 >= 1 else 'MB'
+	db_storage = db_storage/10**9 if db_storage/10**9 >= 1 else db_storage/10**6
+
+	# convert time since last db update to a readable ETA, add suffix
+	last_db_update = time_delta_to_legible_eta(int(time.time()) - last_db_update)
+	last_db_update_suffix = 'ago' if last_db_update not in {'never', 'just now'} else ''
 
 	# connect to notifications db
-	conn = sqlite3.connect(os.path.join('data', 'launchbot-data.db'))
-	c = conn.cursor()
+	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
+	cursor = conn.cursor()
 
 	# pull all rows with enabled = 1
-	c.execute('SELECT chat FROM notify WHERE enabled = 1')
-	query_return = c.fetchall()
+	cursor.execute('SELECT chat FROM notify WHERE enabled = 1')
+	notification_recipients = len(set(row[0] for row in cursor.fetchall()))
+
+	# close conn
+	conn.close()
 
 	reply_str = f'''
 	📊 *LaunchBot global statistics*
 	Notifications delivered: {notifs}
-	Notification recipients: {len(set(row[0] for row in query_return))}
+	Notification recipients: {notification_recipients}
 	Commands parsed: {commands}
 
 	🛰 *Network statistics*
-	Data transferred: {data:.2f} {data_size_class}
+	Data transferred: {data:.2f} {data_suffix}
 	API requests made: {api_reqs}
 
-	💾 *Database statistics*
+	💾 *Database information*
 	Storage used: {db_sizes:.2f} {db_size_class}
+	Last updated: {last_db_update} {last_db_update_suffix}
 
 	🎛 *Server information*
-	{up_str}
-	{load_avg_str}
+	Uptime {time_delta_to_legible_eta(uptime())}
+	Load {load_avg_str}
 	LaunchBot version *{VERSION}* 🚀
 	'''
 
+	# if we're refreshing an existing message, return now
 	if mode == 'refresh':
 		return inspect.cleandoc(reply_str)
 
-	# add a keyboard for refreshing
+	# if a new message, add a keyboard for refreshing
 	keyboard = InlineKeyboardMarkup(
 		inline_keyboard=[[InlineKeyboardButton(
 			text='🔄 Refresh statistics', callback_data='stats/refresh')]])
 
+	# send message
 	bot.sendMessage(chat, inspect.cleandoc(reply_str), reply_markup=keyboard, parse_mode='Markdown')
 
 
@@ -3247,9 +2221,9 @@ def first_run():
 	print("Let's start off by creating some folders.")
 	time.sleep(2)
 
-	# create /data and /chats
-	if not os.path.isdir('data'):
-		os.mkdir('data')
+	# create directories
+	if not os.path.isdir(DATA_DIR):
+		os.makedirs(DATA_DIR)
 		print("Folders created!\n")
 
 	time.sleep(1)
@@ -3258,10 +2232,7 @@ def first_run():
 	print('to get one, send a message to @botfather on Telegram.')
 
 	# create a settings file for the bot; we'll store the API keys here
-	if not os.path.isfile('data' + '/bot-settings.json'):
-		if not os.path.isdir('data'):
-			os.mkdir('data')
-
+	if not os.path.isfile(os.path.join(DATA_DIR, 'bot-settings.json')):
 		update_token(['botToken'])
 		time.sleep(2)
 		print('\n')
@@ -3270,14 +2241,14 @@ def first_run():
 # update bot token
 def update_token(update_tokens):
 	# create /data and /chats
-	if not os.path.isdir('data'):
+	if not os.path.isdir(DATA_DIR):
 		first_run()
 
-	if not os.path.isfile('data' + '/bot-settings.json'):
-		with open('data/bot-settings.json', 'w') as json_data:
+	if not os.path.isfile(os.path.join(DATA_DIR, 'bot-settings.json')):
+		with open(os.path.join(DATA_DIR, 'bot-settings.json'), 'w') as json_data:
 			setting_map = {} # empty .json file
 	else:
-		with open('data' + '/bot-settings.json', 'r') as json_data:
+		with open(os.path.join(DATA_DIR, 'bot-settings.json'), 'r') as json_data:
 				setting_map = json.load(json_data) # use old .json
 
 	if 'botToken' in update_tokens:
@@ -3288,7 +2259,7 @@ def update_token(update_tokens):
 
 		setting_map['botToken'] = token_input
 
-	with open('data' + '/bot-settings.json', 'w') as json_data:
+	with open(os.path.join(DATA_DIR, 'bot-settings.json'), 'w') as json_data:
 		json.dump(setting_map, json_data, indent=4)
 
 	time.sleep(2)
@@ -3296,36 +2267,36 @@ def update_token(update_tokens):
 
 
 def sigterm_handler(signal, frame):
-	if debug_log:
-		logging.info(f'✅ Got SIGTERM. Runtime: {datetime.datetime.now() - STARTUP_TIME}.')
-
+	logging.info(f'✅ Got SIGTERM. Runtime: {datetime.datetime.now() - STARTUP_TIME}.')
 	sys.exit(0)
 
 
 if __name__ == '__main__':
 	# some global vars for use in other functions
-	global TOKEN, OWNER, VERSION, BOT_ID, BOT_USERNAME, STARTUP_TIME
-	global bot, debug_log
+	global TOKEN, OWNER, VERSION, BOT_ID, BOT_USERNAME
+	global DATA_DIR, STARTUP_TIME
+	global bot
 
 	# current version
 	VERSION = '1.6-alpha'
 
 	# default start mode, log start time
-	start = debug_log = debug_mode = False
+	start = debug_mode = False
 	STARTUP_TIME = datetime.datetime.now()
 
 	# list of args the program accepts
-	start_args = ('start', '-start')
-	debug_args = ('log', '-log', 'debug', '-debug')
-	bot_token_args = ('newbottoken', '-newbottoken')
+	start_args = {'start', '-start'}
+	debug_args = {'log', '-log', 'debug', '-debug'}
+	bot_token_args = {'newbottoken', '-newbottoken'}
 
 	if len(sys.argv) == 1:
-		print('Give at least one of the following arguments:')
-		print('\tlaunchbot.py [-start, -newBotToken, -log]\n')
-		print('E.g.: python3 launchbot.py -start')
-		print('\t-start starts the bot')
-		print('\t-newBotToken changes the bot API token')
-		print('\t-log stores some logs\n')
+		print('''Give at least one of the following arguments:
+		\tlaunchbot.py [-start, -newBotToken, -log]\n
+		
+		E.g.: python3 launchbot.py -start
+		\t-start starts the bot
+		\t-newBotToken changes the bot API token
+		\t-log stores some logs\n''')
 		sys.exit('Program stopping...')
 
 	else:
@@ -3340,11 +2311,10 @@ if __name__ == '__main__':
 
 			if arg in debug_args:
 				if arg in ('log', '-log'):
-					debug_log = True
-					if not os.path.isdir('data'):
+					if not os.path.isdir(DATA_DIR):
 						first_run()
 
-					log = 'data/log.log'
+					log = os.path.join(DATA_DIR, 'log-file.log')
 
 					# disable logging for urllib and requests because jesus fuck they make a lot of spam
 					logging.getLogger('requests').setLevel(logging.CRITICAL)
@@ -3354,7 +2324,9 @@ if __name__ == '__main__':
 					logging.getLogger('telepot.exception.TelegramError').setLevel(logging.CRITICAL)
 
 					# start log
-					logging.basicConfig(filename=log,level=logging.DEBUG,format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
+					logging.basicConfig(
+						filename=log, level=logging.DEBUG, format='%(asctime)s %(message)s',
+						datefmt='%d/%m/%Y %H:%M:%S')
 
 				if arg in ('debug', '-debug'):
 					debug_mode = True
@@ -3366,16 +2338,16 @@ if __name__ == '__main__':
 			sys.exit('No start command given – exiting. To start the bot, include -start in startup options.')
 
 	# if data folder isn't found, we haven't run before (or someone pressed the wrong button)
-	if not os.path.isdir('data'):
+	if not os.path.isdir(DATA_DIR):
 		first_run()
 
 	try:
-		bot_settings_path = os.path.join('data','bot-settings.json')
+		bot_settings_path = os.path.join(DATA_DIR, 'bot-settings.json')
 		with open(bot_settings_path, 'r') as json_data:
 			try:
 				setting_map = json.load(json_data)
 			except:
-				os.remove(os.path.join('data','bot-settings.json'))
+				os.remove(os.path.join(DATA_DIR, 'bot-settings.json'))
 				first_run()
 
 	except FileNotFoundError:
@@ -3460,7 +2432,8 @@ if __name__ == '__main__':
 
 		'JPN': [
 			'JAXA',
-			'Mitsubishi Heavy Industries']
+			'Mitsubishi Heavy Industries',
+			'Interstellar Technologies']
 	}
 
 	global provider_name_map
@@ -3484,10 +2457,12 @@ if __name__ == '__main__':
 	LSP_IDs = {
 	121: 	['SpaceX', '🇺🇸'],
 	147: 	['Rocket Lab', '🇺🇸'],
+	265:	['Firefly', '🇺🇸']
 	99: 	['Northrop Grumman', '🇺🇸'],
 	115: 	['Arianespace', '🇪🇺'],
 	124: 	['ULA', '🇺🇸'],
 	98: 	['Mitsubishi Heavy Industries', '🇯🇵'],
+	1002:	['Interstellar Tech.', '🇯🇵']
 	88: 	['CASC', '🇨🇳'],
 	190: 	['Antrix Corporation', '🇮🇳'],
 	122: 	['Sea Launch', '🇷🇺'],
