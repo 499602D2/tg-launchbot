@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import pytz
 
@@ -29,15 +30,14 @@ def remove_time_zone_information(chat: str):
 
 	try:
 		c.execute("UPDATE preferences SET timezone_str = ?, timezone = ? WHERE chat = ?", (None, None, chat))
-		if debug_log:
-			logging.info(f'✅ User successfully removed their time zone information!')
+		logging.info(f'✅ User successfully removed their time zone information!')
 
 	except Exception as e:
-		if debug_log:
-			logging.exception(f'❓ User tried to remove their time zone information, but ran into exception: {e}')
+		logging.exception(f'❓ User tried to remove their time zone information, but ran into exception: {e}')
 
 	conn.commit()
 	conn.close()
+
 
 def update_time_zone_string(chat: str, time_zone: str):
 	# connect to database
@@ -54,8 +54,7 @@ def update_time_zone_string(chat: str, time_zone: str):
 	conn.commit()
 	conn.close()
 
-	if debug_log:
-		logging.info(f'🌎 User successfully set their time zone locale to {time_zone}')
+	logging.info(f'🌎 User successfully set their time zone locale to {time_zone}')
 
 
 def update_time_zone_value(chat: str, offset: str):
@@ -90,18 +89,18 @@ def update_time_zone_value(chat: str, offset: str):
 	conn.close()
 
 
-def load_time_zone_status(chat: str, readable: bool):
-	conn = sqlite3.connect(os.path.join('data', 'launchbot-data.db'))
-	c = conn.cursor()
+def load_time_zone_status(data_dir: str, chat: str, readable: bool):
+	conn = sqlite3.connect(os.path.join(data_dir, 'launchbot-data.db'))
+	cursor = conn.cursor()
 
 	try:
-		c.execute("SELECT timezone, timezone_str FROM preferences WHERE chat = ?",(chat,))
+		cursor.execute("SELECT timezone, timezone_str FROM preferences WHERE chat = ?",(chat,))
 	except:
-		c.execute("CREATE TABLE preferences (chat TEXT, notifications TEXT, timezone TEXT, timezone_str TEXT, postpone INTEGER, commands TEXT, PRIMARY KEY (chat))")
+		cursor.execute("CREATE TABLE preferences (chat TEXT, notifications TEXT, timezone TEXT, timezone_str TEXT, postpone INTEGER, commands TEXT, PRIMARY KEY (chat))")
 		conn.commit()
-		c.execute("SELECT timezone, timezone_str FROM preferences WHERE chat = ?",(chat,))
+		cursor.execute("SELECT timezone, timezone_str FROM preferences WHERE chat = ?",(chat,))
 
-	query_return = c.fetchall()
+	query_return = cursor.fetchall()
 	conn.close()
 
 	if len(query_return) != 0:
