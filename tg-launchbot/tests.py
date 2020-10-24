@@ -1,8 +1,10 @@
 import unittest
 import logging
 import sqlite3
+import random
 import os
 
+from utils import time_delta_to_legible_eta
 from api import construct_params
 from notifications import create_notification_message
 
@@ -19,6 +21,7 @@ class TestLaunchBotFunctions(unittest.TestCase):
 		expected_params = '?one=1&two=2&three=3'
 		
 		self.assertEqual(construct_params(test_keyvals), expected_params)
+
 
 	def test_notification_message_creation(self):
 		'''
@@ -54,9 +57,23 @@ class TestLaunchBotFunctions(unittest.TestCase):
 			launch = [dict(row) for row in cursor.fetchall()][0]
 
 			msg = create_notification_message(
-				launch=launch, notif_class='notify_5min', bot_username='rocketrybot')
+				launch=launch, notif_class='notify_60min', bot_username='rocketrybot')
 
-			print('\n\n\n', msg)
+
+	def test_pretty_eta(self):
+		'''
+		Test time_delta_to_legible_eta
+		'''
+		# test small deltas
+		for i in range(0, 100):
+			rand_delta = random.randint(0, 3600)
+
+		# test large deltas
+		for i in range(0, 100):
+			rand_delta = random.randint(0, 3600 * 24 * 2)
+
+		# test with 0 seconds
+		self.assertEqual(time_delta_to_legible_eta(0), 'just now')
 
 
 if __name__ == '__main__':
