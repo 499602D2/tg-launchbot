@@ -154,10 +154,16 @@ def time_delta_to_legible_eta(time_delta: int) -> str:
 	if ',' in eta_str:
 		day_str = eta_str.split(',')[0]
 		hours = int(eta_str.split(',')[1].split(':')[0])
+		mins = int(eta_str.split(',')[1].split(':')[1])
 
-		pretty_eta = f'{day_str}{f", {hours} hour" if hours > 0 else ""}'
-		if hours > 1:
-			pretty_eta += 's'
+		if hours > 0:
+			pretty_eta = f'{day_str}{f", {hours} hour" if hours > 0 else ""}'
+			if hours > 1:
+				pretty_eta += 's'
+		else:
+			pretty_eta = f'{day_str}{f", {mins} minute" if mins > 0 else ""}'
+			if mins > 1:
+				pretty_eta += 's'
 	else:
 		# split eta_string into hours, minutes, and seconds -> convert to integers
 		hhmmss_split = eta_str.split(':')
