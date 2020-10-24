@@ -1,5 +1,6 @@
 .DS_Store
 .idea
 venv
+env
 /tg-launchbot/launchbot
 /tg-launchbot/__pycache__
