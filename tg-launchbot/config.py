@@ -1,5 +1,8 @@
-import ujson as json
 import os
+import time
+
+
+import ujson as json
 
 
 def first_run(data_dir: str):
@@ -89,6 +92,7 @@ def load_config(data_dir: str) -> dict:
 			return json.load(config_file)
 		except:
 			print('JSONDecodeError: error loading configuration file. Running config setup...')
+
 			create_config(data_dir)
 			return load_config(data_dir)
 
