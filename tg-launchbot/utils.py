@@ -135,7 +135,28 @@ def timestamp_to_unix(timestamp: str) -> int:
 	return int((utc_dt - datetime.datetime(1970, 1, 1)).total_seconds())
 
 
-def time_delta_to_legible_eta(time_delta: int) -> str:
+def timestamp_to_legible_date_string(timestamp: int) -> str:
+	# convert unix timestamp to a datetime object
+	date_object = datetime.datetime.fromtimestamp(timestamp)
+
+	# map months to month names
+	month_map = {
+		1: 'January', 	2: 'February', 	3: 'March', 	4: 'April',
+		5: 'May', 		6: 'June', 		7: 'July', 		8: 'August',
+		9: 'September',	10: 'October', 	11: 'November', 12: 'December'}
+
+	try:
+		if int(date_object.day) in {11, 12, 13}:
+			suffix = 'th'
+		else:
+			suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(date_object.day)[-1])]
+	except:
+		suffix = 'th'
+
+	return f'{month_map[date_object.month]} {date_object.day}{suffix}'
+
+
+def time_delta_to_legible_eta(time_delta: int, full_accuracy: bool) -> str:
 	'''
 	This is a tiny helper function, used to convert integer time deltas
 	(i.e. second deltas) to a legible ETA, where the largest unit of time
@@ -156,10 +177,15 @@ def time_delta_to_legible_eta(time_delta: int) -> str:
 		hours = int(eta_str.split(',')[1].split(':')[0])
 		mins = int(eta_str.split(',')[1].split(':')[1])
 
-		if hours > 0:
+		if hours > 0 or full_accuracy:
 			pretty_eta = f'{day_str}{f", {hours} hour" if hours > 0 else ""}'
+			
 			if hours > 1:
 				pretty_eta += 's'
+
+			if full_accuracy:
+				pretty_eta += f', {mins} minute{"s" if mins != 1 else ""}'
+
 		else:
 			pretty_eta = f'{day_str}{f", {mins} minute" if mins > 0 else ""}'
 			if mins > 1:
@@ -172,14 +198,17 @@ def time_delta_to_legible_eta(time_delta: int) -> str:
 		if hours > 0:
 			pretty_eta = f'{hours} hour{"s" if hours > 1 else ""}'
 			pretty_eta += f', {mins} minute{"s" if mins != 1 else ""}'
+			if full_accuracy:
+				pretty_eta += f', {secs} second{"s" if secs != 1 else ""}'
+
 		else:
-			if mins > 0:
+			if mins > 0 or full_accuracy:
 				pretty_eta = f'{mins} minute{"s" if mins > 1 else ""}'
 				pretty_eta += f', {secs} second{"s" if secs != 1 else ""}'
 			else:
 				if secs > 0:
 					pretty_eta = f'{secs} second{"s" if secs != 1 else ""}'
 				else:
-					pretta_eta = 'just now'
+					pretty_eta = 'just now'
 
 	return pretty_eta
