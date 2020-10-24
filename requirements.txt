@@ -1,6 +1,8 @@
-telepot
 cursor
 ujson
 uptime
 timezonefinder
+requests
 apscheduler
+python-telegram-bot
+coloredlogs
