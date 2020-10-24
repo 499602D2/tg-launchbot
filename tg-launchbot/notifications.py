@@ -5,7 +5,9 @@ import sqlite3
 import logging
 import inspect
 
-from utils import short_monospaced_text, map_country_code_to_flag, reconstruct_link_for_markdown
+from utils import (
+	short_monospaced_text, map_country_code_to_flag, reconstruct_link_for_markdown,
+	time_delta_to_legible_eta)
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -1004,7 +1006,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 
 	# launch probability to weather emoji
 	probability_map = {80: '☀️', 60: '🌤', 40: '🌥', 20: '☁️', 00: '⛈'}
-	if launch['probability'] not in (-1, None):
+	if launch['probability'] not in {-1, None}:
 		for prob_range_start, prob_str in probability_map.items():
 			if launch['probability'] >= prob_range_start:
 				probability = f"{prob_str} *{int(launch['probability'])} %* probability of launch"
@@ -1171,9 +1173,10 @@ def notification_handler(db_path: str, launch_id_set: set, bot_username: str):
 	query_return = [dict(row) for row in cursor.fetchall()]
 
 	# loop over the launches we got
-	for launch in query_return:
+	for launch_dict in query_return:
 		# figure out the notification we need to send
-		net = launch['net_unix']
+		net = launch_dict['net_unix']
+		launch_id = launch_dict['unique_id']
 
 		# map notification types to their exact send time
 		notification_times = {
@@ -1200,7 +1203,7 @@ def notification_handler(db_path: str, launch_id_set: set, bot_username: str):
 
 		# toggle all notifications to 1 in launch db
 		for notification_class in toggle_classes:
-			cursor.execute(f"UPDATE launches SET {notification_class} = 1 WHERE unique_id = ?", (launch.unique_id,))
+			cursor.execute(f"UPDATE launches SET {notification_class} = 1 WHERE unique_id = ?", (launch_id,))
 
 		# log, commit changes
 		logging.info(f'🚩 Toggled notification flags to 1 for {", ".join(toggle_classes)}')
@@ -1213,11 +1216,11 @@ def notification_handler(db_path: str, launch_id_set: set, bot_username: str):
 		if it wasn't, the launch may have slipped so much forward that it's not included within
 		the 50 launches we request. In this case, delete the launch row from the database.
 		'''
-		up_to_date = verify_launch_is_up_to_date(launch_uid=launch.unique_id, cursor=cursor)
+		up_to_date = verify_launch_is_up_to_date(launch_uid=launch_id, cursor=cursor)
 
 		# if launch isn't up to date, uh oh
 		if not up_to_date:
-			logging.warning(f'⚠️ Launch info isn\'t up to date! launch_id={launch.unique_id}')
+			logging.warning(f'⚠️ Launch info isn\'t up to date! launch_id={launch_id}')
 			logging.warning(f'⚠️ Commiting database change and returning...')
 			
 			conn.commit()
@@ -1229,7 +1232,7 @@ def notification_handler(db_path: str, launch_id_set: set, bot_username: str):
 
 		# create the notification message TODO add astronaut/spacecraft info
 		notification_message = create_notification_message(
-			launch=launch, notif_class=send_notif, bot_username=bot_username)
+			launch=launch_dict, notif_class=send_notif, bot_username=bot_username)
 
 		logging.info(notification_message)
 
@@ -1264,10 +1267,11 @@ def clear_missed_notifications(db_path: str, launch_ids: set()):
 		miss_margin = 60*5
 		for notif_type, notif_time in notification_times.items():
 			if time.time() - miss_margin - notif_time > 300:
-				missed_by = int(time.time() - miss_margin - notif_time)
-				missed_notifications.add(notif_type)
+				missed_sec = int(time.time() - miss_margin - notif_time)
+				missed_by = time_delta_to_legible_eta(missed_sec)
 
-				logging.info(f'⚠️ {notif_type} missed by {missed_by} seconds for id={launch_row[1]}')
+				logging.info(f'⚠️ {notif_type} missed by {missed_by} for id={launch_row[1]}')
+				missed_notifications.add(notif_type)
 
 		if len(missed_notifications) != 0:
 			# construct insert statement for the missed notifications: all will be set to True
@@ -1333,7 +1337,7 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 					notif_send_times[send_time].add(uid)
 
 	# clear previously stored notifications
-	logging.info(f'🚮 Clearing previously queued notifications...')
+	logging.debug(f'🚮 Clearing previously queued notifications...')
 	cleared_count = 0
 	for job in scheduler.get_jobs():
 		if 'notification' in job.id:
@@ -1341,7 +1345,7 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 			cleared_count += 1
 
 	# cleared!
-	logging.info(f'✅ Cleared {cleared_count} queued notifications!')
+	logging.debug(f'✅ Cleared {cleared_count} queued notifications!')
 
 	''' add notifications to schedule queue until we hit the next scheduled API update
 	this allows us to queue the minimum amount of notifications '''
