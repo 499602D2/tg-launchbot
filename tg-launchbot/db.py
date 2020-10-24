@@ -96,7 +96,8 @@ def create_launch_db(db_path: str, cursor: sqlite3.Cursor):
 	try:
 		cursor.execute('''CREATE TABLE launches
 			(name TEXT, unique_id TEXT, ll_id INT, net_unix INT, status_id INT, status_state TEXT,
-			in_hold BOOLEAN, probability REAL, success BOOLEAN, launched BOOLEAN,
+			in_hold BOOLEAN, probability REAL, success BOOLEAN, tbd_time BOOLEAN, tbd_date BOOLEAN,
+			launched BOOLEAN,
 
 			webcast_islive BOOLEAN, webcast_url_list TEXT,
 
@@ -186,7 +187,7 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 					notification_states[key] = 0
 
 			# generate the postpone string
-			postpone_str = time_delta_to_legible_eta(time_delta=int(net_diff))
+			postpone_str = time_delta_to_legible_eta(time_delta=int(net_diff), full_accuracy=False)
 
 			# we've got the pretty eta: log
 			logging.info(f'⏱ ETA string generated for net_diff={net_diff}: {postpone_str}')
@@ -213,7 +214,7 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 
 			# calculate days until next launch attempt
 			eta_sec = launch_object.net_unix - time.time()
-			next_attempt_eta_str = time_delta_to_legible_eta(time_delta=int(eta_sec))
+			next_attempt_eta_str = time_delta_to_legible_eta(time_delta=int(eta_sec), full_accuracy=False)
 
 			# launch name: handle possible IndexError as well, even while this should never happen
 			try:
