@@ -1185,7 +1185,7 @@ def notification_handler(db_path: str, launch_id_set: set, bot_username: str):
 
 		toggle_classes, skipped_classes = [], {}
 		for notification, send_time in notification_times.items():
-			if send_time + 60 >= time.time():
+			if time.time() + 60*5 >= send_time + 60 >= time.time():
 				toggle_classes.append(notification)
 			else:
 				# debug logging
@@ -1272,6 +1272,8 @@ def clear_missed_notifications(db_path: str, launch_ids: set()):
 
 				logging.info(f'⚠️ {notif_type} missed by {missed_by} for id={launch_row[1]}')
 				missed_notifications.add(notif_type)
+			else:
+				logging.info(f'✅ {notif_type} not missed yet')
 
 		if len(missed_notifications) != 0:
 			# construct insert statement for the missed notifications: all will be set to True
@@ -1302,8 +1304,11 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 	# fields to be selected
 	select_fields = 'net_unix, unique_id, notify_24h, notify_12h, notify_60min, notify_5min'
 
+	# set a 5 minute notify window, so we don't miss notifications
+	notify_window = int(time.time()) - 60*5
+
 	try:
-		cursor.execute(f'SELECT {select_fields} FROM launches WHERE net_unix >= ?', (int(time.time()),))
+		cursor.execute(f'SELECT {select_fields} FROM launches WHERE net_unix >= ?', (notify_window,))
 		query_return = cursor.fetchall()
 	except sqlite3.OperationalError:
 		query_return = set()
@@ -1373,6 +1378,7 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 				run_date=notification_dt, args=[db_path, launch_id_set, bot_username])
 
 			# done, log
+			logging.debug(f'send_time={send_time}, launch_id_set={launch_id_set}, scheduled_notifications={scheduled_notifications}')
 			logging.info(f'📨 Scheduled {len(launch_id_set)} notifications for {notification_dt}')
 			scheduled_notifications += 1
 
