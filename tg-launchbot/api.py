@@ -7,6 +7,7 @@ import datetime
 import sqlite3
 
 import requests
+import coloredlogs
 import ujson as json
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -300,7 +301,7 @@ def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: 
 			ll2_api_call, 'date', run_date=next_update_dt,
 			args=[db_path, scheduler, bot_username], id=f'api-{unix_timestamp}')
 
-		logging.debug('🔄 Next API update scheduled for %s', next_update_dt)
+		logging.info('🔄 Next API update scheduled for %s', next_update_dt)
 		return unix_timestamp
 
 	def require_immediate_update(cursor: sqlite3.Cursor) -> tuple:
@@ -316,7 +317,7 @@ def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: 
 		return (True, None) if time.time() > last_update + 15 * 60 else (False, last_update)
 
 	# debug print
-	logging.info('⏲ Starting api_call_scheduler...')
+	logging.debug('⏲ Starting api_call_scheduler...')
 
 	# load the next upcoming launch from the database
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
@@ -403,19 +404,25 @@ if __name__ == '__main__':
 		os.makedirs(DATA_DIR)
 
 	# init log
-	logging.basicConfig(level=logging.DEBUG,format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
+	logging.basicConfig(
+		level=logging.DEBUG, format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
 
 	# disable logging for urllib and requests because jesus fuck they make a lot of spam
+	logging.getLogger('apscheduler').setLevel(logging.WARNING)
 	logging.getLogger('requests').setLevel(logging.CRITICAL)
 	logging.getLogger('urllib3').setLevel(logging.CRITICAL)
 	logging.getLogger('chardet.charsetprober').setLevel(logging.CRITICAL)
+
+	# add color
+	coloredlogs.install(level='DEBUG')
 
 	# init and start scheduler
 	scheduler = BackgroundScheduler()
 	scheduler.start()
 
 	# start API and notification scheduler
-	api_call_scheduler(db_path=DATA_DIR, ignore_60=False, scheduler=scheduler, bot_username=BOT_USERNAME)
+	api_call_scheduler(
+		db_path=DATA_DIR, ignore_60=False, scheduler=scheduler, bot_username=BOT_USERNAME)
 
 	while True:
 		time.sleep(10)
