@@ -120,7 +120,7 @@ def map_country_code_to_flag(country_code: str) -> str:
 def timestamp_to_unix(timestamp: str) -> int:
 	'''
 	Parses a LL2 timestamp from its format into a unix timestamp,
-	i.e. seconds since the unix epoch. 
+	i.e. seconds since the unix epoch.
 
 	Keyword arguments:
 		timestamp (str): timestamp in the format used by the LL2 API
@@ -150,7 +150,7 @@ def timestamp_to_legible_date_string(timestamp: int) -> str:
 			suffix = 'th'
 		else:
 			suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(date_object.day)[-1])]
-	except:
+	except KeyError:
 		suffix = 'th'
 
 	return f'{month_map[date_object.month]} {date_object.day}{suffix}'
@@ -179,7 +179,7 @@ def time_delta_to_legible_eta(time_delta: int, full_accuracy: bool) -> str:
 
 		if hours > 0 or full_accuracy:
 			pretty_eta = f'{day_str}{f", {hours} hour" if hours > 0 else ""}'
-			
+
 			if hours > 1:
 				pretty_eta += 's'
 
@@ -187,7 +187,8 @@ def time_delta_to_legible_eta(time_delta: int, full_accuracy: bool) -> str:
 				pretty_eta += f', {mins} minute{"s" if mins != 1 else ""}'
 
 		else:
-			pretty_eta = f'{day_str}{f", {mins} minute" if mins > 0 else ""}'
+			pretty_eta = f'{day_str}{f", {mins} minute" if mins != 1 else ""}'
+
 			if mins > 1:
 				pretty_eta += 's'
 	else:
@@ -198,12 +199,13 @@ def time_delta_to_legible_eta(time_delta: int, full_accuracy: bool) -> str:
 		if hours > 0:
 			pretty_eta = f'{hours} hour{"s" if hours > 1 else ""}'
 			pretty_eta += f', {mins} minute{"s" if mins != 1 else ""}'
+
 			if full_accuracy:
 				pretty_eta += f', {secs} second{"s" if secs != 1 else ""}'
 
 		else:
 			if mins > 0 or full_accuracy:
-				pretty_eta = f'{mins} minute{"s" if mins > 1 else ""}'
+				pretty_eta = f'{mins} minute{"s" if mins != 1 else ""}'
 				pretty_eta += f', {secs} second{"s" if secs != 1 else ""}'
 			else:
 				if secs > 0:
