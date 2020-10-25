@@ -20,9 +20,10 @@ import datetime
 from utils import time_delta_to_legible_eta, reconstruct_message_for_markdown
 
 
-def create_notify_database(db_path: str):
+def create_chats_db(db_path: str):
 	'''
-	Creates a new notifications database, if one doesn't exist.
+	A new database table intended to merge the notify- and preferences tables,
+	while also dramatically simplifying the structure of the notify-table.
 
 	Keyword arguments:
 		db_path (str): relative database path
@@ -38,11 +39,17 @@ def create_notify_database(db_path: str):
 	cursor = conn.cursor()
 
 	try:
-		# chat ID - lsp_name - UNIX timestamp - enabled true/false
-		cursor.execute("CREATE TABLE notify (chat TEXT, lsp_name TEXT, muted_launches TEXT, enabled INT, PRIMARY KEY (chat, lsp_name))")
-		cursor.execute("CREATE INDEX enabledchats ON notify (chat, enabled)")
-	except Exception as error:
-		print('⚠️ Error creating notify-table:', error)
+		cursor.execute('''
+			CREATE TABLE chats (chat TEXT, notify_time_pref TEXT, time_zone TEXT,
+			time_zone_str TEXT, postpone_notify BOOLEAN, command_permissions TEXT,
+			enabled_notifications TEXT, disabled_notifications TEXT, subscribed_since INT,
+			PRIMARY KEY (chat))
+			''')
+
+		cursor.execute("CREATE INDEX chatenabled ON notify (chat, enabled_notifications)")
+		cursor.execute("CREATE INDEX chatdisabled ON notify (chat, disabled_notifications)")
+	except sqlite3.OperationalError as error:
+		logging.exception(f'⚠️ Error creating chats table: {error}')
 
 	conn.commit()
 	conn.close()
@@ -249,20 +256,17 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 
 			# store updated notification states
 			cursor.execute(f'UPDATE launches SET {insert_statement} WHERE unique_id = ?', values_tuple)
-			
+
 			# log
 			logging.info(f'🚩 Notification states reset for launch_id={launch_object.unique_id}!')
 			logging.info(f'ℹ️ Postponed by {postpone_str}. New states: {notification_states}')
 
 			return True
 
-	# check if db exists
+	# check if folders exist
 	if not os.path.isfile(os.path.join(db_path, 'launchbot-data.db')):
 		if not os.path.isdir(db_path):
 			os.makedirs(db_path)
-
-		create_launch_db(db_path=db_path, cursor=cursor)
-		logging.info(f"{'✅ Created launch db' if success else '⚠️ Failed to create launch db'}")
 
 	# open connection
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
