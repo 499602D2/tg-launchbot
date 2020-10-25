@@ -20,7 +20,7 @@ import datetime
 from utils import time_delta_to_legible_eta, reconstruct_message_for_markdown
 
 
-def create_chats_db(db_path: str):
+def create_chats_db(db_path: str, cursor: sqlite3.Cursor):
 	'''
 	A new database table intended to merge the notify- and preferences tables,
 	while also dramatically simplifying the structure of the notify-table.
@@ -34,25 +34,18 @@ def create_chats_db(db_path: str):
 	if not os.path.isdir(db_path):
 		os.makedirs(db_path)
 
-	# Establish connection
-	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
-	cursor = conn.cursor()
-
 	try:
 		cursor.execute('''
-			CREATE TABLE chats (chat TEXT, notify_time_pref TEXT, time_zone TEXT,
-			time_zone_str TEXT, postpone_notify BOOLEAN, command_permissions TEXT,
-			enabled_notifications TEXT, disabled_notifications TEXT, subscribed_since INT,
+			CREATE TABLE chats (chat TEXT, subscribed_since INT, time_zone TEXT,
+			time_zone_str TEXT, command_permissions TEXT, postpone_notify BOOLEAN,
+			notify_time_pref TEXT, enabled_notifications TEXT, disabled_notifications TEXT,
 			PRIMARY KEY (chat))
 			''')
 
-		cursor.execute("CREATE INDEX chatenabled ON notify (chat, enabled_notifications)")
-		cursor.execute("CREATE INDEX chatdisabled ON notify (chat, disabled_notifications)")
+		cursor.execute("CREATE INDEX chatenabled ON chats (chat, enabled_notifications)")
+		cursor.execute("CREATE INDEX chatdisabled ON chats (chat, disabled_notifications)")
 	except sqlite3.OperationalError as error:
 		logging.exception(f'⚠️ Error creating chats table: {error}')
-
-	conn.commit()
-	conn.close()
 
 
 def store_notification_identifiers(launch_id: str, msg_identifiers: str):
