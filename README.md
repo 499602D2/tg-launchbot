@@ -123,6 +123,8 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 
 	- fully integrate new API and notifications systems with LaunchBot 1.5
 
+	- re-add statistics to all needed places
+
 	- improve json-parsing performance by using pooling
 	
 	- allow users to disable postpone notifications on a per-launch basis
