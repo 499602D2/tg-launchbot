@@ -5,11 +5,17 @@ import sqlite3
 import logging
 import inspect
 
+import ujson as json
+
 from utils import (
 	short_monospaced_text, map_country_code_to_flag, reconstruct_link_for_markdown,
-	time_delta_to_legible_eta)
+	reconstruct_message_for_markdown, time_delta_to_legible_eta)
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler
+from telegram.ext import CallbackQueryHandler
 
 # handle sending of postpone notifications; done in a separate function so we can retry more easily and handle exceptions
 def send_postpone_notification(chat, notification, launch_id, keywords):
@@ -34,14 +40,14 @@ def send_postpone_notification(chat, notification, launch_id, keywords):
 		msg_identifiers.append(f'{msg_identifier}')
 		return True
 
-	except telepot.exception.BotWasBlockedError:
+	except telegram.exception.BotWasBlockedError:
 		if debug_log:
 			logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat)} – cleaning notify database...')
 
 		clean_notify_database(chat)
 		return True
 
-	except telepot.exception.TelegramError as error:
+	except telegram.exception.TelegramError as error:
 		# Bad Request: chat not found
 		if error.error_code == 400 and 'not found' in error.description:
 			if debug_log:
@@ -74,7 +80,7 @@ def send_postpone_notification(chat, notification, launch_id, keywords):
 
 			else:
 				if debug_log:
-					logging.exception(f'⚠️ Unhandled 403 telepot.exception.TelegramError in send_postpone_notification: {error}')
+					logging.exception(f'⚠️ Unhandled 403 telegram.exception.TelegramError in send_postpone_notification: {error}')
 
 		# Rate-limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
 		elif error.error_code == 429:
@@ -87,7 +93,7 @@ def send_postpone_notification(chat, notification, launch_id, keywords):
 		# Some error code we don't know how to handle
 		else:
 			if debug_log:
-				logging.exception(f'⚠️ Unhandled telepot.exception.TelegramError in send_notification: {error}')
+				logging.exception(f'⚠️ Unhandled telegram.exception.TelegramError in send_notification: {error}')
 
 			return False
 
@@ -95,42 +101,61 @@ def send_postpone_notification(chat, notification, launch_id, keywords):
 		return caught_exception
 
 
-def get_user_notifications_status(chat, provider_list):
+def get_user_notifications_status(
+	db_dir: str, chat: str, provider_set: set, provider_name_map: dict) -> dict:
 	'''
-	The function takes a list of provider strings as input, and returns a dictionary containing
-	the notification status for all of the providers for a given chat.
+	The function takes a list of provider strings as input, and returns a dict containing
+	the notification status for all providers.
 	'''
-
 	# Establish connection
-	data_dir = 'data'
-	conn = sqlite3.connect(os.path.join(data_dir, 'launchbot-data.db'))
-	c = conn.cursor()
+	conn = sqlite3.connect(os.path.join(db_dir, 'launchbot-data.db'))
+	conn.row_factory = sqlite3.Row
+	cursor = conn.cursor()
 
-	c.execute("SELECT * FROM notify WHERE chat = ?",(chat,))
-	query_return = c.fetchall()
+	# select the field for our chat, convert to a dict, close conn
+	cursor.execute("SELECT * FROM chats WHERE chat = ?", (chat,))
+	query_return = [dict(row) for row in cursor.fetchall()]
 	conn.close()
 
+	# dict for storing the status of notifications, init with "All".
 	notification_statuses = {'All': 0}
-	for provider in provider_list:
+
+	# iterate over all providers supported by LaunchBot
+	for provider in provider_set:
+		''' check if this provider name is mapped to another name
+		in provider_name_map -> use that one instead '''
 		if provider in provider_name_map.keys():
 			provider = provider_name_map[provider]
-		
+
+		# set default notification_status to 0
 		notification_statuses[provider] = 0
 
+	# if chat doesn't exist or return is 0, return the zeroed dict
 	if len(query_return) == 0:
 		return notification_statuses
 
+	# keep track of the all_flag, init to false
 	all_flag = False
-	for row in query_return:
-		provider, enabled_status = row[1], row[3]
-		
-		if enabled_status == 1:
-			notification_statuses[provider] = 1
 
-		if provider == 'All' and enabled_status == 1:
+	# there should only be one row
+	chat_row = query_return[0]
+
+	# enabled, disabled states: parse comma-separated entries into lists
+	enabled_notifs = chat_row['enabled_notifications'].split(',')
+	disabled_notifs= chat_row['disabled_notifications'].split(',')
+
+	# iterate over enabled lsp notifications
+	for enabled_lsp in enabled_notifs:
+		notification_statuses[enabled_lsp] = 1
+		if enabled_lsp == 'All':
 			all_flag = True
 
-	notification_statuses['All'] = 1 if all_flag else 0
+	# iterate over disabled lsp notifications
+	for disabled_lsp in disabled_notifs:
+		notification_statuses[disabled_lsp] = 0
+		if disabled_lsp == 'All':
+			all_flag = False
+
 	return notification_statuses
 
 
@@ -411,7 +436,7 @@ def remove_previous_notification(launch_id, keyword):
 
 
 # gets a request to send a notification about launch X from launch_update_check()
-def notification_handler_old(db_path: str, launch_unique_id: str):
+def notification_handler_old(db_path: str, launch_unique_id: str, bot: 'telegram.bot.Bot'):
 	# handle notification sending; done in a separate function so we can retry more easily and handle exceptions
 	def send_notification(chat, notification, launch_id, keywords, vid_link, notif_class):
 		# send early notifications silently
@@ -444,14 +469,14 @@ def notification_handler_old(db_path: str, launch_unique_id: str):
 			msg_identifiers.append(str(msg_identifier))
 			return True
 		
-		except telepot.exception.BotWasBlockedError:
+		except telegram.exception.BotWasBlockedError:
 			if debug_log:
 				logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat)} – cleaning notify database...')
 
 			clean_notify_database(chat)
 			return True
 
-		except telepot.exception.TelegramError as error:
+		except telegram.exception.TelegramError as error:
 			# Bad Request: chat not found
 			if error.error_code == 400 and 'not found' in error.description:
 				if debug_log:
@@ -484,7 +509,7 @@ def notification_handler_old(db_path: str, launch_unique_id: str):
 
 				else:
 					if debug_log:
-						logging.exception(f'⚠️ Unhandled 403 telepot.exception.TelegramError in send_notification: {error}')
+						logging.exception(f'⚠️ Unhandled 403 telegram.exception.TelegramError in send_notification: {error}')
 
 			# Rate limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
 			elif error.error_code == 429:
@@ -497,7 +522,7 @@ def notification_handler_old(db_path: str, launch_unique_id: str):
 			# Something else
 			else:
 				if debug_log:
-					logging.exception(f'⚠️ Unhandled telepot.exception.TelegramError in send_notification: {error}')
+					logging.exception(f'⚠️ Unhandled telegram.exception.TelegramError in send_notification: {error}')
 
 				return False
 
@@ -785,7 +810,10 @@ def notification_handler_old(db_path: str, launch_unique_id: str):
 
 
 def get_notify_list(lsp, launch_id, notif_class):
-	# pull all with matching keyword (LSP ID), matching country code notification, or an "all" marker (and no exclusion for this ID/country)
+	'''
+	Pull all chats with matching keyword (LSP ID), matching country code notification,
+	or an "all" marker (and no exclusion for this ID/country) '''
+
 	# Establish connection
 	data_dir = 'data'
 	if not os.path.isfile(os.path.join(data_dir,'launchbot-data.db')):
@@ -857,8 +885,8 @@ def get_notify_list(lsp, launch_id, notif_class):
 		elif lsp in enabled or 'All' in enabled:
 			notify_list.add(chat)
 
+	# parse for chats which have possibly disabled this notification type in preferences
 	if notif_class is not None:
-		# parse for chats which have possibly disabled this notification type
 		final_list, ignored_due_to_pref = set(), set()
 		index = {'24h': 0, '12h': 1, '1h': 2, '5m': 3}[notif_class]
 		for chat in notify_list:
@@ -876,7 +904,9 @@ def get_notify_list(lsp, launch_id, notif_class):
 
 
 
-def send_notification(chat: str, message: str, launch_id: str, lsp_name: str, notif_class):
+def send_notification(
+	chat: str, message: str, launch_id: str, lsp_name: str, notif_class: str,
+	bot: 'telegram.bot.Bot'):
 	# send early notifications silently
 	silent = True if notif_class not in {'1h', '5m'} else False
 
@@ -901,14 +931,14 @@ def send_notification(chat: str, message: str, launch_id: str, lsp_name: str, no
 		msg_identifiers.append(str(msg_identifier))
 		return True
 	
-	except telepot.exception.BotWasBlockedError:
+	except telegram.exception.BotWasBlockedError:
 		if debug_log:
 			logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat)} – cleaning notify database...')
 
 		clean_notify_database(chat)
 		return True
 
-	except telepot.exception.TelegramError as error:
+	except telegram.exception.TelegramError as error:
 		# Bad Request: chat not found
 		if error.error_code == 400 and 'not found' in error.description:
 			if debug_log:
@@ -941,7 +971,7 @@ def send_notification(chat: str, message: str, launch_id: str, lsp_name: str, no
 
 			else:
 				if debug_log:
-					logging.exception(f'⚠️ Unhandled 403 telepot.exception.TelegramError in send_notification: {error}')
+					logging.exception(f'⚠️ Unhandled 403 telegram.exception.TelegramError in send_notification: {error}')
 
 		# Rate limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
 		elif error.error_code == 429:
@@ -954,7 +984,7 @@ def send_notification(chat: str, message: str, launch_id: str, lsp_name: str, no
 		# Something else
 		else:
 			if debug_log:
-				logging.exception(f'⚠️ Unhandled telepot.exception.TelegramError in send_notification: {error}')
+				logging.exception(f'⚠️ Unhandled telegram.exception.TelegramError in send_notification: {error}')
 
 			return False
 
@@ -966,7 +996,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	'''
 
 	# shorten long launch service provider names
-	launch_name = launch['name'].split('|')[1]
+	launch_name = launch['name'].split('|')[1].strip()
 	lsp_name = launch['lsp_short'] if len(launch['lsp_name']) > len('Virgin Orbit') else launch['lsp_name']
 	lsp_flag = map_country_code_to_flag(launch['lsp_country_code'])
 
@@ -1099,7 +1129,6 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	*Orbit* {short_monospaced_text(orbit_str)}
 
 	{recovery_str if recovery_str is not None else ""}
-	{probability if probability is not None else ""}
 	{link_text if link_text is not None else ""}
 	*🕓 The launch is scheduled* for LAUNCHTIMEHERE
 	*🔕 To disable* use /notify@{bot_username}
@@ -1108,9 +1137,12 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	return inspect.cleandoc(message)
 
 
-def notification_handler(db_path: str, launch_id_set: set, bot_username: str):
+def notification_handler(db_path: str, notification_dict: dict, bot_username: str,
+	bot: 'telegram.bot.Bot'):
 	''' Summary
 	Handles the flow associated with sending a notification.
+
+	notification_dict is of type dict(uid1:notify_class, uid2:notify_class...)
 	'''
 	def verify_launch_is_up_to_date(launch_uid: str, cursor: sqlite3.Cursor):
 		''' Summary
@@ -1134,7 +1166,7 @@ def notification_handler(db_path: str, launch_id_set: set, bot_username: str):
 
 		try:
 			last_api_update = cursor.fetchall()[0][0]
-		except KeyError as error:
+		except KeyError:
 			logging.exception('Error pulling last_api_update from stats database!')
 			return False
 
@@ -1158,71 +1190,41 @@ def notification_handler(db_path: str, launch_id_set: set, bot_username: str):
 		return False
 
 	logging.info('🎉 notification_handler ran successfully!')
-	logging.info(f'📨 launch_id_set: {launch_id_set}')
+	logging.info(f'📨 notification_dict: {notification_dict}')
 
 	# db connection
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	conn.row_factory = sqlite3.Row
 	cursor = conn.cursor()
 
-	# select launches with matching IDs, execute query
-	query_string = f"SELECT * FROM launches WHERE unique_id in ({','.join(['?']*len(launch_id_set))})"
-	cursor.execute(query_string, tuple(launch_id_set))
+	for launch_id, notify_class in notification_dict.items():
+		# select launches with matching IDs, execute query
+		cursor.execute("SELECT * FROM launches WHERE unique_id = ?", (launch_id,))
 
-	# convert rows into dictionaries for super easy parsing
-	query_return = [dict(row) for row in cursor.fetchall()]
+		# convert rows into dictionaries for super easy parsing
+		launch_dict = [dict(row) for row in cursor.fetchall()][0]
 
-	# loop over the launches we got
-	for launch_dict in query_return:
-		# figure out the notification we need to send
-		net = launch_dict['net_unix']
+		# pull relevant stuff from launch_dict
 		launch_id = launch_dict['unique_id']
 
-		# map notification types to their exact send time
-		notification_times = {
-			'notify_24h': net - 3600*24, 'notify_12h': net - 3600*12,
-			'notify_60min': net - 3600, 'notify_5min': net - 60*5}
-
-		toggle_classes, skipped_classes = [], {}
-		for notification, send_time in notification_times.items():
-			if time.time() + 60*5 >= send_time + 60 >= time.time():
-				toggle_classes.append(notification)
-			else:
-				# debug logging
-				logging.info(f'Skipping {notification}: send_time={send_time}, time={time.time()}')
-				skipped_classes[notification] = send_time
-
-		# debug logging
-		if len(skipped_classes) != 0:
-			logging.info('🔀 Skipped notifications: %s', skipped_classes)
-
-		# debug logging
-		if len(toggle_classes) == 0:
-			logging.info('🛑 toggle_classes len=0!')
-			logging.info(f'now_time: {int(time.time())}, notification_times: {notification_times}')
-
-		# toggle all notifications to 1 in launch db
-		for notification_class in toggle_classes:
-			cursor.execute(f"UPDATE launches SET {notification_class} = 1 WHERE unique_id = ?", (launch_id,))
+		# toggle notification to 1 in launch db
+		cursor.execute(f"UPDATE launches SET {notify_class} = 1 WHERE unique_id = ?", (launch_id,))
 
 		# log, commit changes
-		logging.info(f'🚩 Toggled notification flags to 1 for {", ".join(toggle_classes)}')
+		logging.info(f'🚩 Toggled notification flags to 1 for {notify_class}')
 		conn.commit()
-
-		# the notification we'll be sending (e.g. notify_24h)
-		send_notif = toggle_classes[-1]
 
 		''' Right before sending, verify launch was actually updated in the last API update:
 		if it wasn't, the launch may have slipped so much forward that it's not included within
-		the 50 launches we request. In this case, delete the launch row from the database.
-		'''
+		the 50 launches we request. In this case, delete the launch row from the database. '''
 		up_to_date = verify_launch_is_up_to_date(launch_uid=launch_id, cursor=cursor)
 
 		# if launch isn't up to date, uh oh
 		if not up_to_date:
 			logging.warning(f'⚠️ Launch info isn\'t up to date! launch_id={launch_id}')
 			logging.warning(f'⚠️ Commiting database change and returning...')
-			
+
+			# cursor executed an insert in verify_launch_is_up_to_date: commit here
 			conn.commit()
 			conn.close()
 			return
@@ -1232,61 +1234,68 @@ def notification_handler(db_path: str, launch_id_set: set, bot_username: str):
 
 		# create the notification message TODO add astronaut/spacecraft info
 		notification_message = create_notification_message(
-			launch=launch_dict, notif_class=send_notif, bot_username=bot_username)
+			launch=launch_dict, notif_class=notify_class, bot_username=bot_username)
 
+		# log message
 		logging.info(notification_message)
+
+		# parse message for markdown
+		notification_message = reconstruct_message_for_markdown(notification_message)
+
+		# send notification
+		with open(os.path.join(db_path, 'bot-config.json'), 'r') as bot_config:
+			config = json.load(bot_config)
+
+		chat_id = config['owner']
+
+		if bot is not None:
+			try:
+				bot.sendMessage(chat_id, notification_message, parse_mode='MarkdownV2')
+			except:
+				logging.exception('⚠️ Error sending notification!')
+
+			logging.info('✉️ Sent notification!')
+		else:
+			logging.info('✉️ Pseudo-sent notification!')
 
 	# close db connection at exit
 	conn.close()
 
 
-def clear_missed_notifications(db_path: str, launch_ids: set()):
+def clear_missed_notifications(db_path: str, launch_id_dict_list: list):
+	'''
+	[Enter module description]
+
+	Args:
+	    db_path (str): Description
+	    launch_id_dict_list (list): Description
+	'''
 	# open db connection
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	cursor = conn.cursor()
 
-	# select_fields, generate query_string
-	select_fields = 'net_unix, unique_id, notify_24h, notify_12h, notify_60min, notify_5min, launched'
-	query_string = f"SELECT {select_fields} FROM launches WHERE unique_id in ({','.join(['?']*len(launch_ids))})"
-
-	# execute query
-	cursor.execute(query_string, tuple(launch_ids))
-	query_return = cursor.fetchall()
+	# count missed
+	miss_count = 0
 
 	# check which notifications we've missed
-	for launch_row in query_return:
-		# notifications we'll toggle
-		missed_notifications = set()
-		
-		# calculate the missed notifications
-		net = launch_row[0]
-		notification_times = {
-			'notify_24h': net - 3600*24, 'notify_12h': net - 3600*12,
-			'notify_60min': net - 3600, 'notify_5min': net - 60*5}
-
-		miss_margin = 60*5
-		for notif_type, notif_time in notification_times.items():
-			if time.time() - miss_margin - notif_time > 300:
-				missed_sec = int(time.time() - miss_margin - notif_time)
-				missed_by = time_delta_to_legible_eta(missed_sec)
-
-				logging.info(f'⚠️ {notif_type} missed by {missed_by} for id={launch_row[1]}')
-				missed_notifications.add(notif_type)
-			else:
-				logging.info(f'✅ {notif_type} not missed yet')
-
-		if len(missed_notifications) != 0:
+	for launch_id_dict in launch_id_dict_list:
+		# pull uid: missed_notification from launch_id_dict
+		for uid, missed_notification in launch_id_dict.items():
 			# construct insert statement for the missed notifications: all will be set to True
-			insert_statement = '=1,'.join(missed_notifications) + '=1'
-			cursor.execute(f'''UPDATE launches SET {insert_statement} WHERE unique_id = ?''', (launch_row[1],))
-	
-	logging.info(f'✅ Cleared missed notifications!')
+			cursor.execute(f'''UPDATE launches SET {missed_notification} = 1 WHERE unique_id = ?''', (uid,))
+			miss_count += 1
+
+			# log
+			logging.warning(f'⚠️ Missed {missed_notification} for uid={uid}')
+
+	logging.info(f'✅ Cleared {miss_count} missed notifications!')
 
 	conn.commit()
 	conn.close()
 
 
-def notification_send_scheduler(db_path: str, next_api_update_time: int, scheduler: BackgroundScheduler, bot_username: str):
+def notification_send_scheduler(db_path: str, next_api_update_time: int,
+	scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
 	'''Summary
 	Notification checks are performed right after an API update, so they're always
 	up to date when the scheduling is performed. There should be only one of each
@@ -1296,9 +1305,10 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 
 	# debug print
 	logging.debug('📩 Running notification_send_scheduler...')
-	
+
 	# load notification statuses for launches
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+	conn.row_factory = sqlite3.Row
 	cursor = conn.cursor()
 
 	# fields to be selected
@@ -1331,15 +1341,29 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 				# launch id
 				uid = launch_row[1]
 
-				''' send_time -> launches to notify for.
+				# map enum to a notify_class
+				notify_class_map = {
+					0: 'notify_24h', 1: 'notify_12h', 2: 'notify_60min', 3: 'notify_5min'}
+
+				'''
+				send_time -> launches to notify for.
 				This isn't necessarily required, but there might be some unique case
 				where two notifications are needed to be sent at the exact same time. Previously
 				this wasn't relevant, as pending notifications were checked for continuously,
-				but now this could result in a notification not being sent. '''
+				but now this could result in a notification not being sent.
+
+				Updated: notif_send_times[send_time] now contains a dictionary of uid:notif_class.
+				'''
 				if send_time not in notif_send_times:
-					notif_send_times[send_time] = {uid}
+					notif_send_times[send_time] = {uid: notify_class_map[enum]}
 				else:
-					notif_send_times[send_time].add(uid)
+					if uid not in notif_send_times:
+						notif_send_times[send_time][uid] = notify_class_map[enum]
+					else:
+						logging.warning(f'''⚠️ More than one notify_class!
+							Existing: {notif_send_times[send_time][uid]}
+							Replacing with: {notify_class_map[enum]}''')
+						notif_send_times[send_time][uid] = notify_class_map[enum]
 
 	# clear previously stored notifications
 	logging.debug(f'🚮 Clearing previously queued notifications...')
@@ -1352,21 +1376,21 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 	# cleared!
 	logging.debug(f'✅ Cleared {cleared_count} queued notifications!')
 
-	''' add notifications to schedule queue until we hit the next scheduled API update
-	this allows us to queue the minimum amount of notifications '''
-	scheduled_notifications, missed_notifications = 0, set()
-	for send_time, launch_id_set in notif_send_times.items():
+	''' Add notifications to schedule queue until we hit the next scheduled API update.
+	This allows us to queue the minimum amount of notifications '''
+	scheduled_notifications, missed_notifications = 0, []
+	for send_time, notification_dict in notif_send_times.items():
 		# if send time is later than next API update, ignore
 		if send_time > next_api_update_time:
 			pass
 		elif send_time < time.time() - 60*5:
-			# if notifications have been missed, add to missed set
-			missed_notifications = missed_notifications.union(launch_id_set)
+			# if send time is more than 5 minutes in the past, declare it missed
+			missed_notifications.append(notification_dict)
 		else:
 			# verify we're not already past send_time
 			if send_time < time.time():
 				send_time_offset = int(time.time() - send_time)
-				logging.warn(f'⚠️ Missed send_time by {send_time_offset} sec! Sending in 3 seconds.')
+				logging.warning(f'⚠️ Missed send_time by {send_time_offset} sec! Sending in 3 seconds.')
 				send_time = time.time() + 3
 
 			# convert to a datetime object, add 2 sec for margin
@@ -1375,11 +1399,12 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int, schedul
 			# schedule next API update, and we're done: next update will be scheduled after the API update
 			scheduler.add_job(
 				notification_handler, 'date', id=f'notification-{int(send_time)}',
-				run_date=notification_dt, args=[db_path, launch_id_set, bot_username])
+				run_date=notification_dt, args=[db_path, notification_dict, bot_username, bot])
 
 			# done, log
-			logging.debug(f'send_time={send_time}, launch_id_set={launch_id_set}, scheduled_notifications={scheduled_notifications}')
-			logging.info(f'📨 Scheduled {len(launch_id_set)} notifications for {notification_dt}')
+			logging.debug(f'''send_time={send_time}, notification_dict={notification_dict},
+				scheduled_notifications={scheduled_notifications}''')
+			logging.info(f'📨 Scheduled {len(notification_dict)} notifications for {notification_dt}')
 			scheduled_notifications += 1
 
 	# if we've missed any notifications, clear them
