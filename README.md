@@ -131,7 +131,7 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 	
 ### 1.7 more backend changes
 
-	- update from telepot Telegram API wrapper to python-telegram-bot
+	- ✅ update from telepot Telegram API wrapper to python-telegram-bot
 	
 	- enable the disabling of postpone notifications
 	
