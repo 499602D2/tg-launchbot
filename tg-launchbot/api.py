@@ -13,7 +13,7 @@ import ujson as json
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # local imports
-from utils import timestamp_to_unix
+from utils import timestamp_to_unix, time_delta_to_legible_eta
 from db import update_launch_db, update_stats_db
 from notifications import notification_send_scheduler
 
@@ -34,17 +34,26 @@ class LaunchLibrary2Launch:
 		self.status_state = launch_json['status']['name']
 		self.in_hold = launch_json['inhold']
 		self.probability = launch_json['probability']
-		self.success = True if 'Success' in launch_json['status']['name'] else False
-		
+		self.success = bool('Success' in launch_json['status']['name'])
+		self.tbd_time = launch_json['tbdtime'] if 'tbdtime' in launch_json else True
+		self.tbd_date = launch_json['tbddate'] if 'tbddate' in launch_json else True
+
 		# set launched state based on status_state
-		launch_bool = [status for status in {'success', 'failure'} if (status in self.status_state.lower())] 
-		self.launched = True if any(launch_bool) else False
+		launch_bool = [status for status in {'success', 'failure'} if status in self.status_state.lower()]
+		self.launched = bool(any(launch_bool))
 
 		# lsp/agency info
-		self.lsp_id = launch_json['launch_service_provider']['id']
-		self.lsp_name = launch_json['launch_service_provider']['name']
-		self.lsp_short = launch_json['launch_service_provider']['abbrev']
-		self.lsp_country_code = launch_json['launch_service_provider']['country_code']
+		try:
+			self.lsp_id = launch_json['launch_service_provider']['id']
+			self.lsp_name = launch_json['launch_service_provider']['name']
+			self.lsp_short = launch_json['launch_service_provider']['abbrev']
+			self.lsp_country_code = launch_json['launch_service_provider']['country_code']
+		except TypeError:
+			self.lsp_id = None
+			self.lsp_name = None
+			self.lsp_short = None
+			self.lsp_country_code = None
+			logging.exception(f'⚠️ Error parsing launch_service_provider! launch_json: {launch_json}')
 
 		# webcast status and links
 		self.webcast_islive = launch_json['webcast_live']
@@ -63,7 +72,7 @@ class LaunchLibrary2Launch:
 		self.rocket_full_name = launch_json['rocket']['configuration']['full_name']
 		self.rocket_variant = launch_json['rocket']['configuration']['variant']
 		self.rocket_family = launch_json['rocket']['configuration']['family']
-		
+
 		# launcher stage information
 		if launch_json['rocket']['launcher_stage'] not in (None, []):
 			if len(launch_json['rocket']['launcher_stage']) > 1:
@@ -132,7 +141,7 @@ class LaunchLibrary2Launch:
 
 				self.spacecraft_crew = ','.join(astronauts)
 				self.spacecraft_crew_count = len(astronauts)
-			
+
 			try:
 				self.spacecraft_maiden_flight = timestamp_to_unix(
 					spacecraft['spacecraft']['spacecraft_config']['maiden_flight'])
@@ -171,10 +180,17 @@ class LaunchLibrary2Launch:
 		self.location_country_code = launch_json['pad']['location']['country_code']
 
 		# tidbits for fun facts etc.
-		self.pad_nth_launch = launch_json['pad']['total_launch_count']
-		self.location_nth_launch = launch_json['pad']['location']['total_launch_count']
-		self.agency_nth_launch = launch_json['agency_launch_attempt_count']
-		self.agency_nth_launch_year = launch_json['agency_launch_attempt_count_year']
+		try:
+			self.pad_nth_launch = launch_json['pad']['total_launch_count']
+			self.location_nth_launch = launch_json['pad']['location']['total_launch_count']
+			self.agency_nth_launch = launch_json['agency_launch_attempt_count']
+			self.agency_nth_launch_year = launch_json['agency_launch_attempt_count_year']
+		except KeyError:
+			self.pad_nth_launch = None
+			self.location_nth_launch = None
+			self.agency_nth_launch = None
+			self.agency_nth_launch_year = None
+
 		if 'orbital_launch_attempt_count_year' in launch_json:
 			self.orbital_nth_launch_year = launch_json['orbital_launch_attempt_count_year']
 		else:
@@ -182,8 +198,11 @@ class LaunchLibrary2Launch:
 
 
 def construct_params(PARAMS: dict) -> str:
+	'''
+	Constructs the params string for the url from the given key-vals.
+	'''
 	param_url = ''
-	if PARAMS is not None:	
+	if PARAMS is not None:
 		for enum, keyvals in enumerate(PARAMS.items()):
 			key, val = keyvals[0], keyvals[1]
 			param_url += f'?{key}={val}' if enum == 0 else f'&{key}={val}'
@@ -191,17 +210,14 @@ def construct_params(PARAMS: dict) -> str:
 	return param_url
 
 
-def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler, bot_username: str):
+def ll2_api_call(
+	data_dir: str, scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
 	# params
 	VERSION = '1.6-alpha'
 	DEBUG_API = False
 
 	# debug print
 	logging.debug('➡️ Running API call...')
-
-	# datetime, so we can only get launches starting today
-	now = datetime.datetime.now()
-	today_call = f'{now.year}-{now.month}-{now.day}'
 
 	# what we're throwing at the API
 	API_URL = 'https://ll.thespacedevs.com'
@@ -213,7 +229,7 @@ def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler, bot_username: st
 	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{construct_params(PARAMS)}' #&{fields}
 
 	# set headers
-	headers = {'user-agent': f'telegram-{BOT_USERNAME}/{VERSION}'}
+	headers = {'user-agent': f'telegram-{bot_username}/{VERSION}'}
 
 	# if debugging and the debug file exists, run this
 	if DEBUG_API and os.path.isfile(os.path.join(data_dir,'ll2-json.json')):
@@ -232,7 +248,9 @@ def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler, bot_username: st
 			logging.warning('⚠️ Trying again after 3 seconds...')
 
 			time.sleep(3)
-			return ll2_api_call(data_dir=data_dir, scheduler=scheduler, bot_username=bot_username)
+			return ll2_api_call(
+				data_dir=data_dir, scheduler=scheduler,
+				bot_username=bot_username, bot=bot)
 
 		try:
 			api_json = json.loads(API_RESPONSE.text)
@@ -271,14 +289,18 @@ def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler, bot_username: st
 
 	# schedule next API call
 	next_api_update = api_call_scheduler(
-		db_path=data_dir, scheduler=scheduler, ignore_60=True, bot_username=bot_username)
+		db_path=data_dir, scheduler=scheduler, ignore_60=True,
+		bot_username=bot_username, bot=bot)
 
 	# schedule notifications
 	notification_send_scheduler(
-		db_path=data_dir, next_api_update_time=next_api_update, scheduler=scheduler, bot_username=bot_username)
+		db_path=data_dir, next_api_update_time=next_api_update, scheduler=scheduler,
+		bot_username=bot_username, bot=bot)
 
 
-def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: bool, bot_username: str) -> int:
+def api_call_scheduler(
+	db_path: str, scheduler: BackgroundScheduler, ignore_60: bool,
+	bot_username: str, bot: 'telegram.bot.Bot') -> int:
 	"""Summary
 	Schedules upcoming API calls for when they'll be required.
 	Calls are scheduled with the following logic:
@@ -293,15 +315,25 @@ def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: 
 	are scheduled. Keep track of scheduled job IDs. LaunchBot-class in main thread?
 	"""
 	def schedule_call(unix_timestamp: int) -> int:
+		# verify time isn't in the past
+		if unix_timestamp <= int(time.time()):
+			logging.warning('schedule_call called with a timestamp in the past! Scheduling for t+3 seconds.')
+			unix_timestamp = int(time.time()) + 3
+
+		# delta
+		until_update = unix_timestamp - int(time.time())
+
 		# convert to a datetime object
 		next_update_dt = datetime.datetime.fromtimestamp(unix_timestamp)
 
 		# schedule next API update, and we're done: next update will be scheduled after the API update
 		scheduler.add_job(
 			ll2_api_call, 'date', run_date=next_update_dt,
-			args=[db_path, scheduler, bot_username], id=f'api-{unix_timestamp}')
+			args=[db_path, scheduler, bot_username, bot], id=f'api-{unix_timestamp}')
 
-		logging.info('🔄 Next API update scheduled for %s', next_update_dt)
+		logging.info('🔄 Next API update in %s (%s)',
+			time_delta_to_legible_eta(time_delta=until_update, full_accuracy=False), next_update_dt)
+
 		return unix_timestamp
 
 	def require_immediate_update(cursor: sqlite3.Cursor) -> tuple:
@@ -330,18 +362,21 @@ def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: 
 	if update_immediately:
 		logging.info('⚠️ DB outdated: scheduling next API update 5 seconds from now...')
 		return schedule_call(int(time.time()) + 5)
-	else:
-		update_delta = int(time.time()) - last_update
-		to_next_update = 15 * 60 - update_delta
-		next_auto_update = int(time.time()) + to_next_update
 
-		logging.info(f'🔀 DB up-to-date! Updating in {int(to_next_update / 60)} minutes.')
+	# if we didn't return above, no need to update immediately
+	update_delta = int(time.time()) - last_update
+	to_next_update = 15 * 60 - update_delta
+	next_auto_update = int(time.time()) + to_next_update
+	last_updated_str = time_delta_to_legible_eta(update_delta, full_accuracy=False)
 
-	# pull all launches with a net greater than or equal to current time
-	select_fields = 'net_unix, notify_24h, notify_12h, notify_60min, notify_5min'
+	logging.info(f'🔀 DB up-to-date! Last updated {last_updated_str} ago.')
+
+	# pull all launches with a net greater than or equal to notification window start
+	select_fields = 'net_unix, launched, notify_24h, notify_12h, notify_60min, notify_5min'
+	notify_window = int(time.time()) - 60*5
 
 	try:
-		cursor.execute(f'SELECT {select_fields} FROM launches WHERE net_unix >= ?', (int(time.time()),))
+		cursor.execute(f'SELECT {select_fields} FROM launches WHERE net_unix >= ?', (notify_window,))
 		query_return = cursor.fetchall()
 	except sqlite3.OperationalError:
 		query_return = set()
@@ -362,36 +397,48 @@ def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler, ignore_60: 
 	'''
 	Create a list of notification send times, but also during launch to check for a postpone.
 	- notification times, if not sent (60 seconds before)
-	- as the launch is supposed to occur
-	- now + 20 minutes
+	- 60 seconds after the launch is supposed to occur
 	'''
-	notif_times, time_map = set(), {0: 24*3600+60, 1: 12*3600+60, 2: 3600+60, 3: 5*60+60}
+	notif_times, time_map = set(), {0: 24*3600, 1: 12*3600, 2: 3600, 3: 5*60}
 	for launch_row in query_return:
-		notif_times.add(launch_row[0])
-		for enum, notif_bool in enumerate(launch_row[1::]):
+		# shortly after launch time for possible postpone/abort, if not launched
+		if not launch_row[1] and time.time() - launch_row[0] < 60:
+			notif_times.add(launch_row[0] + 60)
+
+		for enum, notif_bool in enumerate(launch_row[2::]):
 			if not notif_bool:
-				# time for check: launch time - notification time (before launch time)
-				check_time = launch_row[0] - time_map[enum]
+				# time for check: launch time - notification time - 60 (60s before)
+				check_time = launch_row[0] - time_map[enum] - 60
 
 				# if less than 60 sec until next check, pass if ignore_60 flag is set
-				if check_time - int(time.time()) < 30 and ignore_60:
+				if check_time - int(time.time()) < 60 and ignore_60:
 					pass
 				elif check_time < time.time():
 					pass
 				else:
 					notif_times.add(check_time)
 
+	# get time when next notification will be sent
+	next_notif = min(notif_times)
+	next_notif_send_time = time_delta_to_legible_eta(
+		time_delta=next_notif - int(time.time()),
+		full_accuracy=False)
+	next_notif = datetime.datetime.fromtimestamp(next_notif)
 
-	# add scheduled check every 30 minutes to comparison
+	# add scheduled check every 15 minutes to comparison
 	notif_times.add(next_auto_update)
 
-	# pick minimum of all possible API updates, convert to a datetime object
+	# pick minimum of all possible API updates
 	next_api_update = min(notif_times)
 
+	# if next update is same as auto-update, log as information
 	if next_api_update == next_auto_update:
-		logging.info(f'📨 No notifications coming up before next API update.')
+		logging.info('📭 Auto-updating: no notifications coming up before next API update.')
+		logging.info(f'📮 Next notification in {next_notif_send_time} ({next_notif})')
+	else:
+		logging.info('📬 Notification coming up before next API update: not auto-updating!')
 
-	# schedule
+	# schedule the call
 	return schedule_call(next_api_update)
 
 
@@ -422,7 +469,8 @@ if __name__ == '__main__':
 
 	# start API and notification scheduler
 	api_call_scheduler(
-		db_path=DATA_DIR, ignore_60=False, scheduler=scheduler, bot_username=BOT_USERNAME)
+		db_path=DATA_DIR, ignore_60=False, scheduler=scheduler,
+		bot_username=BOT_USERNAME, bot=None)
 
 	while True:
 		time.sleep(10)
