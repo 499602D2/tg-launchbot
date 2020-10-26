@@ -112,6 +112,8 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 	Other, less major changes
 
 	- add "show changelog" button under /help
+
+		- load from a changelog.txt file?
 	
 		- or, replace /help with /info?
 	
@@ -122,6 +124,8 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 	- ✅ index launches by the new unique launch ID instead of launch name
 
 	- fully integrate new API and notifications systems with LaunchBot 1.5
+
+	- complete pre_handler(), so we can update time zone information and get feedback
 
 	- re-add statistics to all needed places
 
