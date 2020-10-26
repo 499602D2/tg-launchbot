@@ -833,11 +833,11 @@ def callback_handler(update, context):
 		# pull new text and the keyboard
 		if input_data[1] == 'refresh':
 			try:
-				new_schedule_msg, keyboard = generate_schedule_message(input_data[2])
+				new_schedule_msg, keyboard = generate_schedule_message(input_data[2], chat)
 			except IndexError: # let's not break """legacy""" compatibility
-				new_schedule_msg, keyboard = generate_schedule_message('vehicle')
+				new_schedule_msg, keyboard = generate_schedule_message('vehicle', chat)
 		else:
-			new_schedule_msg, keyboard = generate_schedule_message(input_data[1])
+			new_schedule_msg, keyboard = generate_schedule_message(input_data[1], chat)
 
 		try:
 			query.edit_message_text(text=new_schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
@@ -1513,7 +1513,7 @@ def feedback(msg):
 	feedback_message_IDs.add(ret['message_id'])
 
 
-def generate_schedule_message(call_type):
+def generate_schedule_message(call_type: str, chat: str):
 	'''
 	Generates the schedule message and keyboard.
 	'''
@@ -1550,8 +1550,8 @@ def generate_schedule_message(call_type):
 	# pick 5 dates, map missions into dict with dates
 	sched_dict = {}
 	for i, row in enumerate(query_return):
+		net_unix = row['net_unix']
 		launch_unix = datetime.datetime.utcfromtimestamp(row['net_unix'])
-		#launch_unix += 3600 * load_time_zone_status(chat, readable=False)
 
 		provider = row['lsp_name'] if len(row['lsp_name']) <= len('Arianespace') else row['lsp_short']
 		mission = row['name'].split('|')[0].strip()
@@ -1608,7 +1608,6 @@ def generate_schedule_message(call_type):
 			sched_dict[utc_str].append(flt_str)
 
 	schedule_msg, i = '', 0
-	today = datetime.datetime.utcnow()
 	for key, val in sched_dict.items():
 		if i != 0:
 			schedule_msg += '\n\n'
@@ -1625,6 +1624,10 @@ def generate_schedule_message(call_type):
 
 		# calc how many days until this date
 		launch_date = datetime.datetime.strptime(key, '%Y-%m-%d')
+
+		# get today based on chat preferences
+		user_tz_offset = 3600 * load_time_zone_status(DATA_DIR, chat, readable=False)
+		today = datetime.datetime.fromtimestamp(time.time() + user_tz_offset)
 		time_delta = abs(launch_date - today)
 
 		if (launch_date.day, launch_date.month) == (today.day, today.month):
@@ -1690,7 +1693,7 @@ def flight_schedule(update, context):
 	chat_id = update.message['chat']['id']
 
 	# generate message
-	schedule_msg, keyboard = generate_schedule_message('vehicle')
+	schedule_msg, keyboard = generate_schedule_message(call_type='vehicle', chat=chat_id)
 
 	# send
 	context.bot.sendMessage(chat_id, schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
@@ -1968,7 +1971,7 @@ def generate_next_flight_message(chat, current_index: int):
 		notify_str += f'\nℹ️ *To enable:* /notify@{BOT_USERNAME}'
 
 	next_str = f'''
-	🚀 *Next launch* is by {short_monospaced_text(lsp_name)} {lsp_flag}
+	🚀 *Next launch* | {short_monospaced_text(lsp_name)} {lsp_flag}
 	*Mission* {short_monospaced_text(launch_name)}
 	*Vehicle* {short_monospaced_text(launch["rocket_name"])}
 	*Pad* {short_monospaced_text(location)}
