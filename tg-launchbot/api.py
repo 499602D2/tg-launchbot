@@ -39,7 +39,7 @@ class LaunchLibrary2Launch:
 		self.tbd_date = launch_json['tbddate'] if 'tbddate' in launch_json else True
 
 		# set launched state based on status_state
-		launch_bool = [status for status in {'success', 'failure'} if status in self.status_state.lower()]
+		launch_bool = [status for status in ('success', 'failure') if status in self.status_state.lower()]
 		self.launched = bool(any(launch_bool))
 
 		# lsp/agency info
@@ -420,9 +420,10 @@ def api_call_scheduler(
 
 	# get time when next notification will be sent
 	next_notif = min(notif_times)
-	next_notif_send_time = time_delta_to_legible_eta(
-		time_delta=next_notif - int(time.time()),
-		full_accuracy=False)
+	until_next_notif = next_notif - int(time.time())
+	next_notif_send_time = time_delta_to_legible_eta(time_delta=until_next_notif, full_accuracy=False)
+
+	# convert to a datetime object for scheduling
 	next_notif = datetime.datetime.fromtimestamp(next_notif)
 
 	# add scheduled check every 15 minutes to comparison
@@ -434,9 +435,11 @@ def api_call_scheduler(
 	# if next update is same as auto-update, log as information
 	if next_api_update == next_auto_update:
 		logging.info('📭 Auto-updating: no notifications coming up before next API update.')
-		logging.info(f'📮 Next notification in {next_notif_send_time} ({next_notif})')
 	else:
 		logging.info('📬 Notification coming up before next API update: not auto-updating!')
+
+	# log time next notification is sent
+	logging.info(f'📮 Next notification in {next_notif_send_time} ({next_notif})')
 
 	# schedule the call
 	return schedule_call(next_api_update)
