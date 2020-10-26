@@ -279,6 +279,14 @@ def toggle_notification(
 	new_enabled_str = ','.join(new_enabled_notifications)
 	new_disabled_str = ','.join(new_disabled_notifications)
 
+	if len(new_enabled_str) > 0:
+		if new_enabled_str[0] == ',':
+			new_enabled_str = new_enabled_str[1::]
+
+	if len(new_disabled_str) > 0:
+		if new_disabled_str[0] == ',':
+			new_disabled_str = new_disabled_str[1::]
+
 	try:
 		if data_exists:
 			cursor.execute('''UPDATE chats SET enabled_notifications = ?, disabled_notifications = ?
@@ -1111,11 +1119,11 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 			orbit_str = launch['mission_orbit'] if launch['mission_orbit_abbrev'] is not None else 'Unknown'
 			if 'Starlink' in launch_name:
 				orbit_str = 'Very-low Earth orbit'
-	except:
+	except TypeError:
 		orbit_info = '🌍'
 		orbit_str = 'Unknown orbit'
 
-	# launch probability to weather emoji
+	# launch probability to weather emoji TODO add to final message
 	probability_map = {80: '☀️', 60: '🌤', 40: '🌥', 20: '☁️', 00: '⛈'}
 	if launch['probability'] not in (-1, None):
 		for prob_range_start, prob_str in probability_map.items():
@@ -1193,7 +1201,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	else:
 		link_text = None
 
-	# map notif_class to a legible string
+	# map notif_class to a more readable string
 	t_minus = {
 		'notify_24h': '24 hours', 'notify_12h': '12 hours',
 		'notify_60min': '60 minutes', 'notify_5min': '5 minutes'}
