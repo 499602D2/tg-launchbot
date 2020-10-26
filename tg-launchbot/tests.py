@@ -59,6 +59,8 @@ class TestLaunchBotFunctions(unittest.TestCase):
 			msg = create_notification_message(
 				launch=launch, notif_class='notify_60min', bot_username='rocketrybot')
 
+			# print(msg + '\n\n ------------------------')
+
 
 	def test_pretty_eta(self):
 		'''
@@ -67,13 +69,16 @@ class TestLaunchBotFunctions(unittest.TestCase):
 		# test small deltas
 		for i in range(0, 100):
 			rand_delta = random.randint(0, 3600)
+			time_delta_to_legible_eta(rand_delta, True)
 
 		# test large deltas
 		for i in range(0, 100):
 			rand_delta = random.randint(0, 3600 * 24 * 2)
+			time_delta_to_legible_eta(rand_delta, True)
+
 
 		# test with 0 seconds
-		self.assertEqual(time_delta_to_legible_eta(0), 'just now')
+		self.assertEqual(time_delta_to_legible_eta(0, False), 'just now')
 
 
 if __name__ == '__main__':
