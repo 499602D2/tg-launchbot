@@ -1364,67 +1364,6 @@ def start(update, context):
 		logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat_id)}. Sent user the new inline keyboard. [2]')
 
 
-def chat_preferences(chat):
-	'''
-	This function is called when user wants to interact with their preferences.
-	Sends the user an interactive keyboard to view and edit their prefs with.
-
-	Functions:
-	- set timezone
-	- set notification times
-	- allow/disallow regular users to call bot's commands
-	'''
-	if not os.path.isfile(os.path.join(DATA_DIR, 'launchbot-data.db')):
-		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
-		cursor = conn.cursor()
-		try:
-			# chat - notififcations - postpone - timezone - commands
-			cursor.execute("CREATE TABLE preferences (chat TEXT, notifications TEXT, timezone TEXT, timezone_str TEXT, postpone INTEGER, commands TEXT, PRIMARY KEY (chat))")
-			conn.commit()
-		except sqlite3.OperationalError:
-			pass
-
-		conn.close()
-
-	rand_planet = random.choice(('🌍', '🌎', '🌏'))
-	message_text = f'''
-	⚙️ *This tool* allows you to edit your chat's preferences.
-
-	These include...
-	⏰ Launch notification types (24 hour/12 hour etc.)
-	{rand_planet} Your time zone
-	🛰 Command permissions
-
-	Your time zone is used when sending notifications to show your local time, instead of the default UTC+0.
-	
-	Note: time zone and command permission support is coming later.
-	'''
-
-	'''
-	keyboard = InlineKeyboardMarkup(
-				inline_keyboard = [
-					[InlineKeyboardButton(text=f'{rand_planet} Timezone settings', callback_data=f'prefs/timezone')],
-					[InlineKeyboardButton(text='⏰ Notification settings', callback_data=f'prefs/notifs')],
-					[InlineKeyboardButton(text='🛰 Command settings', callback_data=f'prefs/cmds')],
-					[InlineKeyboardButton(text='✅ Exit', callback_data=f'prefs/done')]
-				]
-			)
-	'''
-
-	keyboard = InlineKeyboardMarkup(
-				inline_keyboard = [
-					[InlineKeyboardButton(text='⏰ Notification settings', callback_data=f'prefs/notifs')],
-					[InlineKeyboardButton(text='✅ Exit', callback_data=f'prefs/done')]
-				]
-			)
-
-	bot.sendMessage(
-		chat, inspect.cleandoc(message_text),
-		parse_mode='Markdown',
-		reply_markup=keyboard
-		)
-
-
 def name_from_provider_id(lsp_id):
 	'''
 	Sometimes we may need to convert an lsp id to a name: this
@@ -1503,24 +1442,31 @@ def notify(update, context):
 		chat, inspect.cleandoc(message_text), parse_mode='Markdown', reply_markup=keyboard)
 
 
-def feedback(msg):
+def feedback(update, context):
 	'''
 	Receive feedback from users.
 	'''
-	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
+	chat_id = update.message['chat']['id']
 
 	# feedback called by $chat; send the user a message with ForceReply in it, so we can get a response
-	message_text = f'''
-	✍️ *Hi there!* This is a way of sharing feedback and reporting issues to the developer of the bot. All feedback is anonymous.
+	message_text = '''
+	✍️ This is a way of sharing feedback and reporting issues to the developer of the bot.
+
+	*All feedback is anonymous.*
 
 	Please note that it is impossible for me to reply to your feedback, but you can be sure I'll read it!
+
 	Just write your feedback *as a reply to this message* (otherwise I won't see it due to the bot's privacy settings)
+
+	You can also provide feedback at the bot's GitHub repository.
 	'''
 
-	ret = bot.sendMessage(
-		chat, inspect.cleandoc(message_text), parse_mode='Markdown',
-		reply_markup=ForceReply(selective=True), reply_to_message_id=msg['message_id'])
+	ret = context.bot.sendMessage(
+		chat_id, inspect.cleandoc(message_text), parse_mode='Markdown',
+		reply_markup=ForceReply(selective=True), reply_to_message_id=update.message['message_id'])
 
+	''' add sent message id to feedback_message_IDs, so we can keep
+	track of what to parse as feedback, and what not to '''
 	feedback_message_IDs.add(ret['message_id'])
 
 
@@ -1636,9 +1582,9 @@ def generate_schedule_message(call_type: str, chat: str):
 		# calc how many days until this date
 		launch_date = datetime.datetime.strptime(key, '%Y-%m-%d')
 
-		# get today based on chat preferences
+		# get today based on chat preferences: if not available, use UTC+0
 		user_tz_offset = 3600 * load_time_zone_status(DATA_DIR, chat, readable=False)
-		today = datetime.datetime.fromtimestamp(time.time() + user_tz_offset)
+		today = datetime.datetime.utcfromtimestamp(time.time() + user_tz_offset)
 		time_delta = abs(launch_date - today)
 
 		if (launch_date.day, launch_date.month) == (today.day, today.month):
@@ -1676,12 +1622,22 @@ def generate_schedule_message(call_type: str, chat: str):
 
 		i += 1
 
+	# parse message body for markdown
 	schedule_msg = reconstruct_message_for_markdown(schedule_msg)
+
+	# get user's time zone string
+	utc_offset = load_time_zone_status(DATA_DIR, chat, readable=True)
+
+	# add header and footer
 	header = f'📅 *5\-day flight schedule*\n'
-	header_note = f'Dates are subject to change. For detailed flight information, use /next@{BOT_USERNAME}.'
+	header_note = f'For detailed flight information, use /next@{BOT_USERNAME}. Dates relative to UTC{utc_offset}.'
 	footer_note = '\n\n🟢 = verified launch date\n🟡 = exact time to be determined'
+
+	# parse for markdown
 	footer = f'_{reconstruct_message_for_markdown(footer_note)}_'
 	header_info = f'_{reconstruct_message_for_markdown(header_note)}\n\n_'
+
+	# final message
 	schedule_msg = header + header_info + schedule_msg + footer
 
 	# call change button
@@ -2395,7 +2351,7 @@ if __name__ == '__main__':
 
 	# if not in debug mode, show pretty prints
 	if not DEBUG_MODE:
-		print(f"🚀 LaunchBot version {VERSION}")
+		print(f"🚀 LaunchBot | version {VERSION}")
 		print("Don't close this window or set the computer to sleep. Quit: ctrl + c.")
 		time.sleep(0.5)
 
