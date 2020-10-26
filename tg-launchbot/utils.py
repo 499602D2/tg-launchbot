@@ -13,6 +13,7 @@ Functions:
 	short_monospaced_text(text: str) -> str
 	map_country_code_to_flag(country_code: str) -> str
 	timestamp_to_unix(timestamp: str) -> int
+	timestamp_to_legible_date_string(timestamp: int) -> str
 	time_delta_to_legible_eta(time_delta: int) -> str
 
 Misc variables:
@@ -100,13 +101,14 @@ def map_country_code_to_flag(country_code: str) -> str:
 	'''
 	Maps a country code to a corresponding emoji flag: truly modern.
 	The functions returns a blank, white flag if the country code
-	doesn't exist in the flag_map dictionary.
+	doesn't exist in the flag_map dictionary. UNK is the country code
+	used by LL2 for unknown country codes.
 
 	Keyword arguments:
 		country_code (str): country code to return the flag for
 
 	Returns:
-		emoji_flag (str): the flag for the country_code
+		emoji_flag (str): the flag for the country code
 	'''
 	flag_map = {
 		'FRA': '🇪🇺', 'FR': '🇪🇺', 'USA': '🇺🇸', 'EU': '🇪🇺',
@@ -136,6 +138,16 @@ def timestamp_to_unix(timestamp: str) -> int:
 
 
 def timestamp_to_legible_date_string(timestamp: int) -> str:
+	'''
+	Converts a unix timestamp to a pretty date string, in the form
+	of MM dd+suffix, ex. "February 13th".
+
+	Keyword arguments:
+		timestamp (int): timestamp to convert to a date string
+
+	Returns:
+		date_str (str): a pretty date string
+	'''
 	# convert unix timestamp to a datetime object
 	date_object = datetime.datetime.fromtimestamp(timestamp)
 
@@ -164,6 +176,8 @@ def time_delta_to_legible_eta(time_delta: int, full_accuracy: bool) -> str:
 
 	Keyword arguments:
 		time_delta (int): time delta in seconds to convert
+		full_accuracy (bool): whether to use triple precision or not
+			(in this context, e.g. dd:mm:ss vs. dd:mm)
 
 	Returns:
 		pretty_eta (str): the prettily formatted, readable ETA string
