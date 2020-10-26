@@ -802,6 +802,7 @@ def callback_handler(update, context):
 				logging.info(f'🔎 No launches found after next refresh. Sent user the "No launches found" message.')
 
 			except Exception as e:
+				new_message_text, keyboard = generate_next_flight_message(chat, int(current_index))
 				logging.exception(f'⚠️ No launches found after refresh! {e}')
 
 		# query reply text
@@ -811,7 +812,7 @@ def callback_handler(update, context):
 		try:
 			query.edit_message_text(text=new_message_text, reply_markup=keyboard, parse_mode='MarkdownV2')
 		except telegram.error.TelegramError as exception:
-			if 'Bad Request: message is not modified' in exception.message:
+			if 'Message is not modified' in exception.message:
 				pass
 			else:
 				logging.exception(f'⚠️ TelegramError updating message text: {exception}, {vars(exception)}')
@@ -832,11 +833,11 @@ def callback_handler(update, context):
 		# pull new text and the keyboard
 		if input_data[1] == 'refresh':
 			try:
-				new_schedule_msg, keyboard = flight_schedule(msg, False, input_data[2])
+				new_schedule_msg, keyboard = generate_schedule_message(input_data[2])
 			except IndexError: # let's not break """legacy""" compatibility
-				new_schedule_msg, keyboard = flight_schedule(msg, False, 'vehicle')
+				new_schedule_msg, keyboard = generate_schedule_message('vehicle')
 		else:
-			new_schedule_msg, keyboard = flight_schedule(msg, False, input_data[1])
+			new_schedule_msg, keyboard = generate_schedule_message(input_data[1])
 
 		try:
 			query.edit_message_text(text=new_schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
@@ -849,7 +850,7 @@ def callback_handler(update, context):
 			query.answer(text=query_reply_text)
 
 		except telegram.error.TelegramError as exception:
-			if exception.error_code == 400 and 'Bad Request: message is not modified' in exception.description:
+			if 'Message is not modified' in exception.message:
 				try:
 					query_reply_text = '🔄 Schedule refreshed – no changes detected!'
 					query.answer(text=query_reply_text)
@@ -1512,29 +1513,24 @@ def feedback(msg):
 	feedback_message_IDs.add(ret['message_id'])
 
 
-def flight_schedule(msg, command_invoke, call_type):
+def generate_schedule_message(call_type):
 	'''
-	Display a very simple schedule for all upcoming flights.
+	Generates the schedule message and keyboard.
 	'''
-	if command_invoke:
-		content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
-	else:
-		chat = msg['message']['chat']['id']
-
 	# open db connection
 	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
+	conn.row_factory = sqlite3.Row
 	cursor = conn.cursor()
 
 	# perform the select; if cmd == all, just pull the next launch
-	today_unix = time.mktime(datetime.datetime.today().timetuple())
-	cursor.execute('SELECT * FROM launches WHERE net_unix >= ?',(today_unix,))
+	cursor.execute('SELECT * FROM launches WHERE net_unix >= ?',(int(time.time()),))
 
-	# sort ascending by NET, pick smallest 5
-	query_return = cursor.fetchall()
+	# sort in place by NET, convert to dicts
+	query_return = [dict(row) for row in cursor.fetchall()]
+	query_return.sort(key=lambda tup: tup['net_unix'])
+
+	# close db
 	conn.close()
-
-	# sort in place by NET
-	query_return.sort(key=lambda tup: tup[9])
 
 	# map months numbers to strings
 	month_map = {
@@ -1553,15 +1549,15 @@ def flight_schedule(msg, command_invoke, call_type):
 
 	# pick 5 dates, map missions into dict with dates
 	sched_dict = {}
-	for row, i in zip(query_return, range(len(query_return))):
-		launch_unix = datetime.datetime.utcfromtimestamp(row[9])
+	for i, row in enumerate(query_return):
+		launch_unix = datetime.datetime.utcfromtimestamp(row['net_unix'])
 		#launch_unix += 3600 * load_time_zone_status(chat, readable=False)
 
-		provider = row[3] if len(row[3]) <= len('Arianespace') else row[4]
-		mission = row[0]
+		provider = row['lsp_name'] if len(row['lsp_name']) <= len('Arianespace') else row['lsp_short']
+		mission = row['name'].split('|')[0].strip()
 
-		verified_date = True if row[20] == 0 else False
-		verified_time = True if row[21] == 0 else False
+		verified_date = bool(row['tbd_date'] == 0)
+		verified_time = bool(row['tbd_time'] == 0)
 
 		if mission[0] == ' ':
 			mission = mission[1:]
@@ -1572,9 +1568,9 @@ def flight_schedule(msg, command_invoke, call_type):
 		if provider in providers_short.keys():
 			provider = providers_short[provider]
 
-		vehicle = row[5].split('/')[0]
+		vehicle = row['rocket_name'].split('/')[0]
 
-		country_code, flag = row[8], None
+		country_code= row['lsp_country_code']
 		flag = map_country_code_to_flag(country_code)
 
 		# shorten some vehicle names
@@ -1582,9 +1578,9 @@ def flight_schedule(msg, command_invoke, call_type):
 			vehicle = vehicle_map[vehicle]
 
 		# shorten monospaced text length
-		provider = ' '.join("`{}`".format(word) for word in provider.split(' '))
-		vehicle = ' '.join("`{}`".format(word) for word in vehicle.split(' '))
-		mission = ' '.join("`{}`".format(word) for word in mission.split(' '))
+		provider = short_monospaced_text(provider)
+		vehicle = short_monospaced_text(vehicle)
+		mission = short_monospaced_text(mission)
 
 		# start the string with the flag of the provider's country
 		flt_str = flag if flag is not None else ''
@@ -1680,16 +1676,24 @@ def flight_schedule(msg, command_invoke, call_type):
 	inline_keyboard = []
 	inline_keyboard.append([
 		InlineKeyboardButton(text='🔄 Refresh', callback_data=f'schedule/refresh/{call_type}'),
-		InlineKeyboardButton(text=switch_text, callback_data=f"schedule/{'mission' if call_type == 'vehicle' else 'vehicle'}")]
-		)
+		InlineKeyboardButton(text=switch_text, callback_data=f"schedule/{'mission' if call_type == 'vehicle' else 'vehicle'}")])
 
 	keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
-	if not command_invoke:
-		return schedule_msg, keyboard
+	return schedule_msg, keyboard
 
-	bot.sendMessage(chat, schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
-	return
+
+def flight_schedule(update, context):
+	'''
+	Display a very simple schedule for all upcoming flights.
+	'''
+	chat_id = update.message['chat']['id']
+
+	# generate message
+	schedule_msg, keyboard = generate_schedule_message('vehicle')
+
+	# send
+	context.bot.sendMessage(chat_id, schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
 
 
 def generate_next_flight_message(chat, current_index: int):
@@ -1725,24 +1729,36 @@ def generate_next_flight_message(chat, current_index: int):
 		enabled, disabled = [], []
 
 	else:
-		notif_providers, user_notif_enabled = [], None
-		enabled, disabled = [], []
-		for row in query_return:
-			# chat ID - lsp_name - unix timestamp - enabled true/false
-			if row['lsp_name'].lower() == 'all' and row['enabled'] == 1:
-				all_flag, user_notif_enabled = True, True
-				enabled.append(row['lsp_name'])
+		user_notif_enabled = None
+		cmd = None
 
-			else:
-				if row['enabled'] == 1:
-					enabled.append(row['lsp_name'])
-				else:
-					disabled.append(row['lsp_name'])
+		# db row for chat
+		chat_row = query_return[0]
+
+		# parse the strings into lists
+		enabled, disabled = [], []
+		enabled = chat_row['enabled_notifications'].split(',')
+		disabled = chat_row['disabled_notifications'].split(',')
+
+		# remove possible empty entires
+		if '' in enabled:
+			enabled.remove('')
+
+		# remove possible empty entires
+		if '' in disabled:
+			disabled.remove('')
+
+		# if All found, toggle flag
+		if 'All' in enabled:
+			all_flag, user_notif_enabled = True, True
+			if len(disabled) == 0:
+				cmd = 'all'
+		else:
+			all_flag = False
+			user_notif_enabled = True
 
 		if len(enabled) == 0:
 			user_notif_enabled = False
-
-		notif_providers = enabled
 
 	# if chat has no notifications enabled, use cmd=all
 	if len(enabled) == 0:
@@ -1756,36 +1772,37 @@ def generate_next_flight_message(chat, current_index: int):
 		cursor.execute('SELECT * FROM launches WHERE net_unix >= ?',(today_unix,))
 		query_return = cursor.fetchall()
 
-	# if no next command, assume the user wants to know the next launch they're interested in
 	elif cmd is None:
 		if all_flag:
-			# if all_flag is set to true, and there are disabled providers, do a selective SQL select
 			if len(disabled) > 0:
-				query_str = f"SELECT * FROM launches WHERE net_unix >= {today_unix} AND lsp_name NOT IN ({','.join(['?']*len(disabled))})"
-				cursor.execute(query_str, disabled)
+				disabled_str = ''
+				for enum, lsp in enumerate(disabled):
+					disabled_str += f"'{lsp}'"
+					if enum < len(disabled) - 1:
+						disabled_str += ','
+
+				query_str = f'''SELECT * FROM launches WHERE net_unix >= ? AND lsp_name NOT IN ({disabled_str})
+				AND lsp_short NOT IN ({disabled_str})'''
+
+				cursor.execute(query_str, (today_unix,))
 				query_return = cursor.fetchall()
 
-				query_str = f"SELECT * FROM launches WHERE net_unix >= {today_unix} AND lsp_short NOT IN ({','.join(['?']*len(disabled))})"
-				ret = cursor.fetchall()
-				for i in ret:
-					query_return.append(i)
-			# if all_flag is set to false, do a regular select
 			else:
 				cursor.execute('SELECT * FROM launches WHERE net_unix >= ?',(today_unix,))
 				query_return = cursor.fetchall()
 		else:
-			# no all flag, do a simple selective select
-			query_str = f"SELECT * FROM launches WHERE net_unix >= {today_unix} AND lsp_name IN ({','.join(['?']*len(notif_providers))})"
-			cursor.execute(query_str, notif_providers)
+			# if no all_flag set, simply select all that are enabled
+			enabled_str = ''
+			for enum, lsp in enumerate(enabled):
+				enabled_str += f"'{lsp}'"
+				if enum < len(enabled) - 1:
+					enabled_str += ','
+
+			query_str = f'''SELECT * FROM launches WHERE net_unix >= ? AND lsp_name IN ({enabled_str})
+			OR net_unix >= ? AND lsp_short IN ({enabled_str})'''
+
+			cursor.execute(query_str, (today_unix,today_unix))
 			query_return = cursor.fetchall()
-
-			# do the same select again for lsp_short, because this database is beyond saving... TODO
-			query_str = f"SELECT * FROM launches WHERE net_unix >= {today_unix} AND lsp_short IN ({','.join(['?']*len(notif_providers))})"
-			cursor.execute(query_str, notif_providers)
-			ret = cursor.fetchall()
-
-			for row in ret:
-				query_return.append(row)
 
 	# close connection
 	conn.close()
@@ -1806,10 +1823,8 @@ def generate_next_flight_message(chat, current_index: int):
 		inline_keyboard.append([InlineKeyboardButton(text='🔎 Search for all flights', callback_data='next_flight/refresh/0/all')])
 		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
-		context.bot.sendMessage(chat, msg_text, reply_markup=keyboard)
 		logging.info('🔎 No launches found in next. Sent user the "No launches found" message.')
-
-		return
+		return reconstruct_message_for_markdown(msg_text), keyboard
 
 	# launch name
 	launch_name = launch['name'].split('|')[1]
@@ -1857,19 +1872,19 @@ def generate_next_flight_message(chat, current_index: int):
 	date_str = timestamp_to_legible_date_string(launch['net_unix'])
 
 	# verified launch date
-	if launch['tbd_date'] is False:
+	if launch['tbd_date'] == 0:
 		# verified launch time
-		if launch['tbd_time'] is False:
+		if launch['tbd_time'] == 0:
 			# load UTC offset in readable format
 			readable_utc_offset = load_time_zone_status(data_dir=DATA_DIR, chat=chat, readable=True)
 
 			# time isn't tbd, append it as well
 			time_str = f'{date_str}, {launch_time} UTC{readable_utc_offset}'
-		# unverified launch time
 		else:
-			time_str = f'{date_str}, {launch_time}'
-	# unverified launch date
+			# unverified launch time
+			time_str = f'{date_str}, {launch_time} UTC{readable_utc_offset}'
 	else:
+		# unverified launch date
 		time_str = f'Not before {date_str}'
 
 	# add mission information: type, orbit
@@ -1958,7 +1973,7 @@ def generate_next_flight_message(chat, current_index: int):
 	*Vehicle* {short_monospaced_text(launch["rocket_name"])}
 	*Pad* {short_monospaced_text(location)}
 
-	📅 {short_monospaced_text(launch_time)} `` `UTC{utc_offset}`
+	📅 {short_monospaced_text(time_str)}
 	⏰ {short_monospaced_text(eta_str)}
 
 	*Mission information* {orbit_info}
