@@ -265,7 +265,7 @@ def command_pre_handler(update, context):
 				context.bot.sendMessage(chat, text=inspect.cleandoc(new_text), reply_markup=keyboard, parse_mode='Markdown')
 
 				# store user's timezone_str
-				update_time_zone_string(chat, timezone_str)
+				update_time_zone_string(DATA_DIR, chat, timezone_str)
 
 
 		else:
@@ -731,6 +731,7 @@ def callback_handler(update, context):
 				logging.info(f'💫 {anonymize_id(chat)} finished setting notifications with the "Done" button! | {(1000*(timer() - start)):.0f} ms')
 
 	elif input_data[0] == 'mute':
+		# TODO fix mute command
 		# user wants to mute a launch from notification inline keyboard
 		# /mute/$provider/$launch_id/(0/1) | 1=muted (true), 0=not muted
 
@@ -863,63 +864,65 @@ def callback_handler(update, context):
 			return
 
 		if input_data[1] == 'done':
-			query.answer(text=f'✅ All done!')
-			message_text = f'💫 Your preferences were saved!'
+			query.answer(text='✅ All done!')
+			message_text = '💫 Your preferences were saved!'
 			query.edit_message_text(text=message_text, reply_markup=None, parse_mode='Markdown')
 
 		elif input_data[1] == 'main_menu':
 			rand_planet = random.choice(('🌍', '🌎', '🌏'))
-			query.answer(text=f'⏮ Main menu')
+			query.answer(text='⏮ Main menu')
 			message_text = f'''
-			⚙️ *This tool* allows you to edit your chat's preferences.
+			⚙️ *LaunchBot* | Chat preferences
 
-			*These include...*
+			*Editable preferences*
 			⏰ Launch notification types (24 hour/12 hour etc.)
 			{rand_planet} Time zone settings
-			🛰 Command permissions
+			🛰 Command permissions (coming soon!)
 
 			Your time zone is used when sending notifications to show your local time, instead of the default UTC+0.
-			
-			*Note:* command permission support is coming later.
 			'''
 
 			keyboard = InlineKeyboardMarkup(
-							inline_keyboard = [
-								[InlineKeyboardButton(text=f'{rand_planet} Time zone settings', callback_data='prefs/timezone/menu')],
-								[InlineKeyboardButton(text='⏰ Notification settings', callback_data='prefs/notifs')],
-								[InlineKeyboardButton(text='⏮ Back to main menu', callback_data='notify/main_menu/refresh_text')]
-							]
-						)
+				inline_keyboard = [
+					[InlineKeyboardButton(text=f'{rand_planet} Time zone settings', callback_data='prefs/timezone/menu')],
+					[InlineKeyboardButton(text='⏰ Notification settings', callback_data='prefs/notifs')],
+					[InlineKeyboardButton(text='⏮ Back to main menu', callback_data='notify/main_menu/refresh_text')]])
 
 			'''
+			# TODO update to this keyboard once command permissions is implemented
 			keyboard = InlineKeyboardMarkup(
-						inline_keyboard = [
-							[InlineKeyboardButton(text=f'{rand_planet} Timezone settings', callback_data=f'prefs/timezone')],
-							[InlineKeyboardButton(text='⏰ Notification settings', callback_data=f'prefs/notifs')],
-							[InlineKeyboardButton(text='🛰 Command settings', callback_data=f'prefs/cmds')],
-							[InlineKeyboardButton(text='✅ Exit', callback_data=f'prefs/done')]
-						]
-					)
+				inline_keyboard = [
+					[InlineKeyboardButton(text=f'{rand_planet} Timezone settings', callback_data=f'prefs/timezone')],
+					[InlineKeyboardButton(text='⏰ Notification settings', callback_data=f'prefs/notifs')],
+					[InlineKeyboardButton(text='🛰 Command settings', callback_data=f'prefs/cmds')],
+					[InlineKeyboardButton(text='✅ Exit', callback_data=f'prefs/done')]])
 			'''
 
-			query.edit_message_text(
-				msg_identifier, text=inspect.cleandoc(message_text), reply_markup=keyboard, parse_mode='Markdown')
+			query.edit_message_text(text=inspect.cleandoc(message_text),
+				reply_markup=keyboard, parse_mode='Markdown')
 
 		elif input_data[1] == 'notifs':
 			if len(input_data) == 3:
 				if input_data[2] in ('24h', '12h', '1h', '5m'):
-					new_state = update_notif_preference(chat, input_data[2])
-					query_reply_text = f'{input_data[2]} notifications '
-					query_reply_text = query_reply_text.replace('h', ' hour') if 'h' in query_reply_text else query_reply_text.replace('m', ' minute')
-					query_reply_text += 'enabled 🔔' if new_state == 1 else 'disabled 🔕'
+					new_state = update_notif_preference(
+						db_path=DATA_DIR, chat=chat, notification_type=input_data[2])
 
+					# generate reply text
+					query_reply_text = f'{input_data[2]} notifications '
+
+					if 'h' in query_reply_text:
+						query_reply_text = query_reply_text.replace('h', ' hour')
+					else:
+						query_reply_text.replace('m', ' minute')
+
+					query_reply_text += 'enabled 🔔' if new_state == 1 else 'disabled 🔕'
 					query.answer(text=query_reply_text, show_alert=True)
 
 			# load notification preferences for chat, and map to emoji
-			notif_prefs = get_notif_preference(chat)
+			notif_prefs = get_notif_preference(db_path=DATA_DIR, chat=chat)
 			bell_dict = {1: '🔔', 0: '🔕'}
 
-			new_prefs_text = f'''
+			new_prefs_text = '''
 			⏰ *Notification settings*
 
 			By default, notifications are sent 24h, 12h, 1h, and 5 minutes before a launch. 
@@ -932,28 +935,40 @@ def callback_handler(update, context):
 
 			keyboard = InlineKeyboardMarkup(
 				inline_keyboard = [
-					[InlineKeyboardButton(text=f'24 hours before {bell_dict[notif_prefs[0]]}', callback_data=f'prefs/notifs/24h')],
-					[InlineKeyboardButton(text=f'12 hours before {bell_dict[notif_prefs[1]]}', callback_data=f'prefs/notifs/12h')],
-					[InlineKeyboardButton(text=f'1 hour before {bell_dict[notif_prefs[2]]}', callback_data=f'prefs/notifs/1h')],
-					[InlineKeyboardButton(text=f'5 minutes before {bell_dict[notif_prefs[3]]}', callback_data=f'prefs/notifs/5m')],
-					[InlineKeyboardButton(text='⏮ Return to menu', callback_data=f'prefs/main_menu')]
-				]
-			)
+					[InlineKeyboardButton(
+						text=f'24 hours before {bell_dict[notif_prefs[0]]}',
+						callback_data='prefs/notifs/24h')],
+					[InlineKeyboardButton(
+						text=f'12 hours before {bell_dict[notif_prefs[1]]}',
+						callback_data='prefs/notifs/12h')],
+					[InlineKeyboardButton(
+						text=f'1 hour before {bell_dict[notif_prefs[2]]}',
+						callback_data='prefs/notifs/1h')],
+					[InlineKeyboardButton(
+						text=f'5 minutes before {bell_dict[notif_prefs[3]]}',
+						callback_data='prefs/notifs/5m')],
+					[InlineKeyboardButton(
+						text='⏮ Return to menu',
+						callback_data='prefs/main_menu')]])
 
-			query.edit_message_text(text=inspect.cleandoc(new_prefs_text), reply_markup=keyboard, parse_mode='Markdown')
+			query.edit_message_text(
+				text=inspect.cleandoc(new_prefs_text), reply_markup=keyboard, parse_mode='Markdown')
 
 		elif input_data[1] == 'timezone':
 			if input_data[2] == 'menu':
-				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time.
+				text = f'''
+				🌎 *LaunchBot* | Time zone preferences
+
+				This tool allows you to set your time zone so notifications can show your local time.
 
 				*Choose which method you'd like to use:*
-				- *manual:* no DST support, not recommended.
-				
 				- *automatic:* uses your location to define your locale (e.g. Europe/Berlin). DST support.
+
+				- *manual:* no DST support (!), not recommended.
 
 				Your current time zone is *UTC{load_time_zone_status(DATA_DIR, chat, readable=True)}*'''
 
-				locale_string = load_locale_string(chat)
+				locale_string = load_locale_string(DATA_DIR, chat)
 				if locale_string is not None:
 					text += f' *({locale_string})*'
 
@@ -967,12 +982,12 @@ def callback_handler(update, context):
 				)
 
 				query.edit_message_text(
-					msg_identifier, text=inspect.cleandoc(text), reply_markup=keyboard, parse_mode='Markdown')
+					text=inspect.cleandoc(text), reply_markup=keyboard, parse_mode='Markdown')
 				query.answer('🌎 Time zone settings loaded')
 
 
 			elif input_data[2] == 'manual_setup':
-				current_time_zone = load_time_zone_status(chat, readable=True)
+				current_time_zone = load_time_zone_status(DATA_DIR, chat, readable=True)
 
 				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time.
 							
@@ -1002,14 +1017,14 @@ def callback_handler(update, context):
 				)
 
 				query.edit_message_text(
-					msg_identifier, text=inspect.cleandoc(text), parse_mode='Markdown',
+					text=inspect.cleandoc(text), parse_mode='Markdown',
 					reply_markup=keyboard, disable_web_page_preview=True
 				)
 
 			elif input_data[2] == 'start':
 				if context.bot.getChat(chat)['type'] != 'private':
 					context.bot.sendMessage(
-						chat, text=f'⚠️ This method only works for private chats. This is a Telegram API limitation.')
+						chat, text='⚠️ This method only works for private chats. This is a Telegram API limitation.')
 
 				new_text = '🌎 Set your time zone with the button below, where your keyboard should be. To cancel, select "cancel time zone setup" from the message above.'
 
@@ -1029,10 +1044,16 @@ def callback_handler(update, context):
 					]
 				)
 
-				query.edit_message_text(text=new_inline_text, reply_markup=inline_keyboard, parse_mode='Markdown')
-				sent_message = context.bot.sendMessage(chat_id=chat, text=new_text, reply_markup=keyboard, parse_mode='Markdown')
+				query.edit_message_text(
+					text=new_inline_text, reply_markup=inline_keyboard, parse_mode='Markdown')
 
-				# query.edit_message_reply_markup((sent_message['chat']['id'], sent_message['message_id']), ForceReply(selective=True))
+				sent_message = context.bot.sendMessage(
+					chat_id=chat, text=new_text, reply_markup=keyboard, parse_mode='Markdown')
+
+				''' 
+				query.edit_message_reply_markup(
+					(sent_message['chat']['id'], sent_message['message_id']), ForceReply(selective=True))
+				'''
 				query.edit_message_reply_markup(ForceReply(selective=True))
 				query.answer(text='🌎 Time zone setup loaded')
 
@@ -1078,7 +1099,7 @@ def callback_handler(update, context):
 				query.answer(text=f'✅ Operation canceled!')
 
 			elif input_data[2] == 'set':
-				update_time_zone_value(chat, input_data[3])
+				update_time_zone_value(DATA_DIR, chat, input_data[3])
 				current_time_zone = load_time_zone_status(data_dir=DATA_DIR, chat=chat, readable=True)
 
 				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time.
@@ -1106,10 +1127,9 @@ def callback_handler(update, context):
 				)
 
 				query.answer(text=f'🌎 Time zone set to UTC{current_time_zone}')
-				context.bot.editMessageText(
-					msg_identifier, text=inspect.cleandoc(text), reply_markup=keyboard,
-					parse_mode='Markdown', disable_web_page_preview=True
-				)
+				query.edit_message_text(
+					text=inspect.cleandoc(text), reply_markup=keyboard,
+					parse_mode='Markdown', disable_web_page_preview=True)
 
 			elif input_data[2] == 'auto_setup':
 				# send message with ForceReply()
@@ -1126,15 +1146,15 @@ def callback_handler(update, context):
 				4. send the bot an approximate location, but *make sure* it's within the same time zone as you are in
 				'''
 
-				context.bot.deleteMessage()
-				sent_message = bot.sendMessage(
+				context.bot.delete_message(msg['chat']['id'], msg['message_id'])
+				sent_message = context.bot.sendMessage(
 					chat, text=inspect.cleandoc(text),
 					reply_markup=ForceReply(selective=True), parse_mode='Markdown')
 
 				time_zone_setup_chats[chat] = [sent_message['message_id'], from_id]
 
 			elif input_data[2] == 'remove':
-				remove_time_zone_information(chat)
+				remove_time_zone_information(DATA_DIR, chat)
 				query.answer('✅ Your time zone information was deleted from the server', show_alert=True)
 
 				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time.

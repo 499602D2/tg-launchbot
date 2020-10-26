@@ -11,7 +11,7 @@ from db import create_chats_db
 
 from utils import (
 	short_monospaced_text, map_country_code_to_flag, reconstruct_link_for_markdown,
-	reconstruct_message_for_markdown, time_delta_to_legible_eta)
+	reconstruct_message_for_markdown, time_delta_to_legible_eta, anonymize_id)
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
@@ -169,6 +169,9 @@ def get_user_notifications_status(
 			if disabled_lsp == 'All':
 				all_flag = False
 
+	if 'All' not in notification_statuses:
+		notification_statuses['All'] = all_flag
+
 	return notification_statuses
 
 
@@ -299,54 +302,66 @@ def toggle_notification(
 	return toggle_to_state
 
 
-def update_notif_preference(chat, notification_type):
-	# get current status
-	old_preferences = list(get_notif_preference(chat))
+def update_notif_preference(db_path: str, chat: str, notification_type: str) -> int:
+	'''
+	db_path (str): main data dir path
+	chat (str): chat to update preferences for
+	notification_type (str): one of ('24h', '12h', '1h', '5m')
+	'''
+	# get current status: convert to a list so it's editable
+	old_preferences = list(get_notif_preference(db_path, chat))
 
+	# map notification_type to a corresponding index in old_preferences
 	update_index = {'24h': 0, '12h': 1, '1h': 2, '5m': 3}[notification_type]
 	new_state = 1 if old_preferences[update_index] == 0 else 0
 
 	old_preferences[update_index] = new_state
 	new_preferences = ','.join(str(val) for val in old_preferences)
 
-	conn = sqlite3.connect(os.path.join('data', 'preferences.db'))
-	c = conn.cursor()
+	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+	cursor = conn.cursor()
 
-	# preferences (chat TEXT, notifications TEXT, timezone TEXT, postpone INTEGER, commands TEXT, PRIMARY KEY (chat))
+	''' chats table:
+	chat TEXT 				subscribed_since INT 			time_zone TEXT
+	time_zone_str TEXT 		command_permissions TEXT 		postpone_notify BOOLEAN
+	notify_time_pref TEXT 	enabled_notifications TEXT 		disabled_notifications TEXT
+	'''
 	try:
-		c.execute("INSERT INTO preferences (chat, notifications, timezone, timezone_str, postpone, commands) VALUES (?, ?, ?, ?, ?, ?)",
-		 (chat, new_preferences, None, None, 1, None))
-	except:
-		c.execute("UPDATE preferences SET notifications = ? WHERE chat = ?", (new_preferences, chat))
+		cursor.execute('''INSERT INTO chats
+			(chat, subscribed_since, time_zone, time_zone_str, command_permissions, postpone_notify,
+			notify_time_pref, enabled_notifications, disabled_notifications) VALUES (?,?,?,?,?,?,?,?,?)''',
+			(chat, int(time.time()), None, None, None, None, new_preferences, None, None))
+	except sqlite3.IntegrityError:
+		cursor.execute("UPDATE chats SET notify_time_pref = ? WHERE chat = ?", (new_preferences, chat))
 
 	conn.commit()
 	conn.close()
 
-	if debug_log and chat != OWNER:
-		logging.info(f'📩 {anonymize_id(chat)} {"enabled (🔔)" if new_state == 1 else "disabled (🔕)"} {notification_type} notification')
+	toggle_state_text = 'enabled (🔔)' if new_state == 1 else 'disabled (🔕)'
+	logging.info(f'📩 {anonymize_id(chat)} {toggle_state_text} {notification_type} notification')
 
 	return new_state
 
 
-def get_notif_preference(chat):
+def get_notif_preference(db_path: str, chat: str) -> tuple:
 	'''
-	Returns the notification preferences (24h,12h,1h,5m) as a tuple of boolean values
+	Returns the notification preferences (24h, 12h, 1h, 5m) as a tuple of boolean values
 	'''
-	conn = sqlite3.connect(os.path.join('data', 'preferences.db'))
-	c = conn.cursor()
+	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+	cursor = conn.cursor()
 
-	c.execute("SELECT notifications FROM preferences WHERE chat = ?",(chat,))
-	query_return = c.fetchall()
+	cursor.execute("SELECT notify_time_pref FROM chats WHERE chat = ?",(chat,))
+	query_return = cursor.fetchall()
 	conn.close()
 
 	if len(query_return) == 0:
 		return (1, 1, 1, 1)
 
 	notif_preferences = query_return[0][0].split(',')
+
 	return (
 		int(notif_preferences[0]), int(notif_preferences[1]),
-		int(notif_preferences[2]), int(notif_preferences[3])
-		)
+		int(notif_preferences[2]), int(notif_preferences[3]))
 
 
 def toggle_launch_mute(chat, launch_provider, launch_id, toggle):
