@@ -7,6 +7,8 @@ import inspect
 
 import ujson as json
 
+from db import create_chats_db
+
 from utils import (
 	short_monospaced_text, map_country_code_to_flag, reconstruct_link_for_markdown,
 	reconstruct_message_for_markdown, time_delta_to_legible_eta)
@@ -112,6 +114,15 @@ def get_user_notifications_status(
 	conn.row_factory = sqlite3.Row
 	cursor = conn.cursor()
 
+	# verify table exists
+	cursor.execute('SELECT name FROM sqlite_master WHERE type = ? AND name = ?', ('table', 'chats'))
+	if len(cursor.fetchall()) == 0:
+		logging.warning("⚠️ Chats table doesn't exists: creating...")
+		create_chats_db(db_path=db_dir, cursor=cursor)
+
+		conn.commit()
+		logging.info('✅ Chats table created!')
+
 	# select the field for our chat, convert to a dict, close conn
 	cursor.execute("SELECT * FROM chats WHERE chat = ?", (chat,))
 	query_return = [dict(row) for row in cursor.fetchall()]
@@ -146,25 +157,37 @@ def get_user_notifications_status(
 
 	# iterate over enabled lsp notifications
 	for enabled_lsp in enabled_notifs:
-		notification_statuses[enabled_lsp] = 1
-		if enabled_lsp == 'All':
-			all_flag = True
+		if enabled_lsp != '':
+			notification_statuses[enabled_lsp] = 1
+			if enabled_lsp == 'All':
+				all_flag = True
 
 	# iterate over disabled lsp notifications
 	for disabled_lsp in disabled_notifs:
-		notification_statuses[disabled_lsp] = 0
-		if disabled_lsp == 'All':
-			all_flag = False
+		if disabled_lsp != '':
+			notification_statuses[disabled_lsp] = 0
+			if disabled_lsp == 'All':
+				all_flag = False
 
 	return notification_statuses
 
 
 # toggle a notification for chat of type (toggle_type, keyword) with the value keyword
-def toggle_notification(chat, toggle_type, keyword, all_toggle_new_status):
+def toggle_notification(
+	data_dir: str, chat: str, toggle_type: str, keyword: str,
+	toggle_to_state: int, provider_by_cc: dict, provider_name_map: dict):
+	'''
+	Toggle a notification to the toggle_to_state state (if keyword is all or a cc),
+	otherwise determine the new toggle state ourselves.
+
+	data_dir (int): data root dir
+	chat (str): chat
+	toggle_type (str): the type of notification class to toggle
+	'''
 	# Establish connection
-	data_dir = 'data'
-	conn = sqlite3.connect(os.path.join(data_dir,'launchbot-data.db'))
-	c = conn.cursor()
+	conn = sqlite3.connect(os.path.join(data_dir, 'launchbot-data.db'))
+	conn.row_factory = sqlite3.Row
+	cursor = conn.cursor()
 
 	# if toggle type is a country code, map the ccode to a list of providers
 	if toggle_type == 'country_code':
@@ -177,13 +200,13 @@ def toggle_notification(chat, toggle_type, keyword, all_toggle_new_status):
 				provider_list_mod.add(key)
 
 		provider_list = provider_list_mod
-	
+
 	elif toggle_type == 'lsp':
 		if keyword in provider_name_map.keys():
 			keyword = provider_name_map[keyword]
 
 		provider_list = {keyword}
-	
+
 	elif toggle_type == 'all':
 		provider_list = {'All'}
 		provider_list_mod = {'All'}
@@ -196,41 +219,84 @@ def toggle_notification(chat, toggle_type, keyword, all_toggle_new_status):
 
 		provider_list = provider_list_mod
 
-	# toggle each notification
+	''' Do string operations so we can update the notification states.
+	Basically, we have a new toggle_state that indicated whether the new
+	state is enabled or disabled. Before we can proceed, pull the current
+	notification states. '''
+
+	cursor.execute('SELECT * FROM chats WHERE chat = ?', (chat,))
+	query_return = [dict(row) for row in cursor.fetchall()]
+	data_exists = bool(len(query_return) != 0)
+
+	# pull existing strs, split
+	if data_exists:
+		old_enabled_states = query_return[0]['enabled_notifications'].split(',')
+		old_disabled_states = query_return[0]['disabled_notifications'].split(',')
+
+	# merge enabled and disabled states into one dict of kw:bool
+	old_states = {}
+	if data_exists:
+		for enabled in old_enabled_states:
+			old_states[enabled] = 1
+
+		for disabled in old_disabled_states:
+			old_states[disabled] = 0
+
+	# keep old_states intact, edit new_states (needed?)
+	new_states = old_states
+
+	# iterate over the keywords (lsp names, country code, or simply "All") we'll be toggling
 	if toggle_type == 'lsp':
-		for provider in provider_list:
-			try: # insert as new; if we run into an exception, get the status and update accordingly
-				c.execute("INSERT INTO notify (chat, keyword, muted_launches, enabled) VALUES (?, ?, ?, 1)", (chat, provider, None))
-				new_status = 1
-			
-			except: # already found, update status
-				# pull the current status
-				c.execute("SELECT * FROM notify WHERE chat = ? AND keyword = ?", (chat, provider))
-				query_return = c.fetchall()
+		''' If a launch service provider, there's only one keyword we're toggling: should be simple.
+		Do note, however, that in the case of a LSP we need to figure out the new state ourselves. '''
+		if keyword in old_states:
+			# toggle to 1 if previous state is 0: else, toggle to 0
+			new_states[keyword] = 1 if old_states[keyword] == 0 else 0
+		else:
+			new_states[keyword] = 1
 
-				if len(query_return) == 0:
-					if debug_log:
-						logging.info(f'⚠️ Error getting current status for provider "{provider}" in toggle_notification()')
-					return None
-				
-				new_status = 0 if query_return[0][3] == 1 else 1
-				c.execute("UPDATE notify SET enabled = ? WHERE chat = ? AND keyword = ?", (new_status, chat, provider))
+		# new_status for return statement
+		new_status = new_states[keyword]
 
-	elif toggle_type in {'all', 'country_code'}:
+	elif toggle_type in ('all', 'country_code'):
+		# if 'all' or 'country_code', iterate over provider_list (the ready list of keywords)
 		for provider in provider_list:
-			try: # insert as new; if we run into an exception, get the status and update accordingly
-				c.execute("INSERT INTO notify (chat, keyword, muted_launches, enabled) VALUES (?, ?, ?, ?)", (chat, provider, None, all_toggle_new_status))
-			
-			except: # already found, update status
-				c.execute("UPDATE notify SET enabled = ? WHERE chat = ? AND keyword = ?", (all_toggle_new_status, chat, provider))
+			new_states[provider] = toggle_to_state
+
+	# we should now have our new notification states: construct strings based on toggle state
+	new_enabled_notifications = set()
+	new_disabled_notifications = set()
+	for notification, state in new_states.items():
+		if state == 1:
+			new_enabled_notifications.add(notification)
+		else:
+			new_disabled_notifications.add(notification)
+
+	# construct strings for insert
+	new_enabled_str = ','.join(new_enabled_notifications)
+	new_disabled_str = ','.join(new_disabled_notifications)
+
+	try:
+		if data_exists:
+			cursor.execute('''UPDATE chats SET enabled_notifications = ?, disabled_notifications = ?
+				WHERE chat = ?''', (new_enabled_str, new_disabled_str, chat))
+		else:
+			cursor.execute('''INSERT INTO chats (chat, subscribed_since, time_zone, time_zone_str,
+				command_permissions, postpone_notify, notify_time_pref, enabled_notifications, 
+				disabled_notifications) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+				(chat, int(time.time()), None, None, None, None, '1,1,1,1', new_enabled_str, new_disabled_str))
+	except sqlite3.IntegrityError:
+		# already found: simply update the db row
+		cursor.execute('''UPDATE chats SET enabled_notifications = ?, disabled_notifications = ?
+				WHERE chat = ?''', (new_enabled_str, new_disabled_str, chat))
 
 	conn.commit()
 	conn.close()
 
 	if toggle_type == 'lsp':
 		return new_status
-	else:
-		return all_toggle_new_status
+
+	return toggle_to_state
 
 
 def update_notif_preference(chat, notification_type):
@@ -440,7 +506,7 @@ def notification_handler_old(db_path: str, launch_unique_id: str, bot: 'telegram
 	# handle notification sending; done in a separate function so we can retry more easily and handle exceptions
 	def send_notification(chat, notification, launch_id, keywords, vid_link, notif_class):
 		# send early notifications silently
-		silent = True if notif_class not in {'1h', '5m'} else False
+		silent = True if notif_class not in ('1h', '5m') else False
 
 		# parse the message text for MarkdownV2
 		notification = reconstruct_message_for_markdown(notification)
@@ -660,7 +726,7 @@ def notification_handler_old(db_path: str, launch_unique_id: str, bot: 'telegram
 	# if NOT a SpaceX launch and we're close to launch, add the video URL
 	if lsp_name != 'SpaceX':
 		# a different kind of message for 60m and 5m messages, which contain the video url (if one is available)
-		if notif_class in {'1h', '5m'} and launch_row[19] != '': # if we're close to launch, add the video URL
+		if notif_class in ('1h', '5m') and launch_row[19] != '': # if we're close to launch, add the video URL
 			vid_str = f'🔴 *Watch the launch* LinkTextGoesHere'
 			launch_str = message_header + '\n\n' + info_text + '\n\n' + vid_str + '\n' + message_footer
 
@@ -674,12 +740,12 @@ def notification_handler_old(db_path: str, launch_unique_id: str, bot: 'telegram
 		
 	# if it's a SpaceX launch
 	else:
-		if notif_class in {'24h', '12h'}:
+		if notif_class in ('24h', '12h'):
 			if spx_str:
 				launch_str = message_header + '\n\n' + spx_info_str + '\n\n' + info_text + '\n\n' + message_footer
 
 		# we're close to the launch, send the video URL
-		elif notif_class in {'1h', '5m'} and launch_row[19] != '':
+		elif notif_class in ('1h', '5m') and launch_row[19] != '':
 			vid_str = f'🔴 *Watch the launch* LinkTextGoesHere'
 
 			if spx_str:
@@ -704,7 +770,7 @@ def notification_handler_old(db_path: str, launch_unique_id: str, bot: 'telegram
 
 	# send early notifications silently
 	if debug_log:
-		if notif_class not in {'1h', '5m'}:
+		if notif_class not in ('1h', '5m'):
 			logging.info('🔈 Sending notification silently...')
 		else:
 			logging.info('🔊 Sending notification with sound')
@@ -908,7 +974,7 @@ def send_notification(
 	chat: str, message: str, launch_id: str, lsp_name: str, notif_class: str,
 	bot: 'telegram.bot.Bot'):
 	# send early notifications silently
-	silent = True if notif_class not in {'1h', '5m'} else False
+	silent = True if notif_class not in ('1h', '5m') else False
 
 	try:
 		# load mute status, generate keys
@@ -1036,7 +1102,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 
 	# launch probability to weather emoji
 	probability_map = {80: '☀️', 60: '🌤', 40: '🌥', 20: '☁️', 00: '⛈'}
-	if launch['probability'] not in {-1, None}:
+	if launch['probability'] not in (-1, None):
 		for prob_range_start, prob_str in probability_map.items():
 			if launch['probability'] >= prob_range_start:
 				probability = f"{prob_str} *{int(launch['probability'])} %* probability of launch"
@@ -1057,7 +1123,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 				reuse_str = f'{core_str} ({reuse_count} flight ♻️)'
 			else:
 				try:
-					if reuse_count in {11, 12, 13}:
+					if reuse_count in (11, 12, 13):
 						suffix = 'th'
 					else:
 						suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(reuse_count)[-1])]
@@ -1088,7 +1154,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 		recovery_str = None
 
 	# TODO add "live_str" with link to webcast if 1 hour or 5 min
-	if notif_class in {'notify_60min', 'notify_5min'}:
+	if notif_class in ('notify_60min', 'notify_5min'):
 		vid_url = None
 		try:
 			urls = launch['webcast_url_list'].split(',')

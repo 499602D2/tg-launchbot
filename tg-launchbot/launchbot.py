@@ -3,29 +3,24 @@
 import os
 import sys
 import time
-import ssl
 import datetime
 import logging
 import math
 import inspect
-import traceback
 import random
 import sqlite3
-import difflib
 import signal
 
-import requests
 import cursor
 import pytz
 import coloredlogs
 import telegram
-import ujson as json
 
 from uptime import uptime
 from timeit import default_timer as timer
 from timezonefinder import TimezoneFinder
 from apscheduler.schedulers.background import BackgroundScheduler
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, ForceReply
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler
 from telegram.ext import CallbackQueryHandler
@@ -37,12 +32,15 @@ from utils import (
 	timestamp_to_legible_date_string, short_monospaced_text,
 	reconstruct_message_for_markdown
 	)
+
 from db import (
-	update_stats_db, create_notify_database, store_notification_identifiers
+	update_stats_db, create_chats_db, store_notification_identifiers
 	)
+
 from timezone import (
 	load_locale_string, remove_time_zone_information, update_time_zone_string,
 	update_time_zone_value, load_time_zone_status)
+
 from notifications import (
 	send_postpone_notification, get_user_notifications_status, toggle_notification,
 	update_notif_preference, get_notif_preference, toggle_launch_mute, get_notify_list,
@@ -371,7 +369,10 @@ def handle(msg):
 
 
 def callback_handler(update, context):
-	def update_main_view(chat, msg, provider_by_cc, text_refresh):
+	def update_main_view(chat, msg, text_refresh):
+		'''
+		Updates the main view for the notify message.
+		'''
 		# figure out what the text for the "enable all/disable all" button should be
 		providers = set()
 		for val in provider_by_cc.values():
@@ -381,22 +382,27 @@ def callback_handler(update, context):
 				else:
 					providers.add(provider)
 
-		notification_statuses, disabled_count, all_flag = get_user_notifications_status(chat, providers), 0, False
+		notification_statuses = get_user_notifications_status(
+			DATA_DIR, chat, providers, provider_name_map)
+
+		disabled_count, all_flag = 0, False
 		if 0 in notification_statuses.values():
 			disabled_count = 1
 
 		try:
 			if notification_statuses['All'] == 1:
 				all_flag = True
-		except:
+		except KeyError:
 			pass
 
 		rand_planet = random.choice(('🌍', '🌎', '🌏'))
 
 		if all_flag:
-			global_text = f'{rand_planet} Press to enable all' if disabled_count != 0 else f'{rand_planet} Press to disable all'
+			toggle_text = 'enable' if disabled_count != 0 else 'disable'
 		elif not all_flag:
-			global_text = f'{rand_planet} Press to enable all'
+			toggle_text = 'enable'
+
+		global_text = f'{rand_planet} Press to {toggle_text} all'
 
 		keyboard = InlineKeyboardMarkup(
 			inline_keyboard = [
@@ -418,7 +424,7 @@ def callback_handler(update, context):
 		)
 
 		# tuple containing necessary information to edit the message
-		msg_identifier = (msg['message']['chat']['id'],msg['message']['message_id'])
+		msg_identifier = (msg['chat']['id'], msg['message_id'])
 
 		# now we have the keyboard; update the previous keyboard
 		if text_refresh:
@@ -434,19 +440,24 @@ def callback_handler(update, context):
 			'''
 
 			try:
-				bot.editMessageText(msg_identifier, text=inspect.cleandoc(message_text), reply_markup=keyboard, parse_mode='Markdown')
+				query.edit_message_text(text=inspect.cleandoc(message_text),
+					reply_markup=keyboard, parse_mode='Markdown')
 			except:
-				pass
+				logging.exception('Error updating main view message text!')
 		else:
 			try:
-				bot.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
+				query.edit_message_reply_markup(reply_markup=keyboard)
 			except:
-				pass
+				logging.exception('Error updating main view message reply markup!')
 
 
 	def update_list_view(msg, chat, provider_list):
+		'''
+		Updates the country_code list view in the notify message.
+		'''
 		# get the user's current notification settings for all the providers so we can add the bell emojis
-		notification_statuses = get_user_notifications_status(chat, provider_list)
+		notification_statuses = get_user_notifications_status(
+			DATA_DIR, chat, provider_list, provider_by_cc)
 
 		# get status for the "enable all" toggle for the country code
 		providers = []
@@ -456,7 +467,8 @@ def callback_handler(update, context):
 			else:
 				providers.append(provider)
 
-		notification_statuses, disabled_count = get_user_notifications_status(chat, providers), 0
+		notification_statuses = get_user_notifications_status(DATA_DIR, chat, providers, provider_by_cc)
+		disabled_count = 0
 		for key, val in notification_statuses.items():
 			if val == 0 and key != 'All':
 				disabled_count += 1
@@ -467,14 +479,15 @@ def callback_handler(update, context):
 		# we now have the list of providers for this country code. Generate the buttons dynamically.
 		inline_keyboard = [[
 			InlineKeyboardButton(
-				text=f'{flag_map[country_code]} {local_text}',
+				text=f'{map_country_code_to_flag(country_code)} {local_text}',
 				callback_data=f'notify/toggle/country_code/{country_code}/{country_code}')
 		]]
 
-		'''
-		dynamically creates a two-row keyboard that's as short as possible but still
-		readable with the long provider names.
-		'''
+		# in the next part we need to sort the provider_list, which is a set: convert to a list
+		provider_list = list(provider_list)
+
+		''' dynamically creates a two-row keyboard that's as short as possible but still
+		readable with the long provider names. '''
 		provider_list.sort(key=len)
 		current_row = 0 # the all-toggle is the 0th row
 		for provider, i in zip(provider_list, range(len(provider_list))):
@@ -510,20 +523,14 @@ def callback_handler(update, context):
 
 		# append a back button, so user can return to the "main menu"
 		inline_keyboard.append([InlineKeyboardButton(text='⏮ Return to menu', callback_data='notify/main_menu')])
-
-		keyboard = InlineKeyboardMarkup(
-			inline_keyboard=inline_keyboard)
-
-		# tuple containing necessary information to edit the message
-		msg_identifier = (msg['message']['chat']['id'],msg['message']['message_id'])
+		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 		# now we have the keyboard; update the previous keyboard
-		bot.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
+		query.edit_message_reply_markup(reply_markup=keyboard)
 
 		if chat != OWNER:
-			logging.info(f'🔀 {flag_map[country_code]}-view loaded for {anonymize_id(chat)}')
+			logging.info(f'🔀 {map_country_code_to_flag(country_code)}-view loaded for {anonymize_id(chat)}')
 
-		return
 
 	try:
 		query = update.callback_query
@@ -541,8 +548,6 @@ def callback_handler(update, context):
 	input_data = query_data.split('/')
 	msg = update.callback_query['message']
 	chat = from_id
-
-	print(update.callback_query)
 
 	# check that the query is from an admin or an owner
 	try:
@@ -569,22 +574,10 @@ def callback_handler(update, context):
 
 	# callbacks only supported for notify at the moment; verify it's a notify command
 	if input_data[0] not in ('notify', 'mute', 'next_flight', 'schedule', 'prefs', 'stats'):
-		logging.info(f'⚠️ Incorrect input data in callback_handler! input_data={input_data} | {(1000*(timer() - start)):.0f} ms')
+		logging.info(f'''
+			⚠️ Incorrect input data in callback_handler! input_data={input_data} | 
+			{(1000*(timer() - start)):.0f} ms''')
 		return
-
-	# check if notification database exists
-	if not os.path.isfile(os.path.join(DATA_DIR,'launchbot-data.db')):
-		create_notify_database(DATA_DIR)
-
-	flag_map = {
-		'USA': '🇺🇸',
-		'EU': '🇪🇺',
-		'RUS': '🇷🇺',
-		'CHN': '🇨🇳',
-		'IND': '🇮🇳',
-		'JPN': '🇯🇵',
-		'IRN': '🇮🇷'
-	}
 
 	# used to update the message
 	msg_identifier = (msg['chat']['id'], msg['message_id'])
@@ -602,7 +595,7 @@ def callback_handler(update, context):
 			update_list_view(msg, chat, provider_list)
 
 			try:
-				query.answer(text=f'{flag_map[country_code]}')
+				query.answer(text=f'{map_country_code_to_flag(country_code)}')
 			except Exception as error:
 				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
@@ -610,9 +603,9 @@ def callback_handler(update, context):
 		elif input_data[1] == 'main_menu':
 			try:
 				if input_data[2] == 'refresh_text':
-					update_main_view(chat, msg, provider_by_cc, True)
+					update_main_view(chat, msg, True)
 			except:
-				update_main_view(chat, msg, provider_by_cc, False)
+				update_main_view(chat, msg, False)
 
 			try:
 				query.answer(text='⏮ Returned to main menu')
@@ -624,46 +617,53 @@ def callback_handler(update, context):
 
 		# user requested to toggle a notification
 		elif input_data[1] == 'toggle':
-			def get_all_toggle_new_status(toggle_type, country_code, chat):
-				providers = []
+			def get_new_notify_group_toggle_state(toggle_type, country_code, chat):
+				'''
+				Function returns the status to toggle the notification state to
+				for multiple entries: either all, or by a country code.
+				'''
+				providers = set()
 				if toggle_type == 'all':
 					for val in provider_by_cc.values():
 						for provider in val:
-							providers.append(provider)
+							providers.add(provider)
 
 				elif toggle_type == 'country_code':
 					for provider in provider_by_cc[country_code]:
-						providers.append(provider)
+						providers.add(provider)
 
-				notification_statuses, disabled_count = get_user_notifications_status(chat, providers), 0
+				notification_statuses = get_user_notifications_status(DATA_DIR, chat, providers, provider_name_map)
+				disabled_count = 0
 				for key, val in notification_statuses.items():
 					if toggle_type == 'country_code' and key != 'All':
 						if val == 0:
 							disabled_count += 1
 							break
 
-					elif toggle_type == 'all' or toggle_type == 'lsp':
+					elif toggle_type in ('all', 'lsp'):
 						if val == 0:
 							disabled_count += 1
 							break
 
 				return 1 if disabled_count != 0 else 0
 
-			if input_data[2] not in {'country_code', 'lsp', 'all'}:
+			if input_data[2] not in ('country_code', 'lsp', 'all'):
 				return
 
 			if input_data[2] == 'all':
-				all_toggle_new_status = get_all_toggle_new_status('all', None, chat)
+				all_toggle_new_status = get_new_notify_group_toggle_state('all', None, chat)
 
 			else:
 				country_code = input_data[3]
 				if input_data[2] == 'country_code':
-					all_toggle_new_status = get_all_toggle_new_status('country_code', country_code, chat)
+					all_toggle_new_status = get_new_notify_group_toggle_state('country_code', country_code, chat)
 				else:
 					all_toggle_new_status = 0
 
-			# chat, type, keyword
-			new_status = toggle_notification(chat, input_data[2], input_data[3], all_toggle_new_status)
+			''' Toggle the notification state. Input: chat, type, lsp_name '''
+			new_status = toggle_notification(
+				DATA_DIR, chat, input_data[2], input_data[3], all_toggle_new_status,
+				provider_by_cc, provider_name_map)
 
 			if input_data[2] == 'lsp':
 				reply_text = {
@@ -671,8 +671,8 @@ def callback_handler(update, context):
 					0:f'🔕 Disabled notifications for {input_data[3]}'}[new_status]
 			elif input_data[2] == 'country_code':
 				reply_text = {
-					1:f'🔔 Enabled notifications for {flag_map[input_data[3]]}',
-					0:f'🔕 Disabled notifications for {flag_map[input_data[3]]}'}[new_status]
+					1:f'🔔 Enabled notifications for {map_country_code_to_flag(input_data[3])}',
+					0:f'🔕 Disabled notifications for {map_country_code_to_flag(input_data[3])}'}[new_status]
 			elif input_data[2] == 'all':
 				reply_text = {
 					1:'🔔 Enabled all notifications 🌍',
@@ -701,17 +701,26 @@ def callback_handler(update, context):
 
 			# update main view if "enable all" button was pressed, as in this case we're in the main view
 			else:
-				update_main_view(chat, msg, provider_by_cc, False)
+				update_main_view(chat, msg, False)
 
 		# user is done; remove the keyboard
 		elif input_data[1] == 'done':
-			# new text + callback text
-			reply_text = f'✅ All done!'
-			msg_text = f'✅ *All done!* Your preferences were saved.\n\n'
-			msg_text += f'ℹ️ If you need to adjust your settings in the future, use /notify@{BOT_USERNAME} to access these same settings.'
+			# new callback text
+			reply_text = '✅ All done!'
 
-			# now we have the keyboard; update the previous keyboard
-			query.edit_message_text(text=msg_text, reply_markup=None, parse_mode='Markdown')
+			# new message text
+			msg_text = f'''
+			🚀 *LaunchBot* | Notification settings
+
+			✅ All done! If you need to adjust your settings in the future, use /notify@{BOT_USERNAME} to access these same settings.
+			'''
+
+			# add a button to go back
+			inline_keyboard = [[InlineKeyboardButton(text="⏮ I wasn't done!", callback_data='notify/main_menu')]]
+			keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+			# update message
+			query.edit_message_text(text=inspect.cleandoc(msg_text), reply_markup=keyboard, parse_mode='Markdown')
 
 			try:
 				query.answer(text=reply_text)
@@ -736,10 +745,10 @@ def callback_handler(update, context):
 			inline_keyboard=inline_keyboard)
 
 		# tuple containing necessary information to edit the message
-		callback_text = f'🔇 Launch muted!' if input_data[3] == '1' else f'🔊 Launch unmuted!'
+		callback_text = '🔇 Launch muted!' if input_data[3] == '1' else '🔊 Launch unmuted!'
 
 		try:
-			query.editMessageReplyMarkup(msg_identifier, reply_markup=keyboard)
+			query.edit_message_reply_markup(reply_markup=keyboard)
 
 			try:
 				query.answer(text=callback_text)
@@ -767,7 +776,7 @@ def callback_handler(update, context):
 		# next_flight(msg, current_index, command_invoke, cmd):
 		# next_flight/{next/prev}/{current_index}/{cmd}
 		# next_flight/refresh/0/{cmd}'
-		if input_data[1] not in {'next', 'prev', 'refresh'}:
+		if input_data[1] not in ('next', 'prev', 'refresh'):
 			logging.info(f'⚠️ Error with callback_handler input_data[1] for next_flight. input_data={input_data}')
 			return
 
@@ -876,9 +885,9 @@ def callback_handler(update, context):
 
 			keyboard = InlineKeyboardMarkup(
 							inline_keyboard = [
-								[InlineKeyboardButton(text=f'{rand_planet} Time zone settings', callback_data=f'prefs/timezone/menu')],
-								[InlineKeyboardButton(text='⏰ Notification settings', callback_data=f'prefs/notifs')],
-								[InlineKeyboardButton(text='⏮ Back to main menu', callback_data=f'notify/main_menu/refresh_text')]
+								[InlineKeyboardButton(text=f'{rand_planet} Time zone settings', callback_data='prefs/timezone/menu')],
+								[InlineKeyboardButton(text='⏰ Notification settings', callback_data='prefs/notifs')],
+								[InlineKeyboardButton(text='⏮ Back to main menu', callback_data='notify/main_menu/refresh_text')]
 							]
 						)
 
@@ -942,7 +951,7 @@ def callback_handler(update, context):
 				
 				- *automatic:* uses your location to define your locale (e.g. Europe/Berlin). DST support.
 
-				Your current time zone is *UTC{load_time_zone_status(chat, readable=True)}*'''
+				Your current time zone is *UTC{load_time_zone_status(DATA_DIR, chat, readable=True)}*'''
 
 				locale_string = load_locale_string(chat)
 				if locale_string is not None:
@@ -1022,8 +1031,10 @@ def callback_handler(update, context):
 
 				query.edit_message_text(text=new_inline_text, reply_markup=inline_keyboard, parse_mode='Markdown')
 				sent_message = context.bot.sendMessage(chat_id=chat, text=new_text, reply_markup=keyboard, parse_mode='Markdown')
-				query.editMessageReplyMarkup((sent_message['chat']['id'], sent_message['message_id']), ForceReply(selective=True))
-				query.answer(text=f'🌎 Time zone setup loaded')
+
+				# query.edit_message_reply_markup((sent_message['chat']['id'], sent_message['message_id']), ForceReply(selective=True))
+				query.edit_message_reply_markup(ForceReply(selective=True))
+				query.answer(text='🌎 Time zone setup loaded')
 
 				#time_zone_setup_users.append(chat)
 
@@ -1068,7 +1079,7 @@ def callback_handler(update, context):
 
 			elif input_data[2] == 'set':
 				update_time_zone_value(chat, input_data[3])
-				current_time_zone = load_time_zone_status(chat, readable=True)
+				current_time_zone = load_time_zone_status(data_dir=DATA_DIR, chat=chat, readable=True)
 
 				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time.
 
@@ -1094,7 +1105,7 @@ def callback_handler(update, context):
 					]
 				)
 
-				context.bot.answerCallbackQuery(text=f'🌎 Time zone set to UTC{current_time_zone}')
+				query.answer(text=f'🌎 Time zone set to UTC{current_time_zone}')
 				context.bot.editMessageText(
 					msg_identifier, text=inspect.cleandoc(text), reply_markup=keyboard,
 					parse_mode='Markdown', disable_web_page_preview=True
@@ -1124,7 +1135,7 @@ def callback_handler(update, context):
 
 			elif input_data[2] == 'remove':
 				remove_time_zone_information(chat)
-				query.answer(f'✅ Your time zone information was deleted from the server', show_alert=True)
+				query.answer('✅ Your time zone information was deleted from the server', show_alert=True)
 
 				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time.
 
@@ -1133,7 +1144,7 @@ def callback_handler(update, context):
 				
 				- *automatic:* uses your location to define your locale (e.g. Europe/Berlin). DST support.
 
-				Your current time zone is *UTC{load_time_zone_status(chat, readable=True)}*
+				Your current time zone is *UTC{load_time_zone_status(data_dir=DATA_DIR, chat=chat, readable=True)}*
 				'''
 
 				keyboard = InlineKeyboardMarkup(
@@ -1172,7 +1183,7 @@ def callback_handler(update, context):
 		update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
 
 
-def timer_handle(command, chat, user):
+def timer_handle(context, command, chat, user):
 	''' Summary
 	Restrict command send frequency to avoid spam, by storing
 	user IDs and when they have called a command in memory.
@@ -1231,19 +1242,18 @@ def timer_handle(command, chat, user):
 				def __init__(self, uid):
 					self.id = uid
 					self.offenses = 1
-					self.spam_times = [timer()]
-
+					self.spam_times = {timer()}
 
 				def get_offenses(self):
 					return self.offenses
 
 				def add_offense(self):
 					self.offenses += 1
-					self.spam_times.append(timer())
+					self.spam_times.add(timer())
 
 				def clear_offenses(self):
 					self.offenses = 0
-					self.spam_times = []
+					self.spam_times = set()
 
 				def offense_delta(self):
 					pass
@@ -1255,12 +1265,12 @@ def timer_handle(command, chat, user):
 				logging.info(f'⚠️ User {anonymize_id(user)} now has {spammer.get_offenses()} spam offenses.')
 
 				if spammer.get_offenses() >= 10:
-					run_time = datetime.datetime.now() - STARTUP_TIME
-					if run_time.seconds > 60:
+					bot_running = time.time() - STARTUP_TIME
+					if bot_running > 60:
 						ignored_users.add(user)
 						logging.info(f'⚠️⚠️⚠️ User {anonymize_id(user)} is now ignored due to excessive spam!')
 
-						bot.sendMessage(
+						context.bot.sendMessage(
 							chat,
 							'⚠️ *Please do not spam the bot.* Your user ID has been blocked and all commands by you will be ignored for an indefinite amount of time.',
 							parse_mode='Markdown')
@@ -1280,8 +1290,10 @@ def timer_handle(command, chat, user):
 	return True
 
 
-# /start or /help
 def start(update, context):
+	'''
+	Responds to /start and /help commands.
+	'''
 	# construct message
 	reply_msg = f'''🚀 *Hi there!* I'm *LaunchBot*, a launch information and notifications bot!
 
@@ -1293,10 +1305,10 @@ def start(update, context):
 	✍️ /feedback send feedback/suggestion to the developer
 
 	⚠️ *Note for group chats* ⚠️ 
-	- Commands are *only* callable by group *admins* and *moderators* to reduce group spam
-	- If the bot has admin permissions (permission to delete messages), it will automatically remove commands it doesn't answer to
+	- Commands are only callable by group *admins* and *moderators* to reduce group spam
+	- If LaunchBot is made an admin (permission to delete messages), it will automatically remove commands it doesn't answer to
 
-	*Frequently asked questions* ❓
+	❓ *Frequently asked questions* ❓
 	_How do I turn off a notification?_
 	- Use /notify@{BOT_USERNAME}: find the launch provider you want to turn notifications off for.
 
@@ -1382,29 +1394,32 @@ def chat_preferences(chat):
 
 
 def name_from_provider_id(lsp_id):
+	'''
+	Sometimes we may need to convert an lsp id to a name: this
+	function does exactly that, by querying the launch db table
+	for a matching id/name combination.
+	'''
 	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 	cursor = conn.cursor()
 
 	# get provider name corresponding to this ID
-	cursor.execute("SELECT lsp_name FROM launches WHERE lsp_id = ?",(provider_id,))
+	cursor.execute("SELECT lsp_name FROM launches WHERE lsp_id = ?", (lsp_id,))
 	query_return = cursor.fetchall()
 
 	if len(query_return) != 0:
 		return query_return[0][0]
 
-	return provider_id
+	return lsp_id
 
 
 def notify(update, context):
-	content_type, chat_type, chat = telepot.glance(msg, flavor='chat')
-
-	# check if notification database exists
-	if not os.path.isfile(os.path.join(DATA_DIR, 'launchbot-data.db')):
-		create_notify_database(DATA_DIR)
-
+	'''
+	Handles responding to the /notify command, which also generated the
+	base message than can be manipulated with callback queries.
+	'''
 	# send the user the base keyboard where we start working up from.
-	message_text = f'''
-	🛰 Hi there, nice to see you! Let's set some notifications for you.
+	message_text = '''
+	🚀 *LaunchBot* | Notification settings
 
 	You can search for launch providers, like SpaceX (🇺🇸) or ISRO (🇮🇳), using the flags, or simply enable all!
 
@@ -1414,41 +1429,46 @@ def notify(update, context):
 	🔕 = *currently disabled*
 	'''
 
-	# figure out what the text for the "enable all/disable all" button should be
-	providers = []
-	for val in provider_by_cc.values():
-		for provider in val:
-			providers.append(provider)
+	# chat id
+	chat = update.message['chat']['id']
 
-	notification_statuses, disabled_count = get_user_notifications_status(chat, providers), 0
+	# create a "full" set of launch service providers by merging the by-cc sets
+	lsp_set = set()
+	for cc_lsp_set in provider_by_cc.values():
+		lsp_set = lsp_set.union(cc_lsp_set)
+
+	# get a dict composed of lsp:enabled_bool entries.
+	notification_statuses = get_user_notifications_status(
+		db_dir=DATA_DIR, chat=chat, provider_set=lsp_set,
+		provider_name_map=provider_name_map)
+
+	# count for the toggle all button
 	disabled_count = 1 if 0 in notification_statuses.values() else 0
 
+	# icon, text for the "toggle all" button
 	rand_planet = random.choice(('🌍', '🌎', '🌏'))
-	global_text = f'{rand_planet} Press to enable all' if disabled_count != 0 else f'{rand_planet} Press to disable all'
+	toggle_text = 'enable' if disabled_count != 0 else 'disable'
+	global_text = f'{rand_planet} Press to {toggle_text} all'
+
 	keyboard = InlineKeyboardMarkup(
 			inline_keyboard = [
-				[InlineKeyboardButton(text=global_text, callback_data=f'notify/toggle/all/all')],
-				
-				[InlineKeyboardButton(text='🇪🇺 EU', callback_data=f'notify/list/EU'),
-				InlineKeyboardButton(text='🇺🇸 USA', callback_data=f'notify/list/USA')],
-				
-				[InlineKeyboardButton(text='🇷🇺 Russia', callback_data=f'notify/list/RUS'),
-				InlineKeyboardButton(text='🇨🇳 China', callback_data=f'notify/list/CHN')],
+				[InlineKeyboardButton(text=global_text, callback_data='notify/toggle/all/all')],
 
-				[InlineKeyboardButton(text='🇮🇳 India', callback_data=f'notify/list/IND'),
-				InlineKeyboardButton(text='🇯🇵 Japan', callback_data=f'notify/list/JPN')],
+				[InlineKeyboardButton(text='🇪🇺 EU', callback_data='notify/list/EU'),
+				InlineKeyboardButton(text='🇺🇸 USA', callback_data='notify/list/USA')],
 
-				[InlineKeyboardButton(text='⚙️ Edit your preferences', callback_data=f'prefs/main_menu')],
-				
-				[InlineKeyboardButton(text='✅ Save and exit', callback_data=f'notify/done')]
-			]
-		)
+				[InlineKeyboardButton(text='🇷🇺 Russia', callback_data='notify/list/RUS'),
+				InlineKeyboardButton(text='🇨🇳 China', callback_data='notify/list/CHN')],
 
-	bot.sendMessage(
-		chat, inspect.cleandoc(message_text),
-		parse_mode='Markdown',
-		reply_markup=keyboard
-		)
+				[InlineKeyboardButton(text='🇮🇳 India', callback_data='notify/list/IND'),
+				InlineKeyboardButton(text='🇯🇵 Japan', callback_data='notify/list/JPN')],
+
+				[InlineKeyboardButton(text='⚙️ Edit your preferences', callback_data='prefs/main_menu')],
+
+				[InlineKeyboardButton(text='✅ Save and exit', callback_data='notify/done')]])
+
+	context.bot.sendMessage(
+		chat, inspect.cleandoc(message_text), parse_mode='Markdown', reply_markup=keyboard)
 
 
 def feedback(msg):
@@ -1508,11 +1528,6 @@ def flight_schedule(msg, command_invoke, call_type):
 		'RFSA': 'Roscosmos',
 		'VO': 'Virgin Orbit'}
 
-	flag_map = {
-		'FR': '🇪🇺', 'USA': '🇺🇸', 'EU': '🇪🇺', 'RUS': '🇷🇺',
-		'CHN': '🇨🇳', 'IND': '🇮🇳', 'JPN': '🇯🇵', 'IRN': '🇮🇷',
-		'FRA': '🇪🇺'}
-
 	vehicle_map = {
 		'Falcon 9 Block 5': 'Falcon 9 B5'}
 
@@ -1540,8 +1555,7 @@ def flight_schedule(msg, command_invoke, call_type):
 		vehicle = row[5].split('/')[0]
 
 		country_code, flag = row[8], None
-		if country_code in flag_map.keys():
-			flag = flag_map[country_code]
+		flag = map_country_code_to_flag(country_code)
 
 		# shorten some vehicle names
 		if vehicle in vehicle_map.keys():
@@ -1586,7 +1600,7 @@ def flight_schedule(msg, command_invoke, call_type):
 		# create the date string; key in the form of year-month-day
 		ymd_split = key.split('-')
 		try:
-			if int(ymd_split[2]) in {11, 12, 13}:
+			if int(ymd_split[2]) in (11, 12, 13):
 				suffix = 'th'
 			else:
 				suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(ymd_split[2])[-1])]
@@ -1658,7 +1672,7 @@ def flight_schedule(msg, command_invoke, call_type):
 	return
 
 
-def generate_next_flight_message(chat, current_index):
+def generate_next_flight_message(chat, current_index: int):
 	'''
 	Generates the message text for use in the next-command.
 	'''
@@ -1670,11 +1684,14 @@ def generate_next_flight_message(chat, current_index):
 	conn.row_factory = sqlite3.Row
 	cursor = conn.cursor()
 
+	# verify db exists
+	cursor.execute('SELECT name FROM sqlite_master WHERE type = ? AND name = ?', ('table', 'chats'))
+	if len(cursor.fetchall()) == 0:
+		create_chats_db(db_path=DATA_DIR, cursor=cursor)
+		conn.commit()
+
 	# find what launches the chat is subscribed to
-	try:
-		cursor.execute('''SELECT * FROM notify WHERE chat = ?''', (chat,))
-	except sqlite3.OperationalError:
-		create_notify_database(db_path=DATA_DIR)
+	cursor.execute('''SELECT * FROM chats WHERE chat = ?''', (chat,))
 
 	# convert rows into dictionaries for super easy parsing
 	query_return = [dict(row) for row in cursor.fetchall()]
@@ -1769,7 +1786,7 @@ def generate_next_flight_message(chat, current_index):
 		inline_keyboard.append([InlineKeyboardButton(text='🔎 Search for all flights', callback_data='next_flight/refresh/0/all')])
 		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
-		bot.sendMessage(chat, msg_text, reply_markup=keyboard)
+		context.bot.sendMessage(chat, msg_text, reply_markup=keyboard)
 		logging.info('🔎 No launches found in next. Sent user the "No launches found" message.')
 
 		return
@@ -1871,7 +1888,7 @@ def generate_next_flight_message(chat, current_index):
 				reuse_str = f'{core_str} ({reuse_count} flight ♻️)'
 			else:
 				try:
-					if reuse_count in {11, 12, 13}:
+					if reuse_count in (11, 12, 13):
 						suffix = 'th'
 					else:
 						suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(reuse_count)[-1])]
@@ -1971,7 +1988,7 @@ def generate_next_flight_message(chat, current_index):
 		inline_keyboard = []
 		inline_keyboard.append([InlineKeyboardButton(
 			text='🔄 Refresh', callback_data=f'next_flight/prev/1/{cmd}')])
-		
+
 		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 	# parse for markdown
@@ -2044,7 +2061,7 @@ def generate_statistics_message() -> str:
 	# convert time since last db update to a readable ETA, add suffix
 	db_update_delta = int(time.time()) - last_db_update
 	last_db_update = time_delta_to_legible_eta(time_delta=db_update_delta, full_accuracy=False)
-	last_db_update_suffix = 'ago' if last_db_update not in {'never', 'just now'} else ''
+	last_db_update_suffix = 'ago' if last_db_update not in ('never', 'just now') else ''
 
 	# connect to notifications db
 	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
@@ -2139,7 +2156,7 @@ if __name__ == '__main__':
 	global DATA_DIR, STARTUP_TIME
 
 	# current version, set DATA_DIR
-	VERSION = '1.6-alpha'
+	VERSION = '1.6.0'
 	DATA_DIR = 'launchbot'
 
 	# log startup time, set default start mode
@@ -2213,56 +2230,36 @@ if __name__ == '__main__':
 	# TODO move to utils
 	global provider_by_cc
 	provider_by_cc = {
-		'USA': [
-			'NASA',
-			'SpaceX',
-			'ULA',
-			'Rocket Lab Ltd',
-			'Astra Space',
-			'Virgin Orbit',
-			'Firefly Aerospace',
-			'Northrop Grumman',
-			'International Launch Services'],
+		'USA': {
+			'NASA', 'SpaceX', 'ULA', 'Rocket Lab Ltd', 'Astra Space', 'Virgin Orbit',
+			'Firefly Aerospace', 'Northrop Grumman', 'International Launch Services'},
 
-		'EU': [
-			'Arianespace',
-			'Eurockot',
-			'Starsem SA'],
+		'EU': {
+			'Arianespace', 'Eurockot', 'Starsem SA'},
 
-		'CHN': [
-			'CASC',
-			'ExPace'],
+		'CHN': {
+			'CASC', 'ExPace'},
 
-		'RUS': [
-			'KhSC',
-			'ISC Kosmotras',
-			'Russian Space Forces',
-			'Eurockot',
-			'Sea Launch',
-			'Land Launch',
-			'Starsem SA',
-			'International Launch Services',
-			'ROSCOSMOS'],
+		'RUS': {
+			'KhSC', 'ISC Kosmotras', 'Russian Space Forces', 'Eurockot', 'Sea Launch',
+			'Land Launch', 'Starsem SA', 'International Launch Services', 'ROSCOSMOS'},
 
-		'IND': [
-			'ISRO',
-			'Antrix Corporation'],
+		'IND': {
+			'ISRO', 'Antrix Corporation'},
 
-		'JPN': [
-			'JAXA',
-			'Mitsubishi Heavy Industries',
-			'Interstellar Technologies']
+		'JPN': {
+			'JAXA', 'Mitsubishi Heavy Industries', 'Interstellar Technologies'}
 	}
 
-	# one of those things where we can ask "why is this here"
+	''' This is effectively a reverse-map, mapping the short names used in the notify-command's
+	buttons into the proper LSP names, as found in the database. '''
 	global provider_name_map
 	provider_name_map = {
 		'Rocket Lab': 'Rocket Lab Ltd',
 		'Northrop Grumman': 'Northrop Grumman Innovation Systems',
-		'ROSCOSMOS': 'Russian Federal Space Agency (ROSCOSMOS)'
-	}
+		'ROSCOSMOS': 'Russian Federal Space Agency (ROSCOSMOS)'}
 
-	''' 
+	'''
 	Keep track of chats doing time zone setup, so we don't update
 	the time zone if someone responds to a bot message with a location,
 	for whatever reason. People are weird.
@@ -2272,9 +2269,9 @@ if __name__ == '__main__':
 	global time_zone_setup_chats
 	time_zone_setup_chats = {}
 
-	''' 
+	'''
 	LSP ID -> name, flag dictionary
-	
+
 	Used to shorten the names, so we don't end up with super long messages
 
 	This dictionary also maps custom shortened names (Northrop Grumman, Starsem)
@@ -2372,7 +2369,7 @@ if __name__ == '__main__':
 		CommandHandler(command={'start', 'help'}, callback=start))
 	dispatcher.add_handler(
 		CallbackQueryHandler(callback_handler))
-	
+
 	# all up to date, start polling
 	updater.start_polling()
 
@@ -2389,7 +2386,7 @@ if __name__ == '__main__':
 		try:
 			while True:
 				for char in ('⠷', '⠯', '⠟', '⠻', '⠽', '⠾'):
-					sys.stdout.write('%s\r' % '  Connected to Telegram! Quit: ctrl + c.')
+					sys.stdout.write('%s\r' % '  Connected to Telegram! To quit: ctrl + c.')
 					sys.stdout.write('\033[92m%s\r\033[0m' % char)
 					sys.stdout.flush()
 					time.sleep(0.1)
@@ -2397,9 +2394,8 @@ if __name__ == '__main__':
 		except KeyboardInterrupt:
 			# on exit, show cursor as otherwise it'll stay hidden
 			cursor.show()
-			runtime = int(time.time() - STARTUP_TIME)
-			sys.exit(f'Program ending... Runtime: \
-				{time_delta_to_legible_eta(time_delta=runtime, full_accuracy=True)}.')
+			run_time = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME), True)
+			sys.exit(f'\n🔶 Program ending... Runtime: {run_time}.')
 
 	else:
 		while True:
