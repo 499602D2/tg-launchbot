@@ -1204,6 +1204,17 @@ def callback_handler(update, context):
 		update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
 
 
+def text_handler(update, context):
+	'''
+	[Enter module description]
+	
+	Args:
+		update (TYPE): Description
+		context (TYPE): Description
+	'''
+	pass
+
+
 def timer_handle(context, command, chat, user):
 	''' Summary
 	Restrict command send frequency to avoid spam, by storing
@@ -2107,9 +2118,12 @@ def generate_statistics_message() -> str:
 
 	# pull all rows with enabled = 1
 	try:
-		cursor.execute('SELECT chat FROM notify WHERE enabled = 1')
-		notification_recipients = len(set(row[0] for row in cursor.fetchall()))
+		cursor.execute('''SELECT chat FROM chats
+			WHERE enabled_notifications NOT NULL AND enabled_notifications != ""''')
+
+		notification_recipients = len(cursor.fetchall())
 	except sqlite3.OperationalError:
+		logging.exception('Error parsing notification_recipients!')
 		notification_recipients = 0
 
 	# close conn
@@ -2392,7 +2406,7 @@ if __name__ == '__main__':
 	# get the dispatcher to register handlers
 	dispatcher = updater.dispatcher
 
-	# register handlers
+	# register command handlers
 	dispatcher.add_handler(
 		CommandHandler(command='notify', callback=notify))
 	dispatcher.add_handler(
@@ -2405,8 +2419,14 @@ if __name__ == '__main__':
 		CommandHandler(command='schedule', callback=flight_schedule))
 	dispatcher.add_handler(
 		CommandHandler(command={'start', 'help'}, callback=start))
+
+	# register callback handler
 	dispatcher.add_handler(
 		CallbackQueryHandler(callback_handler))
+
+	# register text message handler (feedback, time zone set)
+	dispatcher.add_handler(
+		MessageHandler(Filters.text & ~Filters.command, callback=text_handler))
 
 	# all up to date, start polling
 	updater.start_polling()
