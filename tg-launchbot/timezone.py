@@ -205,7 +205,7 @@ def load_time_zone_status(data_dir: str, chat: str, readable: bool):
 
 def load_bulk_tz_offset(data_dir: str, chat_id_set: set) -> dict:
 	'''
-	Function returns a chat_id:tz_offset dictionary, so the tz offset
+	Function returns a chat_id:(tz_offset_flt, tz_offset_str) dictionary, so the tz offset
 	calls can be done in a single sql select.
 	'''
 	# db conn
@@ -237,16 +237,36 @@ def load_bulk_tz_offset(data_dir: str, chat_id_set: set) -> dict:
 		if not time_zone_string_found:
 			# if there's no basic time zone found either, use 0 as chat's UTC offset
 			if chat_row['time_zone'] is None:
-				tz_offset_dict[chat_row['chat']] = float(0)
+				tz_offset_dict[chat_row['chat']] = (float(0), '+0')
 				continue
 
-			# if we arrived here, simply return the regular time zone UTC offset
-			tz_offset_dict[chat_row['chat']] = float(chat_row['time_zone'])
+			# if we arrived here, simply use the regular time zone UTC offset
+			tz_offset = float(chat_row['time_zone'])
+
+			# generate the time zone string
+			mins, hours = int(60 * (abs(tz_offset) % 1)), math.floor(tz_offset)
+			prefix = '+' if hours >= 0 else ''
+			tz_str = f'{prefix}{hours}' if mins == 0 else f'{prefix}{hours}:{mins}'
+
+			# store in the dict
+			tz_offset_dict[chat_row['chat']] = (tz_offset, tz_str)
 			continue
 
 		# chat has a time_zone_string: parse with pytz
 		timezone = pytz.timezone(chat_row['time_zone_str'])
-		user_local_now = datetime.datetime.now(timezone)
-		tz_offset_dict[chat_row['chat']] = float(user_local_now.utcoffset().total_seconds()/3600)
+		local_now = datetime.datetime.now(timezone)
+		utc_offset = local_now.utcoffset().total_seconds()/3600
+
+		if utc_offset % 1 == 0:
+			utc_offset = int(utc_offset)
+			utc_offset_str = f'+{utc_offset}' if utc_offset >= 0 else f'{utc_offset}'
+		else:
+			utc_offset_hours = math.floor(utc_offset)
+			utc_offset_minutes = int((utc_offset % 1) * 60)
+			utc_offset_str = f'{utc_offset_hours}:{utc_offset_minutes}'
+			utc_offset_str = f'+{utc_offset_str}' if utc_offset >= 0 else f'{utc_offset_str}'
+
+		# store in the dict
+		tz_offset_dict[chat_row['chat']] = (utc_offset, utc_offset_str)
 
 	return tz_offset_dict
