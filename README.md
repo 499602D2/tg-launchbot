@@ -4,14 +4,17 @@ LaunchBot keeps you up to date with what's being going up, around the clock, sin
 LaunchBot uses the LaunchLibrary2 API to fetch launch information on intelligently scheduled intervals (due to a quite strict API call-count limit introduced with LL2). The bot provides multiple forms of information: notifications, information about upcoming flights, and a simple flight schedule showing the upcoming flights at a glance. 
 
 ✨ Other features include...
-- user-configurable notifications on a per-provider and time basis
+- user-configurable notifications on...
+	- per-provider basis
+	- per-country basis
+- user-choosable notification times from 4 different options
 - mutable launches
 - notifications of launches being postponed
-- a quick, easily digestible format
-- direct link to launch webcast
+- a quick, easily digestible message format
+- direct links to launch webcasts
 - automatically cleared notification messages
 - neat statistics about the bot
-- direct feedback to the developer
+- direct feedback to the developer via the bot
 - smart spam management
 - simple information refresh with Telegram's message buttons,
 
@@ -83,7 +86,7 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 	
 	- ✅ delete older notification messages when a new one is sent
 	
-	- add a "more info"/"less info" button
+	- add a "more info"/"less info" button to /next and notification messages
 	
 	- ✅ add probability of launch and launch location, separate from mission name etc. with \n\n
 	
@@ -130,17 +133,17 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 	- re-add statistics to all needed places
 
 	- improve json-parsing performance by using pooling
-	
-	- allow users to disable postpone notifications on a per-launch basis
 
-	- open-source LaunchBot
+	- open-source LaunchBot ✨
 	
 ### 1.7 more backend changes
 
 	- ✅ update from telepot Telegram API wrapper to python-telegram-bot
 	
 	- enable the disabling of postpone notifications
+
+		- globally or on a per-launch basis
 	
-	- use an in-memory DB to handle all responses
+	- use an in-memory DB, like redis or memcached, to handle all responses
 	
 		- update in-mem DB on API call, push update to disk -> persistence
