@@ -4,3 +4,4 @@ venv
 env
 /tg-launchbot/launchbot
 /tg-launchbot/__pycache__
+.python-version
