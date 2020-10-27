@@ -192,9 +192,9 @@ def time_delta_to_legible_eta(time_delta: int, full_accuracy: bool) -> str:
 		mins = int(eta_str.split(',')[1].split(':')[1])
 
 		if hours > 0 or full_accuracy:
-			pretty_eta = f'{day_str}{f", {hours} hour" if hours > 0 else ""}'
+			pretty_eta = f'{day_str}{f", {hours} hour"}'
 
-			if hours > 1:
+			if hours != 1:
 				pretty_eta += 's'
 
 			if full_accuracy:
@@ -208,7 +208,11 @@ def time_delta_to_legible_eta(time_delta: int, full_accuracy: bool) -> str:
 	else:
 		# split eta_string into hours, minutes, and seconds -> convert to integers
 		hhmmss_split = eta_str.split(':')
-		hours, mins, secs = int(hhmmss_split[0]), int(hhmmss_split[1]), int(hhmmss_split[2])
+		hours, mins, secs = (
+			int(hhmmss_split[0]),
+			int(hhmmss_split[1]),
+			int(float(hhmmss_split[2]))
+		)
 
 		if hours > 0:
 			pretty_eta = f'{hours} hour{"s" if hours > 1 else ""}'
@@ -218,7 +222,7 @@ def time_delta_to_legible_eta(time_delta: int, full_accuracy: bool) -> str:
 				pretty_eta += f', {secs} second{"s" if secs != 1 else ""}'
 
 		else:
-			if mins > 0 or full_accuracy:
+			if mins > 0:
 				pretty_eta = f'{mins} minute{"s" if mins != 1 else ""}'
 				pretty_eta += f', {secs} second{"s" if secs != 1 else ""}'
 			else:
