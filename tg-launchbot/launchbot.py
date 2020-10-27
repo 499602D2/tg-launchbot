@@ -30,12 +30,9 @@ from config import load_config, store_config
 from utils import (
 	anonymize_id, time_delta_to_legible_eta, map_country_code_to_flag,
 	timestamp_to_legible_date_string, short_monospaced_text,
-	reconstruct_message_for_markdown
-	)
+	reconstruct_message_for_markdown)
 
-from db import (
-	update_stats_db, create_chats_db, store_notification_identifiers
-	)
+from db import (update_stats_db, create_chats_db)
 
 from timezone import (
 	load_locale_string, remove_time_zone_information, update_time_zone_string,
