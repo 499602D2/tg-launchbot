@@ -172,7 +172,6 @@ def load_time_zone_status(data_dir: str, chat: str, readable: bool):
 		utc_offset = user_local_now.utcoffset().total_seconds()/3600
 		return utc_offset
 
-
 	if len(query_return) == 0:
 		return '+0'
 
@@ -202,3 +201,52 @@ def load_time_zone_status(data_dir: str, chat: str, readable: bool):
 		utc_offset_str = f'+{utc_offset_str}' if user_utc_offset >= 0 else f'{utc_offset_str}'
 
 	return utc_offset_str
+
+
+def load_bulk_tz_offset(data_dir: str, chat_id_set: set) -> dict:
+	'''
+	Function returns a chat_id:tz_offset dictionary, so the tz offset
+	calls can be done in a single sql select.
+	'''
+	# db conn
+	conn = sqlite3.connect(os.path.join(data_dir, 'launchbot-data.db'))
+	conn.row_factory = sqlite3.Row
+	cursor = conn.cursor()
+
+	''' Construct the sql select string: this isn't idead, but the only way I've got
+	the sql IN () select statement to work in Python. Oh well. '''
+	chats_str, set_len = '', len(chat_id_set)
+	for enum, chat_id in enumerate(chat_id_set):
+		chats_str += f"'{chat_id}'"
+		if enum < set_len - 1:
+			chats_str += ','
+
+	# exceute our fancy select
+	cursor.execute(f'SELECT chat, time_zone, time_zone_str FROM chats WHERE chat IN ({chats_str})')
+	query_return = cursor.fetchall()
+	conn.close()
+
+	if len(query_return) == 0:
+		raise Exception('Error pulling time zone information from chats database!')
+
+	tz_offset_dict = {}
+	for chat_row in query_return:
+		# if we found the time zone in string format, it should be parsed in its own way
+		time_zone_string_found = bool(chat_row['time_zone_str'] is not None)
+
+		if not time_zone_string_found:
+			# if there's no basic time zone found either, use 0 as chat's UTC offset
+			if chat_row['time_zone'] is None:
+				tz_offset_dict[chat_row['chat']] = float(0)
+				continue
+
+			# if we arrived here, simply return the regular time zone UTC offset
+			tz_offset_dict[chat_row['chat']] = float(chat_row['time_zone'])
+			continue
+
+		# chat has a time_zone_string: parse with pytz
+		timezone = pytz.timezone(chat_row['time_zone_str'])
+		user_local_now = datetime.datetime.now(timezone)
+		tz_offset_dict[chat_row['chat']] = float(user_local_now.utcoffset().total_seconds()/3600)
+
+	return tz_offset_dict
