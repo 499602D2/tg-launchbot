@@ -48,39 +48,6 @@ def create_chats_db(db_path: str, cursor: sqlite3.Cursor):
 		logging.exception(f'⚠️ Error creating chats table: {error}')
 
 
-def store_notification_identifiers(launch_id: str, msg_identifiers: str):
-	'''
-	Stores the identifiers for sent message, which allows us to delete
-	them later, if needed.
-
-	Keyword arguments:
-		launch_id (str): launch ID to store the notification identifiers for
-		msg_identifiers (str): string of identifiers for all sent messages
-
-	Returns:
-		None
-	'''
-	launch_dir = 'data'
-	conn = sqlite3.connect(os.path.join(launch_dir, 'launchbot-data.db'))
-	cursor = conn.cursor()
-
-	try:
-		cursor.execute("CREATE TABLE sent_notification_identifiers (id INT, msg_identifiers TEXT, PRIMARY KEY (id))")
-		cursor.execute("CREATE INDEX id_identifiers ON notify (id, identifiers)")
-		if debug_log:
-			logging.info(f'✨ sent-notifications.db created!')
-	except sqlite3.OperationalError:
-		pass
-
-	try:
-		cursor.execute('''INSERT INTO sent_notification_identifiers (id, msg_identifiers) VALUES (?, ?)''',(launch_id, msg_identifiers))
-	except:
-		cursor.execute('''UPDATE sent_notification_identifiers SET msg_identifiers = ? WHERE id = ?''', (msg_identifiers, launch_id))
-
-	conn.commit()
-	conn.close()
-
-
 def create_launch_db(db_path: str, cursor: sqlite3.Cursor):
 	'''
 	Creates the launch database. Only ran when the table doesn't exist.
@@ -135,8 +102,7 @@ def create_launch_db(db_path: str, cursor: sqlite3.Cursor):
 		cursor.execute("CREATE INDEX net_unix_to_lsp_short ON launches (net_unix, lsp_short)")
 
 	except sqlite3.OperationalError as e:
-		if debug_log:
-			logging.exception(f'⚠️ Error in create_launch_database: {e}')
+		logging.exception(f'⚠️ Error in create_launch_database: {e}')
 
 
 def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_update: int):
@@ -279,7 +245,7 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 			insert_fields = ', '.join(vars(launch_object).keys())
 			insert_fields += ', last_updated, notify_24h, notify_12h, notify_60min, notify_5min'
 			field_values = tuple(vars(launch_object).values()) + (api_update, False, False, False, False)
-			
+
 			# set amount of value-characers (?) equal to amount of keys + 4 (notify fields)
 			values_string = '?,' * (len(vars(launch_object).keys()) + 5)
 			values_string = values_string[0:-1]
