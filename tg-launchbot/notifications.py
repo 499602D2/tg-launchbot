@@ -4,6 +4,7 @@ import datetime
 import sqlite3
 import logging
 import inspect
+import telegram
 
 import ujson as json
 
@@ -20,6 +21,7 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, Conve
 from telegram.ext import CallbackQueryHandler
 
 # handle sending of postpone notifications; done in a separate function so we can retry more easily and handle exceptions
+# TODO update for 1.6
 def send_postpone_notification(chat, notification, launch_id, keywords):
 	try:
 		# load mute status, generate keys
@@ -42,20 +44,20 @@ def send_postpone_notification(chat, notification, launch_id, keywords):
 		msg_identifiers.append(f'{msg_identifier}')
 		return True
 
-	except telegram.exception.BotWasBlockedError:
+	except telegram.error.BotWasBlockedError:
 		if debug_log:
 			logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat)} – cleaning notify database...')
 
-		clean_notify_database(chat)
+		clean_notify_database(db_path, chat)
 		return True
 
-	except telegram.exception.TelegramError as error:
+	except telegram.error.TelegramError as error:
 		# Bad Request: chat not found
 		if error.error_code == 400 and 'not found' in error.description:
 			if debug_log:
 				logging.exception(f'⚠️ Chat {anonymize_id(chat)} not found – cleaning notify database... Error: {error}')
 
-			clean_notify_database(chat)
+			clean_notify_database(db_path, chat)
 			return True
 
 		elif error.error_code == 403:
@@ -63,26 +65,26 @@ def send_postpone_notification(chat, notification, launch_id, keywords):
 				if debug_log:
 					logging.exception(f'⚠️ User {anonymize_id(chat)} was deactivated – cleaning notify database... Error: {error}')
 
-				clean_notify_database(chat)
+				clean_notify_database(db_path, chat)
 				return True
 
 			elif 'bot was kicked from the supergroup chat' in error.description:
 				if debug_log:
 					logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database... Error: {error}')
 
-				clean_notify_database(chat)
+				clean_notify_database(db_path, chat)
 				return True
 
 			elif 'Forbidden: bot is not a member of the supergroup chat' in error.description:
 				if debug_log:
 					logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database... Error: {error}')
 
-				clean_notify_database(chat)
+				clean_notify_database(db_path, chat)
 				return True
 
 			else:
 				if debug_log:
-					logging.exception(f'⚠️ Unhandled 403 telegram.exception.TelegramError in send_postpone_notification: {error}')
+					logging.exception(f'⚠️ Unhandled 403 telegram.error.TelegramError in send_postpone_notification: {error}')
 
 		# Rate-limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
 		elif error.error_code == 429:
@@ -95,7 +97,7 @@ def send_postpone_notification(chat, notification, launch_id, keywords):
 		# Some error code we don't know how to handle
 		else:
 			if debug_log:
-				logging.exception(f'⚠️ Unhandled telegram.exception.TelegramError in send_notification: {error}')
+				logging.exception(f'⚠️ Unhandled telegram.error.TelegramError in send_notification: {error}')
 
 			return False
 
@@ -175,7 +177,6 @@ def get_user_notifications_status(
 	return notification_statuses
 
 
-# toggle a notification for chat of type (toggle_type, keyword) with the value keyword
 def toggle_notification(
 	data_dir: str, chat: str, toggle_type: str, keyword: str,
 	toggle_to_state: int, provider_by_cc: dict, provider_name_map: dict):
@@ -372,6 +373,7 @@ def get_notif_preference(db_path: str, chat: str) -> tuple:
 		int(notif_preferences[2]), int(notif_preferences[3]))
 
 
+# TODO rewrite for 1.6
 def toggle_launch_mute(chat, launch_provider, launch_id, toggle):
 	data_dir = 'data'
 	if not os.path.isfile(os.path.join(data_dir,'launchbot-data.db')):
@@ -439,39 +441,45 @@ def toggle_launch_mute(chat, launch_provider, launch_id, toggle):
 	conn.close()
 
 
-# load mute status for chat and launch
-def load_mute_status(chat: str, launch_id: str, lsp_name: str):
-	data_dir = 'data'
-	conn = sqlite3.connect(os.path.join(data_dir,'launchbot-data.db'))
-	c = conn.cursor()
+def load_mute_status(db_path: str, launch_id: str):
+	'''
+	Loads the mute status for a launch_id, and returns a tuple of all
+	chats that have muted said launch.
+	'''
+	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+	cursor = conn.cursor()
 
 	# pull launch mute status for chat
-	c.execute("SELECT muted_launches FROM notify WHERE chat = ? AND keyword = ?", (chat, lsp_name))
-	query_return = c.fetchall()
+	cursor.execute("SELECT muted_by FROM launches WHERE unique_id = ?", (launch_id,))
+	query_return = cursor.fetchall()
+	conn.close()
 
 	if len(query_return) == 0:
-		mute_status = 0
+		return ()
+
+	# load comma-separated value string -> split by comma
+	if query_return[0][0] is not None:
+		muted_by = query_return[0][0].split(',')
 	else:
-		if query_return[0][0] is None:
-			mute_status = 0
-		elif str(launch_id) in query_return[0][0].split(','):
-			mute_status = 1
-		else:
-			mute_status = 0
+		return ()
 
-	return mute_status
+	# return as a tuple
+	return tuple(muted_by)
 
 
-# removes all notification settings for a chat from the notify database
-def clean_notify_database(chat):
-	conn = sqlite3.connect(os.path.join('data', 'launchbot-data.db'))
-	c = conn.cursor()
+def clean_notify_database(db_path, chat):
+	'''
+	Removes all notification settings for a chat from the chats database
+	'''
+	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+	cursor = conn.cursor()
 
-	c.execute("DELETE FROM notify WHERE chat = ?", (chat,))
+	cursor.execute("DELETE FROM chats WHERE chat = ?", (chat,))
 	conn.commit()
 	conn.close()
 
 
+# TODO rewrite for 1.6
 def remove_previous_notification(launch_id, keyword):
 	''' Before storing the new identifiers, remove the old notification if possible. '''
 	data_dir = 'data'
@@ -525,6 +533,7 @@ def remove_previous_notification(launch_id, keyword):
 
 
 # gets a request to send a notification about launch X from launch_update_check()
+# TODO migrate to 1.6
 def notification_handler_old(db_path: str, launch_unique_id: str, bot: 'telegram.bot.Bot'):
 	# handle notification sending; done in a separate function so we can retry more easily and handle exceptions
 	def send_notification(chat, notification, launch_id, keywords, vid_link, notif_class):
@@ -558,20 +567,20 @@ def notification_handler_old(db_path: str, launch_unique_id: str, bot: 'telegram
 			msg_identifiers.append(str(msg_identifier))
 			return True
 		
-		except telegram.exception.BotWasBlockedError:
+		except telegram.error.BotWasBlockedError:
 			if debug_log:
 				logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat)} – cleaning notify database...')
 
-			clean_notify_database(chat)
+			clean_notify_database(db_path, chat)
 			return True
 
-		except telegram.exception.TelegramError as error:
+		except telegram.error.TelegramError as error:
 			# Bad Request: chat not found
 			if error.error_code == 400 and 'not found' in error.description:
 				if debug_log:
 					logging.exception(f'⚠️ Chat {anonymize_id(chat)} not found – cleaning notify database... Error: {error}')
 
-				clean_notify_database(chat)
+				clean_notify_database(db_path, chat)
 				return True
 
 			elif error.error_code == 403:
@@ -579,26 +588,26 @@ def notification_handler_old(db_path: str, launch_unique_id: str, bot: 'telegram
 					if debug_log:
 						logging.exception(f'⚠️ User {anonymize_id(chat)} was deactivated – cleaning notify database... Error: {error}')
 
-					clean_notify_database(chat)
+					clean_notify_database(db_path, chat)
 					return True
 
 				elif 'bot was kicked from the supergroup chat' in error.description:
 					if debug_log:
 						logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database... Error: {error}')
 
-					clean_notify_database(chat)
+					clean_notify_database(db_path, chat)
 					return True
 
 				elif 'Forbidden: bot is not a member of the supergroup chat' in error.description:
 					if debug_log:
 						logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database... Error: {error}')
 
-					clean_notify_database(chat)
+					clean_notify_database(db_path, chat)
 					return True
 
 				else:
 					if debug_log:
-						logging.exception(f'⚠️ Unhandled 403 telegram.exception.TelegramError in send_notification: {error}')
+						logging.exception(f'⚠️ Unhandled 403 telegram.error.TelegramError in send_notification: {error}')
 
 			# Rate limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
 			elif error.error_code == 429:
@@ -611,7 +620,7 @@ def notification_handler_old(db_path: str, launch_unique_id: str, bot: 'telegram
 			# Something else
 			else:
 				if debug_log:
-					logging.exception(f'⚠️ Unhandled telegram.exception.TelegramError in send_notification: {error}')
+					logging.exception(f'⚠️ Unhandled telegram.error.TelegramError in send_notification: {error}')
 
 				return False
 
@@ -898,101 +907,64 @@ def notification_handler_old(db_path: str, launch_unique_id: str, bot: 'telegram
 	store_notification_identifiers(launch_id, msg_identifiers)
 
 
-def get_notify_list(lsp, launch_id, notif_class):
+def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -> set:
 	'''
 	Pull all chats with matching keyword (LSP ID), matching country code notification,
-	or an "all" marker (and no exclusion for this ID/country) '''
-
+	or an "all" marker (and no exclusion for this ID/country)
+	'''
 	# Establish connection
-	data_dir = 'data'
-	if not os.path.isfile(os.path.join(data_dir,'launchbot-data.db')):
-		create_notify_database()
+	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+	conn.row_factory = sqlite3.Row
+	cursor = conn.cursor()
 
-	conn = sqlite3.connect(os.path.join(data_dir,'launchbot-data.db'))
-	c = conn.cursor()
+	''' Select all where the lsp or 'All' is in the row. If chat has 'All' in the row,
+	make sure the lsp name isn't in disabled_notifications. '''
+	cursor.execute("""
+		SELECT * FROM chats WHERE 
+		enabled_notifications LIKE '%'||?||'%' 
+		OR enabled_notifications LIKE '%'||?||'%'""", (lsp, 'All'))
 
-	# pull all where keyword = LSP or "All"
-	c.execute('SELECT * FROM notify WHERE keyword == ? OR keyword == ?',(lsp, 'All'))
-	query_return = c.fetchall()
+	# pull all
+	query_return = cursor.fetchall()
 
-	# parse for possible mutes
-	parsed_query_return = set()
-	muted_chats = set()
-	for row in query_return:
-		append = True
-		if row[2] is not None:
-			if row[2] != '':
-				split = row[2].split(',')
-				for muted_id in split:
-					if muted_id == str(launch_id):
-						append = False
-						muted_chats.add(row[0])
+	if len(query_return) == 0:
+		logging.warning('⚠️ query_return == 0 in get_notify_list!')
+		return set()
 
-		if append:
-			if row[0] not in muted_chats:
-				parsed_query_return.add(row)
+	# pull all chats that have muted this launch (tuple)
+	muted_by = load_mute_status(db_path, launch_id)
 
-	query_return = parsed_query_return
-	parsed_query_return, muted_this_launch = set(), set()
-	for row in query_return:
-		if row[0] in muted_chats:
-			muted_this_launch.add(row[0])
+	# map notify_time to a list index, so we can check for notify preference
+	notify_index = {
+		'notify_24h': 0, 'notify_12h': 1,
+		'notify_60min': 2, 'notify_5m': 3}[notify_class]
+
+	''' Parse all chat rows to figure out who to send the notification to '''
+	notification_list = set()
+	for chat_row in query_return:
+		if chat_row['chat'] in muted_by:
+			# if chat has marked this launch as muted, don't notify
+			logging.info(f'🔇 Launch muted by {chat_row["chat"]}: not notifying')
+
+		elif lsp in chat_row['disabled_notifications']:
+			# if lsp is in disabled_notification, pretty simple: don't notify
+			logging.info(f'{lsp} in disabled_notifications for chat {chat_row["chat"]}')
+
 		else:
-			parsed_query_return.add(row)
+			# not muted, and not explicitly disabled: verify chat wants this type of notif
+			chat_notif_prefs = chat_row['notify_time_pref'].split(',')
 
-	query_return = parsed_query_return
-
-	if debug_log and len(muted_this_launch) > 0:
-		logging.info(f'🔇 Not notifying {len(muted_this_launch)} chat(s) due to mute status')
-
-	# parse output
-	notify_dict, notify_list = {}, set() # chat: id: toggle
-	for row in query_return:
-		chat = row[0]
-		if chat not in notify_dict:
-			notify_dict[chat] = {}
-
-		notify_dict[chat][row[1]] = row[3] # lsp: 0/1, or All: 0/1
-
-	# if All is enabled, and lsp is disabled
-	for chat, val in notify_dict.items(): # chat, dictionary (dict is in the form of LSP: toggle)
-		enabled, disabled = set(), set()
-		for l, e in val.items(): # lsp, enabled
-			if e == 1:
-				enabled.add(l)
+			# if notify preference == 1, add no notification_list
+			if chat_notif_prefs[notify_index] == '1':
+				logging.info(f'📝 chat={chat_row["chat"]} added to notification_list')
+				notification_list.add(chat_row['chat'])
 			else:
-				disabled.add(l)
+				logging.info(f'Chat {chat_row["chat"]} has disabled notify_class={notify_class}')
 
-		if lsp in disabled and 'All' in enabled:
-			if debug_log:
-				logging.info(f'🔕 Not notifying {anonymize_id(chat)} about {lsp} due to disabled flag. All flag was enabled.')
-				try:
-					logging.info(f'ℹ️ notify_dict[{anonymize_id(chat)}]: {notify_dict[chat]} | lsp: {lsp} | enabled: {enabled} | disabled: {disabled}')
-				except:
-					logging.info(f'⚠️ KeyError getting notify_dict[chat]. notify_dict: {notify_dict}')
-
-		elif lsp in enabled or 'All' in enabled:
-			notify_list.add(chat)
-
-	# parse for chats which have possibly disabled this notification type in preferences
-	if notif_class is not None:
-		final_list, ignored_due_to_pref = set(), set()
-		index = {'24h': 0, '12h': 1, '1h': 2, '5m': 3}[notif_class]
-		for chat in notify_list:
-			if list(get_notif_preference(chat))[index] == 1:
-				final_list.add(chat)
-			else:
-				ignored_due_to_pref.add(chat)
-
-		if debug_log:
-			logging.info(f'🔕 Not notifying {len(ignored_due_to_pref)} chat(s) due to notification preferences.')
-	else:
-		final_list = notify_list
-
-	return final_list
+	return notification_list
 
 
-
+# TODO integrate with all checks etc. for 1.6
 def send_notification(
 	chat: str, message: str, launch_id: str, lsp_name: str, notif_class: str,
 	bot: 'telegram.bot.Bot'):
@@ -1020,20 +992,20 @@ def send_notification(
 		msg_identifiers.append(str(msg_identifier))
 		return True
 	
-	except telegram.exception.BotWasBlockedError:
+	except telegram.error.BotWasBlockedError:
 		if debug_log:
 			logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat)} – cleaning notify database...')
 
-		clean_notify_database(chat)
+		clean_notify_database(db_path, chat)
 		return True
 
-	except telegram.exception.TelegramError as error:
+	except telegram.error.TelegramError as error:
 		# Bad Request: chat not found
 		if error.error_code == 400 and 'not found' in error.description:
 			if debug_log:
 				logging.exception(f'⚠️ Chat {anonymize_id(chat)} not found – cleaning notify database... Error: {error}')
 
-			clean_notify_database(chat)
+			clean_notify_database(db_path, chat)
 			return True
 
 		elif error.error_code == 403:
@@ -1041,26 +1013,26 @@ def send_notification(
 				if debug_log:
 					logging.exception(f'⚠️ User {anonymize_id(chat)} was deactivated – cleaning notify database... Error: {error}')
 
-				clean_notify_database(chat)
+				clean_notify_database(db_path, chat)
 				return True
 
 			elif 'bot was kicked from the supergroup chat' in error.description:
 				if debug_log:
 					logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database... Error: {error}')
 
-				clean_notify_database(chat)
+				clean_notify_database(db_path, chat)
 				return True
 
 			elif 'Forbidden: bot is not a member of the supergroup chat' in error.description:
 				if debug_log:
 					logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database... Error: {error}')
 
-				clean_notify_database(chat)
+				clean_notify_database(db_path, chat)
 				return True
 
 			else:
 				if debug_log:
-					logging.exception(f'⚠️ Unhandled 403 telegram.exception.TelegramError in send_notification: {error}')
+					logging.exception(f'⚠️ Unhandled 403 telegram.error.TelegramError in send_notification: {error}')
 
 		# Rate limited by Telegram (https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
 		elif error.error_code == 429:
@@ -1073,7 +1045,7 @@ def send_notification(
 		# Something else
 		else:
 			if debug_log:
-				logging.exception(f'⚠️ Unhandled telegram.exception.TelegramError in send_notification: {error}')
+				logging.exception(f'⚠️ Unhandled telegram.error.TelegramError in send_notification: {error}')
 
 			return False
 
@@ -1331,7 +1303,7 @@ def notification_handler(db_path: str, notification_dict: dict, bot_username: st
 		# parse message for markdown
 		notification_message = reconstruct_message_for_markdown(notification_message)
 
-		# send notification
+		# TODO send notification
 		with open(os.path.join(db_path, 'bot-config.json'), 'r') as bot_config:
 			config = json.load(bot_config)
 
