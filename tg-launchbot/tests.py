@@ -6,7 +6,7 @@ import os
 
 from utils import time_delta_to_legible_eta
 from api import construct_params
-from notifications import create_notification_message
+from notifications import create_notification_message, get_notify_list
 
 class TestLaunchBotFunctions(unittest.TestCase):
 	'''
@@ -19,7 +19,7 @@ class TestLaunchBotFunctions(unittest.TestCase):
 		print('Testing construct_params...')
 		test_keyvals = {'one': 1, 'two': 2, 'three': 3}
 		expected_params = '?one=1&two=2&three=3'
-		
+
 		self.assertEqual(construct_params(test_keyvals), expected_params)
 
 
@@ -33,7 +33,7 @@ class TestLaunchBotFunctions(unittest.TestCase):
 
 		# db path
 		db_path = 'launchbot'
-		
+
 		# Establish connection
 		conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 		conn.row_factory = sqlite3.Row
@@ -79,6 +79,57 @@ class TestLaunchBotFunctions(unittest.TestCase):
 
 		# test with 0 seconds
 		self.assertEqual(time_delta_to_legible_eta(0, False), 'just now')
+
+
+	def test_time_delta_to_legible_eta(self):
+		'''
+		Test time_delta_to_legible_eta with random times
+		'''
+
+		# without full accuracy, large values
+		for i in range(10):
+			print(
+				time_delta_to_legible_eta(
+					time_delta=random.uniform(0, 3600*24*30), full_accuracy=False))
+
+		# without full accuracy, small values
+		for i in range(10):
+			print(
+				time_delta_to_legible_eta(
+					time_delta=random.uniform(0, 3600*24), full_accuracy=False))
+
+
+		# with full accuracy, large values
+		for i in range(10):
+			print(
+				time_delta_to_legible_eta(
+					time_delta=random.uniform(0, 3600*24*30), full_accuracy=True))
+
+		# with full accuracy, small values
+		for i in range(10):
+			print(
+				time_delta_to_legible_eta(
+					time_delta=random.uniform(0, 3600*24), full_accuracy=True))
+
+
+	def test_get_notify_list(self):
+		'''
+		Test get_notify_list
+		'''
+		db_path = 'launchbot'
+		lsp = 'SpaceX'
+		launch_id = '56623c2d-7174-489c-b0ed-bf6f039b2412'
+		notif_class = 'notify_24h'
+
+		'''
+		A better test case
+		1. generate an entry in chats db with a random chat ID
+		2. add one random launch (provider) in enabled, some in disabled
+		3. test pull for random launch ID
+		'''
+
+
+		get_notify_list(db_path, lsp, launch_id, notif_class)
 
 
 if __name__ == '__main__':
