@@ -731,14 +731,17 @@ def callback_handler(update, context):
 				logging.info(f'💫 {anonymize_id(chat)} finished setting notifications with the "Done" button! | {(1000*(timer() - start)):.0f} ms')
 
 	elif input_data[0] == 'mute':
-		# TODO fix mute command
 		# user wants to mute a launch from notification inline keyboard
-		# /mute/$provider/$launch_id/(0/1) | 1=muted (true), 0=not muted
+		# /mute/$launch_id/(0/1) | 1=muted (true), 0=not muted
 
 		# reverse the button status on press
-		new_toggle_state = 0 if int(input_data[3]) == 1 else 1
+		new_toggle_state = 0 if int(input_data[2]) == 1 else 1
 		new_text = {0:'🔊 Unmute this launch', 1:'🔇 Mute this launch'}[new_toggle_state]
-		new_data = f'mute/{input_data[1]}/{input_data[2]}/{new_toggle_state}'
+		new_data = f'mute/{input_data[1]}/{new_toggle_state}'
+
+		# maximum number of bytes telegram's bot API supports in callback_data is 64 bytes
+		if len(new_data.encode('utf-8')) > 64:
+			logging.warning(f'Bytelen of new_data is >64! new_data: {new_data}')
 
 		# create new keyboard
 		inline_keyboard = [[InlineKeyboardButton(text=new_text, callback_data=new_data)]]
@@ -746,7 +749,7 @@ def callback_handler(update, context):
 			inline_keyboard=inline_keyboard)
 
 		# tuple containing necessary information to edit the message
-		callback_text = '🔇 Launch muted!' if input_data[3] == '1' else '🔊 Launch unmuted!'
+		callback_text = '🔇 Launch muted!' if input_data[2] == '1' else '🔊 Launch unmuted!'
 
 		try:
 			query.edit_message_reply_markup(reply_markup=keyboard)
@@ -758,12 +761,13 @@ def callback_handler(update, context):
 
 			if chat != OWNER:
 				if new_toggle_state == 0:
-					logging.info(f'🔇 {anonymize_id(chat)} muted a launch for {input_data[1]} (launch_id={input_data[2]}) | {(1000*(timer() - start)):.0f} ms')
+					logging.info(f'🔇 {anonymize_id(chat)} muted a launch for launch_id={input_data[1]} | {(1000*(timer() - start)):.0f} ms')
 				else:
-					logging.info(f'🔊 {anonymize_id(chat)} unmuted a launch for {input_data[1]} (launch_id={input_data[2]}) | {(1000*(timer() - start)):.0f} ms')
+					logging.info(f'🔊 {anonymize_id(chat)} unmuted a launch for launch_id={input_data[1]} | {(1000*(timer() - start)):.0f} ms')
 
 		except Exception as exception:
-			logging.exception(f'⚠️ User attempted to mute/unmute a launch, but no reply could be provided (sending message...): {exception}')
+			logging.exception(
+				f'⚠️ User attempted to mute/unmute a launch, but no reply could be provided (sending message...): {exception}')
 
 			try:
 				query.sendMessage(chat, callback_text, parse_mode='Markdown')
@@ -771,7 +775,7 @@ def callback_handler(update, context):
 				logging.exception(f'🛑 Ran into an error sending the mute/unmute message to chat={chat}! {exception}')
 
 		# toggle the mute here, so we can give more responsive feedback
-		toggle_launch_mute(chat, input_data[1], input_data[2], input_data[3])
+		toggle_launch_mute(chat=chat, launch_id=input_data[1], toggle=input_data[3])
 
 	elif input_data[0] == 'next_flight':
 		# next_flight(msg, current_index, command_invoke, cmd):
