@@ -119,6 +119,31 @@ def map_country_code_to_flag(country_code: str) -> str:
 	return flag_map[country_code] if country_code in flag_map.keys() else '🏳'
 
 
+def suffixed_readable_int(number: int) -> str:
+	'''
+	Generates a readable (positional?) number.
+	'''
+	if number < 0:
+		return str(number)
+
+	if number < 10:
+		suffixed_number = {
+			0: 'zeroth',
+			1: 'first', 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth',
+			6: 'sixth', 7: 'seventh', 8: 'eighth', 9: 'ninth', 10: 'tenth'}[number]
+
+		return suffixed_number
+
+	try:
+		if number in (11, 12, 13):
+			suffix = 'th'
+		else:
+			suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(number)[-1])]
+		return f'{number}{suffix}'
+	except KeyError:
+		return f'{number}th'
+
+
 def timestamp_to_unix(timestamp: str) -> int:
 	'''
 	Parses a LL2 timestamp from its format into a unix timestamp,
