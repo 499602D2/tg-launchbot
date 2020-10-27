@@ -4,24 +4,17 @@ import sqlite3
 import random
 import os
 
-from utils import time_delta_to_legible_eta
+from utils import time_delta_to_legible_eta, suffixed_readable_int
 from api import construct_params
 from notifications import create_notification_message, get_notify_list
+from db import create_chats_db
+from timezone import load_bulk_tz_offset
+from config import load_config
 
-class TestLaunchBotFunctions(unittest.TestCase):
+class TestNotificationUtils(unittest.TestCase):
 	'''
 	Run tests for the API calls and associated functions.
 	'''
-	def test_construct_params(self):
-		'''
-		Test construct_params
-		'''
-		print('Testing construct_params...')
-		test_keyvals = {'one': 1, 'two': 2, 'three': 3}
-		expected_params = '?one=1&two=2&three=3'
-
-		self.assertEqual(construct_params(test_keyvals), expected_params)
-
 
 	def test_notification_message_creation(self):
 		'''
@@ -39,16 +32,8 @@ class TestLaunchBotFunctions(unittest.TestCase):
 		conn.row_factory = sqlite3.Row
 		cursor = conn.cursor()
 
-		# three SpX launches
-		test_id_tuple = (
-			'47c91a03-2e98-42c9-8751-d8fb36c89c99',
-			'0ede12be-ac6d-4571-9d0c-b2a85b5cf280',
-			'56623c2d-7174-489c-b0ed-bf6f039b2412')
-
-		test_id = test_id_tuple[0]
-
 		# select all IDs in db
-		cursor.execute('SELECT unique_id from launches')
+		cursor.execute('SELECT unique_id from launches WHERE lsp_name = ?', ('SpaceX',))
 		query_return = cursor.fetchall()
 
 		# run for all launches
@@ -56,29 +41,72 @@ class TestLaunchBotFunctions(unittest.TestCase):
 			cursor.execute('SELECT * FROM launches WHERE unique_id = ?', (row[0],))
 			launch = [dict(row) for row in cursor.fetchall()][0]
 
-			msg = create_notification_message(
-				launch=launch, notif_class='notify_60min', bot_username='rocketrybot')
+			msg = create_notification_message(launch=launch, notif_class='notify_60min')
+			print(msg + '\n------------------------\n\n')
 
-			# print(msg + '\n\n ------------------------')
+
+	def test_get_notify_list(self):
+		'''
+		Test get_notify_list
+		'''
+		db_path = 'launchbot'
+		lsp = 'Arianespace'
+		launch_id = '56623c2d-7174-489c-b0ed-bf6f039b2412'
+		notif_class = 'notify_24h'
+
+		ret = get_notify_list(db_path, lsp, launch_id, notif_class)
+		print(ret)
+
+		'''
+		A better test case
+		1. generate an entry in chats db with a random chat ID
+		2. add one random launch (provider) in enabled, some in disabled
+		3. test pull for random launch ID
+		# fire up connection to a testing db
+		test_db = 'launchbot-tests'
+		conn = sqlite3.connect(os.path.join(test_db, 'launchbot-data.db'))
+		cursor = conn.cursor()
+
+		# create a testing database
+		create_chats_db(db_path=test_db, cursor=cursor)
+		conn.commit()
+
+		# generate fake chat IDs
+		for i in range(0, 20):
+			rand_id = random.randint(0, 10000)
+			cursor.execute()
+		'''
+
+
+class TestUtils(unittest.TestCase):
+	def test_construct_params(self):
+		'''
+		Test construct_params
+		'''
+		print('Testing construct_params...')
+		test_keyvals = {'one': 1, 'two': 2, 'three': 3}
+		expected_params = '?one=1&two=2&three=3'
+
+		self.assertEqual(construct_params(test_keyvals), expected_params)
 
 
 	def test_pretty_eta(self):
-		'''
-		Test time_delta_to_legible_eta
-		'''
-		# test small deltas
-		for i in range(0, 100):
-			rand_delta = random.randint(0, 3600)
-			time_delta_to_legible_eta(rand_delta, True)
+			'''
+			Test time_delta_to_legible_eta
+			'''
+			# test small deltas
+			for i in range(0, 100):
+				rand_delta = random.randint(0, 3600)
+				time_delta_to_legible_eta(rand_delta, True)
 
-		# test large deltas
-		for i in range(0, 100):
-			rand_delta = random.randint(0, 3600 * 24 * 2)
-			time_delta_to_legible_eta(rand_delta, True)
+			# test large deltas
+			for i in range(0, 100):
+				rand_delta = random.randint(0, 3600 * 24 * 2)
+				time_delta_to_legible_eta(rand_delta, True)
 
 
-		# test with 0 seconds
-		self.assertEqual(time_delta_to_legible_eta(0, False), 'just now')
+			# test with 0 seconds
+			self.assertEqual(time_delta_to_legible_eta(0, False), 'just now')
 
 
 	def test_time_delta_to_legible_eta(self):
@@ -112,24 +140,21 @@ class TestLaunchBotFunctions(unittest.TestCase):
 					time_delta=random.uniform(0, 3600*24), full_accuracy=True))
 
 
-	def test_get_notify_list(self):
-		'''
-		Test get_notify_list
-		'''
-		db_path = 'launchbot'
-		lsp = 'SpaceX'
-		launch_id = '56623c2d-7174-489c-b0ed-bf6f039b2412'
-		notif_class = 'notify_24h'
-
-		'''
-		A better test case
-		1. generate an entry in chats db with a random chat ID
-		2. add one random launch (provider) in enabled, some in disabled
-		3. test pull for random launch ID
-		'''
+		def test_suffixed_readable_int(self):
+			for i in range(1000):
+				rand_int = random.randint(0, 200)
+				print(f'{rand_int} -> {suffixed_readable_int(rand_int)}')
 
 
-		get_notify_list(db_path, lsp, launch_id, notif_class)
+
+class TestTimeZoneUtils(unittest.TestCase):
+	def test_load_bulk_tz_offset(self):
+		data_dir = 'launchbot'
+		config = load_config(data_dir)
+
+		chat_id_set = {config['owner']}
+		ret = load_bulk_tz_offset(data_dir=data_dir, chat_id_set=chat_id_set)
+		print(ret)
 
 
 if __name__ == '__main__':
