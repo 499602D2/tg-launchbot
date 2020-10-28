@@ -15,7 +15,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 # local imports
 from utils import timestamp_to_unix, time_delta_to_legible_eta
 from db import update_launch_db, update_stats_db
-from notifications import notification_send_scheduler
+from notifications import (
+	notification_send_scheduler, postpone_notification,
+	remove_previous_notification, store_notification_identifiers)
 
 class LaunchLibrary2Launch:
 	'''Description
@@ -176,6 +178,9 @@ class LaunchLibrary2Launch:
 
 		# launch location information
 		self.pad_name = launch_json['pad']['name']
+		if 'Rocket Lab' in self.pad_name:
+			# avoid super long pad name for "Rocket Lab Launch Complex"
+			self.pad_name = self.pad_name.replace('Rocket Lab', 'RL')
 		self.location_name = launch_json['pad']['location']['name']
 		self.location_country_code = launch_json['pad']['location']['country_code']
 
@@ -212,12 +217,11 @@ def construct_params(PARAMS: dict) -> str:
 
 def ll2_api_call(
 	data_dir: str, scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
-	# params
-	VERSION = '1.6-alpha'
+	# debug everything but the API: "true" simply loads the previous .json
 	DEBUG_API = False
 
 	# debug print
-	logging.debug('➡️ Running API call...')
+	logging.debug('🔄 Running API call...')
 
 	# what we're throwing at the API
 	API_URL = 'https://ll.thespacedevs.com'
@@ -229,7 +233,7 @@ def ll2_api_call(
 	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{construct_params(PARAMS)}' #&{fields}
 
 	# set headers
-	headers = {'user-agent': f'telegram-{bot_username}/{VERSION}'}
+	headers = {'user-agent': f'telegram-{bot_username}'}
 
 	# if debugging and the debug file exists, run this
 	if DEBUG_API and os.path.isfile(os.path.join(data_dir,'ll2-json.json')):
@@ -257,7 +261,7 @@ def ll2_api_call(
 		except Exception as json_parse_error:
 			logging.warning('⚠️ Error parsing json')
 
-		# dump json
+		# dump json for inspection / debugging use
 		with open(os.path.join(data_dir, 'll2-json.json'), 'w') as json_file:
 			json.dump(api_json, json_file, indent=4)
 
@@ -273,11 +277,44 @@ def ll2_api_call(
 	logging.debug(f'✅ Parsed {len(launch_obj_set)} launches into launch_obj_set.')
 
 	# update database with the launch objects
-	update_launch_db(
+	postponed_launches = update_launch_db(
 		launch_set=launch_obj_set, db_path=data_dir,
 		bot_username=bot_username, api_update=api_updated)
 
 	logging.debug('✅ DB update complete!')
+
+	# if a launch (or multiple) has been postponed, handle it here
+	if len(postponed_launches) > 0:
+		logging.info(f'Found {len(postponed_launches)} postponed launches!')
+
+		''' Handle each possibly postponed launch separately.
+		tuple: (launch_object, postpone_message) '''
+		for postpone_tuple in postponed_launches:
+			# pull launch object from tuple
+			launch_object = postpone_tuple[0]
+
+			notify_list, sent_notification_ids = postpone_notification(
+				db_path=data_dir, postpone_tuple=postpone_tuple, bot=bot)
+
+			logging.info('Sent notifications!')
+			logging.info(f'notify_list={notify_list}, sent_notification_ids={sent_notification_ids}')
+
+			# remove previous notification
+			remove_previous_notification(
+				db_path=data_dir, launch_id=launch_object.unique_id,
+				notify_set=notify_list, bot=bot)
+
+			logging.info('✉️ Previous notifications removed!')
+
+			# notifications sent: store identifiers
+			msg_id_str = ','.join(sent_notification_ids)
+			store_notification_identifiers(
+				db_path=data_dir, launch_id=launch_object.unique_id, identifiers=msg_id_str)
+			logging.info(f'📃 Notification identifiers stored! identifiers="{msg_id_str}"')
+
+			# update stats
+			update_stats_db(stats_update={'notifications':len(notify_list)}, db_path=data_dir)
+			logging.info('📊 Stats updated!')
 
 	# update statistics
 	update_stats_db(
@@ -346,6 +383,9 @@ def api_call_scheduler(
 			return (True, None)
 
 		last_update = cursor.fetchall()[0][0]
+		if last_update in ('', None):
+			return (True, None)
+
 		return (True, None) if time.time() > last_update + UPDATE_PERIOD * 60 else (False, last_update)
 
 	# debug print
