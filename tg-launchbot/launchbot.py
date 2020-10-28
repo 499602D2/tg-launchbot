@@ -57,6 +57,16 @@ def command_pre_handler(update, context):
 	content_type = update.message['media_group_id']
 	chat = update.message['chat']
 
+	# verify that the user who sent this is not in spammers
+	if update.message.from_user.id in ignored_users:
+		logging.info('😎 Message from spamming user ignored successfully')
+		return False
+
+	# all users don't have a user ID, so check for the regular username as well
+	if update.message.author_signature in ignored_users:
+		logging.info('😎 Message from spamming user (no UID) ignored successfully')
+		return False
+
 	''' for admin/private chat checks; also might throw an error when kicked out of a group,
 	so handle that here as well '''
 	try:
@@ -1095,7 +1105,7 @@ def callback_handler(update, context):
 		update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
 
 
-def text_handler(update, context):
+def feedback_handler(update, context):
 	'''
 	Handles the feedback command flow
 
@@ -1107,9 +1117,34 @@ def text_handler(update, context):
 	if not command_pre_handler(update, context):
 		return
 
-	logging.info(f'update.message: {update.message}')
-	logging.info(f'vars: {vars(update.message)}')
-	logging.debug('Text handler ran!')
+	# pull chat object
+	chat = update.message['chat']
+
+	if update.message.reply_to_message is not None:
+		if update.message.reply_to_message.message_id in feedback_message_IDs:
+			logging.info(f'✍️ Received feedback: {update.message.text}')
+
+			sender = context.bot.getChatMember(chat['id'], update.message.from_user.id)
+			if sender['status'] in ('creator', 'administrator') or chat['type'] == 'private':
+				context.bot.sendMessage(
+					chat['id'],
+					'😄 Thank you for your feedback!',
+					reply_to_message_id=update.message.message_id)
+
+				try: # remove the original feedback message
+					context.bot.deleteMessage(chat['id'], update.message.reply_to_message.message_id)
+				except Exception as error:
+					logging.exception(f'''Unable to remove sent feedback message with params
+						chat={chat["id"]}, message_id={update.message.reply_to_message.message_id}''')
+
+				if OWNER != 0:
+					# if owner is defined, notify of a new feedback message
+					feedback_notify_msg = f'''
+						✍️ *Received feedback* from `{anonymize_id(update.message.from_user.id)}`\n
+						{update.message.text}'''
+
+					context.bot.sendMessage(
+						OWNER, inspect.cleandoc(feedback_notify_msg),parse_mode='MarkdownV2')
 
 
 def location_handler(update, context):
@@ -2369,7 +2404,7 @@ if __name__ == '__main__':
 		CallbackQueryHandler(callback_handler))
 
 	# register text message handler (text for feedback, location for time zone stufft)
-	dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, callback=text_handler))
+	dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, callback=feedback_handler))
 	dispatcher.add_handler(MessageHandler(Filters.location, callback=location_handler))
 
 	# all up to date, start polling
