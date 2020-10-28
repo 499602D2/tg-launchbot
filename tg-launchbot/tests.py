@@ -6,7 +6,7 @@ import os
 
 from utils import time_delta_to_legible_eta, suffixed_readable_int
 from api import construct_params
-from notifications import create_notification_message, get_notify_list
+from notifications import create_notification_message, get_notify_list, toggle_launch_mute
 from db import create_chats_db
 from timezone import load_bulk_tz_offset
 from config import load_config
@@ -76,6 +76,15 @@ class TestNotificationUtils(unittest.TestCase):
 			rand_id = random.randint(0, 10000)
 			cursor.execute()
 		'''
+
+
+	def test_toggle_launch_mute(self):
+		db_path = 'launchbot'
+		chat = load_config(db_path)['owner']
+
+		launch_id = 'c5a9ba01-d03f-4fd7-940a-8a10d535809a'
+		toggle_launch_mute(db_path=db_path, chat=chat, launch_id=launch_id, toggle=1)
+		#toggle_launch_mute(db_path=db_path, chat=chat, launch_id=launch_id, toggle=0)
 
 
 class TestUtils(unittest.TestCase):
