@@ -1384,7 +1384,7 @@ def generate_schedule_message(call_type: str, chat: str):
 		launch_unix = datetime.datetime.utcfromtimestamp(row['net_unix'])
 
 		provider = row['lsp_name'] if len(row['lsp_name']) <= len('Arianespace') else row['lsp_short']
-		mission = row['name'].split('|')[0].strip()
+		mission = row['name'].split('|')[1].strip()
 
 		verified_date = bool(row['tbd_date'] == 0)
 		verified_time = bool(row['tbd_time'] == 0)
