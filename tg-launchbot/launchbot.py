@@ -25,6 +25,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler
 from telegram.ext import CallbackQueryHandler
 
+from spam import Spammer
 from api import api_call_scheduler
 from config import load_config, store_config
 from utils import (
@@ -44,236 +45,124 @@ from notifications import (
 
 '''
 *Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (May 2020)
-
 '''
-
-# TODO schedule: add "only show certain launches" button
-# TODO changelog: add "show changelog" button to /help
 
 def command_pre_handler(update, context):
 	'''
-	Before every command is processed, run command_pre_handler.
-	The purpose is to filter out spam, unallowed callers, update
-	statistics, etc.
+	Before every command is processed, command_pre_handler is ran.
+	The purpose is to filter out spam and unallowed callers, update
+	statistics, handle exceptions, etc.
 	'''
-	# extract message object from update
-	msg = update.message
-
 	# these were previously pulled with telepot.glance(), extract manually
-	content_type = msg['media_group_id']
-	chat = msg['chat']
+	content_type = update.message['media_group_id']
+	chat = update.message['chat']
 
-	# for admin/private chat checks; also might throw an error when kicked out of a group, so handle that here as well
+	''' for admin/private chat checks; also might throw an error when kicked out of a group,
+	so handle that here as well '''
 	try:
 		try:
 			chat_type = chat['type']
 		except KeyError:
 			chat_type = context.bot.getChat(chat)['type']
-	except telegram.error.BotWasKickedError:
-		'''
-		Bot kicked; remove corresponding chat IDs from notification database
 
-		This exception is effectively only triggered if we're handling a message
-		_after_ the bot has been kicked, e.g. after a bot restart.
-		'''
+	except telegram.error.RetryAfter as error:
+			''' Rate-limited by Telegram
+			https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this '''
+			retry_time = error.retry_after
+			logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
+			time.sleep(retry_time)
+
+			return False
+
+	except telegram.error.TimedOut as error:
+		logging.exception('🚧 Got a telegram.error.TimedOut!.')
+		return False
+
+	except telegram.error.ChatMigrated as error:
+		logging.info(f'⚠️ Group {anonymize_id(chat["id"])} migrated to {anonymize_id(error.new_chat_id)}')
+
+		# establish connection
 		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
-		cursor = conn.cursor()
+		cursor_ = conn.cursor()
 
-		cursor.execute("DELETE FROM notify WHERE chat = ?", (chat,))
-		conn.commit()
-		conn.close()
-
-		logging.info(f'⚠️ Bot removed from chat {anonymize_id(chat)} – notifications database cleaned [1]')
-		return
-
-	# debug updates here
-	logging.debug(f'content_type: {content_type}, chat: {chat}, chat_type: {chat_type}')
-
-	# group upgraded to a supergroup; migrate data
-	if 'migrate_to_chat_id' in msg:
-		old_ID = chat
-		new_ID = msg['migrate_to_chat_id']
-
-		logging.info(
-			f'⚠️ Group {anonymize_id(old_ID)} migrated to {anonymize_id(new_ID)}: migrating...')
-
-		# Establish connection
-		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
-		cursor = conn.cursor()
-
-		# replace old IDs with new IDs
-		cursor.execute("UPDATE notify SET chat = ? WHERE chat = ?", (new_ID, old_ID))
+		# replace old ids with new ids
+		cursor_.execute("UPDATE chats SET chat = ? WHERE chat = ?", (error.new_chat_id, chat['id']))
 		conn.commit()
 		conn.close()
 
 		logging.info('✅ Chat data migration complete!')
+		return True
 
-	# bot removed from chat
-	elif 'left_chat_member' in msg and msg['left_chat_member']['id'] == BOT_ID:
-		# bot kicked; remove corresponding chat IDs from notification database
+	except telegram.error.TelegramError as error:
+		'''
+		These exceptions are effectively only triggered when we're handling a message
+		_after_ the bot has been kicked, e.g. after a bot restart.
+		'''
+		if 'chat not found' in error.message:
+			logging.exception(f'⚠️ Chat {anonymize_id(chat["id"])} not found.')
+
+		elif 'bot was blocked' in error.message:
+			logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat["id"])}.')
+
+		elif 'user is deactivated' in error.message:
+			logging.exception(f'⚠️ User {anonymize_id(chat["id"])} was deactivated.')
+
+		elif 'bot was kicked from the supergroup chat' in error.message:
+			logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat["id"])}.')
+
+		elif 'bot is not a member of the supergroup chat' in error.message:
+			logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat["id"])}.')
+
+		elif "Can't parse entities" in error.message:
+			logging.exception('🛑 Error parsing message markdown!')
+			return False
+
 		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
-		cursor = conn.cursor()
+		cursor_ = conn.cursor()
 
-		cursor.execute("DELETE FROM notify WHERE chat = ?", (chat,))
+		cursor_.execute("DELETE FROM chats WHERE chat = ?", (chat['id']),)
 		conn.commit()
 		conn.close()
 
-		logging.info(f'⚠️ Bot removed from chat {anonymize_id(chat)} – notifications database cleaned [2]')
-		return
-
-	# detect if bot added to a new chat
-	elif 'new_chat_members' in msg or 'group_chat_created' in msg:
-		if 'new_chat_member' in msg:
-			try:
-				if BOT_ID in msg['new_chat_member']['id']:
-					pass
-				else:
-					return
-
-			except TypeError:
-				if msg['new_chat_member']['id'] == BOT_ID:
-					pass
-				else:
-					return
-		elif 'group_chat_created' in msg:
-			if msg['group_chat_created']:
-				pass
-			else:
-				return
-
-		reply_msg = f'''🚀 *Hi there!* I'm *LaunchBot*, a launch information and notifications bot!
-
-		*List of commands*
-		🔔 /notify adjust notification settings
-		🚀 /next shows the next launches
-		🗓 /schedule displays a simple flight schedule
-		📊 /statistics tells various statistics about the bot
-		✍️ /feedback send feedback/suggestion to the developer
-
-		⚠️ *Note for group chats* ⚠️ 
-		- Commands are *only* callable by group *admins* and *moderators* to reduce group spam
-		- If the bot has admin permissions (permission to delete messages), it will automatically remove commands it doesn't answer to
-
-		*Frequently asked questions* ❓
-		_How do I turn off a notification?_
-		- Use /notify@{BOT_USERNAME}: find the launch provider you want to turn notifications off for.
-
-		_I want less notifications!_
-		- You can choose at what times you receive notifications with /notify@{BOT_USERNAME}. You can edit these at the preferences menu (⚙️).
-
-		_Why does the bot only answer to some people?_
-		- You have to be an admin in a group to send commands.
-
-		LaunchBot version *{VERSION}* ✨
-		'''
-
-		context.bot.sendMessage(chat, inspect.cleandoc(reply_msg), parse_mode='Markdown')
-
-		notify(update, context)
-
-		logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat)}. Sent user the new inline keyboard. [1]')
-
-		return
-
-	try:
-		command_split = msg['text'].strip().split(' ')
-		command = command_split[0]
-	except KeyError:
-		pass
-	except Exception as error:
-		logging.exception(f'🛑 Error generating command split, returning. {error}')
-		logging.info(f'msg object: {msg}')
-		return
-
-	# verify that the user who sent this is not in spammers
-	try:
-		if msg['from']['id'] in ignored_users:
-			logging.info('😎 Message from spamming user ignored successfully')
-
-			return
-	except: # all users don't have a user ID, so check for the regular username as well
-		if 'author_signature' in msg:
-			if msg['author_signature'] in ignored_users:
-				logging.info('😎 Message from spamming user (no UID) ignored successfully')
-
-			return
-
-	# regular text — check if it's feedback. If not, return.
-	if content_type == 'text' and command_split[0][0] != '/':
-		if 'reply_to_message' in msg:
-			if msg['reply_to_message']['message_id'] in feedback_message_IDs and 'text' in msg:
-				logging.info(f'✍️ Received feedback: {msg["text"]}')
-
-				sender = context.bot.getChatMember(chat, msg['from']['id'])
-				if sender['status'] == 'creator' or sender['status'] == 'administrator' or chat_type == 'private':
-					context.bot.sendMessage(chat, f'😄 Thank you for your feedback!', reply_to_message_id=msg['message_id'])
-
-					try: # remove the original feedback message
-						context.bot.deleteMessage((chat, msg['reply_to_message']['message_id']))
-					except Exception as error:
-						logging.exception(f'Unable to remove sent feedback message with params chat={chat}, message_id={msg["reply_to_message"]["message_id"]} {error}')
-
-					if OWNER != 0:
-						context.bot.sendMessage(OWNER,
-							f'😄 *Received feedback* from `{anonymize_id(msg["from"]["id"])}`:\n{msg["text"]}',
-							parse_mode='MarkdownV2')
-
-		return
-
-	# if location in message, verify it's a time zone setup reply
-	if 'location' in msg and 'reply_to_message' in msg:
-		if chat in time_zone_setup_chats.keys():
-			if msg['from']['id'] == time_zone_setup_chats[chat][1] and msg['reply_to_message']['message_id'] == time_zone_setup_chats[chat][0]:
-				msg_identifier = (chat, time_zone_setup_chats[chat][0])
-				context.bot.deleteMessage(msg_identifier)
-
-				try:
-					context.bot.deleteMessage((chat, msg['message_id']))
-				except:
-					pass
-
-				latitude = msg['location']['latitude']
-				longitude = msg['location']['longitude']
-
-				timezone_str = TimezoneFinder().timezone_at(lng=longitude, lat=latitude)
-				timezone = pytz.timezone(timezone_str)
-
-				user_local_now = datetime.datetime.now(timezone)
-				user_utc_offset = user_local_now.utcoffset().total_seconds()/3600
-
-				if user_utc_offset % 1 == 0:
-					user_utc_offset = int(user_utc_offset)
-					utc_offset_str = f'+{user_utc_offset}' if user_utc_offset >= 0 else f'{user_utc_offset}'
-				else:
-					utc_offset_hours = math.floor(user_utc_offset)
-					utc_offset_minutes = int((user_utc_offset % 1) * 60)
-					utc_offset_str = f'{utc_offset_hours}:{utc_offset_minutes}'
-
-					utc_offset_str = f'+{utc_offset_str}' if user_utc_offset >= 0 else f'{utc_offset_str}'
-
-				new_text = f'''✅ Time zone successfully set!
-
-				Your time zone is *UTC{utc_offset_str} ({timezone_str})*
-
-				You can now return to other settings.'''
-
-				keyboard = InlineKeyboardMarkup(inline_keyboard = [[InlineKeyboardButton(text='⏮ Return to menu', callback_data=f'prefs/main_menu')]])
-				context.bot.sendMessage(chat, text=inspect.cleandoc(new_text), reply_markup=keyboard, parse_mode='Markdown')
-
-				# store user's timezone_str
-				update_time_zone_string(DATA_DIR, chat, timezone_str)
-
-
-		else:
-			logging.info(f'🗺 Location received, but chat not in time_zone_setup_chats.keys()')
-
-	# check for spam
-	if not timer_handle(command, chad, msg.from_user.id):
-		logging.info('✅ timer_handle successfully returned False')
+		logging.info(f'⚠️ Bot removed from chat {anonymize_id(chat["id"])} – notifications database cleaned [1]')
 		return False
-	else:
-		logging.info('✅ timer_handle successfully returned True')
-		return True
+
+	# filter spam
+	if not timer_handle(update, context, command, chat['id'], update.message.from_user.id):
+		blocked_user = anonymize_id(update.message.from_user.id)
+		blocked_chat = anonymize_id(chat)
+
+		logging.info(f'✋ [{command}] Spam prevented from {blocked_chat} by {blocked_user}.')
+		return False
+
+	# check if sender is an admin/creator, and/or if we're in a public chat
+	if chat_type != 'private':
+		try:
+			all_admins = update.message['chat']['all_members_are_administrators']
+		except:
+			all_admins = False
+
+		if not all_admins:
+			sender = context.bot.getChatMember(chat, update.message.from_user.id)
+			if sender['status'] != 'creator' and sender['status'] != 'administrator':
+				# check for bot's admin status and whether we can remove the message
+				bot_chat_specs = context.bot.getChatMember(chat, context.bot.getMe()['id'])
+				if bot_chat_specs['status'] == 'administrator':
+					try:
+						success = context.bot.deleteMessage((chat, update.message['message_id']))
+						if success:
+							logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat["id"])} ({anonymize_id(update.message.from_user.id)}): successfully deleted message! ✅')
+						else:
+							logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat["id"])} ({anonymize_id(update.message.from_user.id)}): unable to delete message (success != True. Type:{type(success)}, val:{success}) ⚠️')
+					except Exception as error:
+						logging.exception(f'⚠️ Could not delete message sent by non-admin: {error}')
+
+				else:
+					logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(update.message.from_user.id)}): could not remove.')
+
+				return False
+
+	return True
 
 
 # main loop-function for messages with flavor=chat
@@ -545,7 +434,7 @@ def callback_handler(update, context):
 	# verify input, assume (command/data/...) | (https://core.telegram.org/bots/api#callbackquery)
 	input_data = query_data.split('/')
 	msg = update.callback_query['message']
-	chat = from_id
+	chat = msg['chat']['id']
 
 	# check that the query is from an admin or an owner
 	try:
@@ -1208,19 +1097,91 @@ def callback_handler(update, context):
 
 def text_handler(update, context):
 	'''
-	[Enter module description]
-	
+	Handles the feedback command flow
+
 	Args:
 		update (TYPE): Description
 		context (TYPE): Description
 	'''
-	pass
+	# run pre-handler
+	if not command_pre_handler(update, context):
+		return
+
+	logging.info(f'update.message: {update.message}')
+	logging.info(f'vars: {vars(update.message)}')
+	logging.debug('Text handler ran!')
 
 
-def timer_handle(context, command, chat, user):
+def location_handler(update, context):
+	# if location in message, verify it's a time zone setup reply
+	chat = update.message['chat']
+
+	logging.debug('location_handler ran!')
+	logging.debug(update.message.reply_to_message)
+
+	if update.message.reply_to_message is not None:
+		if chat['id'] not in time_zone_setup_chats.keys():
+			logging.info('🗺 Location received, but chat not in time_zone_setup_chats')
+			return
+
+		if (update.message.from_user.id == time_zone_setup_chats[chat['id']][1]
+			and update.message['reply_to_message']['message_id'] == time_zone_setup_chats[chat['id']][0]):
+
+			# delete old message
+			context.bot.deleteMessage(chat['id'], time_zone_setup_chats[chat['id']][0])
+
+			try:
+				# remove the message sent by the user so their location isn't visible for long
+				context.bot.deleteMessage(chat['id'], update.message['message_id'])
+			except:
+				pass
+
+			latitude = update.message['location']['latitude']
+			longitude = update.message['location']['longitude']
+
+			timezone_str = TimezoneFinder().timezone_at(lng=longitude, lat=latitude)
+			timezone = pytz.timezone(timezone_str)
+
+			user_local_now = datetime.datetime.now(timezone)
+			user_utc_offset = user_local_now.utcoffset().total_seconds()/3600
+
+			if user_utc_offset % 1 == 0:
+				user_utc_offset = int(user_utc_offset)
+				utc_offset_str = f'+{user_utc_offset}' if user_utc_offset >= 0 else f'{user_utc_offset}'
+			else:
+				utc_offset_hours = math.floor(user_utc_offset)
+				utc_offset_minutes = int((user_utc_offset % 1) * 60)
+				utc_offset_str = f'{utc_offset_hours}:{utc_offset_minutes}'
+
+				utc_offset_str = f'+{utc_offset_str}' if user_utc_offset >= 0 else f'{utc_offset_str}'
+
+			new_text = f'''🌍 *LaunchBot* | Time zone settings
+
+			✅ Time zone successfully set!
+			Your time zone is *UTC{utc_offset_str} ({timezone_str})*
+
+			You can now return to other settings.'''
+
+			# construct keyboard
+			keyboard = InlineKeyboardMarkup(
+				inline_keyboard = [[
+					InlineKeyboardButton(text='⏮ Return to menu', callback_data='prefs/main_menu')]])
+
+			# send message
+			context.bot.sendMessage(
+				chat['id'], text=inspect.cleandoc(new_text),
+				reply_markup=keyboard, parse_mode='Markdown')
+
+			# store user's timezone_str
+			update_time_zone_string(DATA_DIR, chat['id'], timezone_str)
+
+
+def timer_handle(update, context, command, chat, user):
 	''' Summary
 	Restrict command send frequency to avoid spam, by storing
 	user IDs and when they have called a command in memory.
+
+	TODO use redis/memcached
 	'''
 	# remove the '/' command prefix
 	command = command.strip('/')
@@ -1262,36 +1223,19 @@ def timer_handle(context, command, chat, user):
 
 		last_called = chat_command_calls[chat][command]
 
-	if last_called == '0': # never called; store now
-		chat_command_calls[chat][command] = str(now_called) # stringify datetime object, store
+	if last_called == '0':
+		# never called: stringify datetime object, store
+		chat_command_calls[chat][command] = str(now_called)
 
 	else:
-		last_called = datetime.datetime.strptime(last_called, "%Y-%m-%d %H:%M:%S.%f") # unstring datetime object
+		# unstring datetime object
+		last_called = datetime.datetime.strptime(last_called, "%Y-%m-%d %H:%M:%S.%f")
 		time_since = abs(now_called - last_called)
 
 		if time_since.seconds > cooldown:
-			chat_command_calls[chat][command] = str(now_called) # stringify datetime object, store
+			# stringify datetime object, store
+			chat_command_calls[chat][command] = str(now_called)
 		else:
-			class Spammer:
-				def __init__(self, uid):
-					self.id = uid
-					self.offenses = 1
-					self.spam_times = {timer()}
-
-				def get_offenses(self):
-					return self.offenses
-
-				def add_offense(self):
-					self.offenses += 1
-					self.spam_times.add(timer())
-
-				def clear_offenses(self):
-					self.offenses = 0
-					self.spam_times = set()
-
-				def offense_delta(self):
-					pass
-
 			spammer = next((spammer for spammer in spammers if spammer.id == user), None)
 			if spammer is not None:
 				spammer.add_offense()
@@ -1309,7 +1253,9 @@ def timer_handle(context, command, chat, user):
 							'⚠️ *Please do not spam the bot.* Your user ID has been blocked and all commands by you will be ignored for an indefinite amount of time.',
 							parse_mode='Markdown')
 					else:
-						logging.info(f'''✅ Successfully avoided blocking a user on bot startup! Run_time was {run_time.seconds} seconds.
+						run_time = int(time.time()) - STARTUP_TIME
+						logging.info(f'''
+							✅ Successfully avoided blocking a user on bot startup! Run_time was {run_time} seconds.
 							Spam offenses set to 0 for user {anonymize_id(user)} from original {spammer.get_offenses()}''')
 						spammer.clear_offenses()
 
@@ -1328,6 +1274,10 @@ def start(update, context):
 	'''
 	Responds to /start and /help commands.
 	'''
+	# run pre-handler
+	if not command_pre_handler(update, context):
+		return
+
 	# construct message
 	reply_msg = f'''🚀 *Hi there!* I'm *LaunchBot*, a launch information and notifications bot!
 
@@ -1364,6 +1314,9 @@ def start(update, context):
 		notify(update, context)
 		logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat_id)}. Sent user the new inline keyboard. [2]')
 
+	# update stats
+	update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
+
 
 def name_from_provider_id(lsp_id):
 	'''
@@ -1389,7 +1342,10 @@ def notify(update, context):
 	Handles responding to the /notify command, which also generated the
 	base message than can be manipulated with callback queries.
 	'''
-	# send the user the base keyboard where we start working up from.
+	# run pre-handler
+	if not command_pre_handler(update, context):
+		return
+
 	message_text = '''
 	🚀 *LaunchBot* | Notification settings
 
@@ -1442,11 +1398,18 @@ def notify(update, context):
 	context.bot.sendMessage(
 		chat, inspect.cleandoc(message_text), parse_mode='Markdown', reply_markup=keyboard)
 
+	# update stats
+	update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
+
 
 def feedback(update, context):
 	'''
 	Receive feedback from users.
 	'''
+	# run pre-handler
+	if not command_pre_handler(update, context):
+		return
+
 	chat_id = update.message['chat']['id']
 
 	# feedback called by $chat; send the user a message with ForceReply in it, so we can get a response
@@ -1470,10 +1433,16 @@ def feedback(update, context):
 	track of what to parse as feedback, and what not to '''
 	feedback_message_IDs.add(ret['message_id'])
 
+	# update stats
+	update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
+
 
 def generate_schedule_message(call_type: str, chat: str):
 	'''
 	Generates the schedule message and keyboard.
+
+	TODO: add "only show launches with verified dates" button
+	TODO: add "only show subscribed launches" button
 	'''
 	# open db connection
 	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
@@ -1658,6 +1627,10 @@ def flight_schedule(update, context):
 	'''
 	Display a very simple schedule for all upcoming flights.
 	'''
+	# run pre-handler
+	if not command_pre_handler(update, context):
+		return
+
 	chat_id = update.message['chat']['id']
 
 	# generate message
@@ -1665,6 +1638,9 @@ def flight_schedule(update, context):
 
 	# send
 	context.bot.sendMessage(chat_id, schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
+
+	# update stats
+	update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
 
 
 def generate_next_flight_message(chat, current_index: int):
@@ -1698,7 +1674,6 @@ def generate_next_flight_message(chat, current_index: int):
 	if len(query_return) == 0:
 		cmd, user_notif_enabled = 'all', False
 		enabled, disabled = [], []
-
 	else:
 		user_notif_enabled = None
 		cmd = None
@@ -2009,6 +1984,10 @@ def next_flight(update, context):
 	Return the next flight. Message is generated
 	with the helper function generate_next_flight_message.
 	'''
+	# run pre-handler
+	if not command_pre_handler(update, context):
+		return
+
 	# chat ID
 	chat_id = update.message['chat']['id']
 
@@ -2018,6 +1997,9 @@ def next_flight(update, context):
 	# send message
 	context.bot.sendMessage(
 		chat_id, message, reply_markup=keyboard, parse_mode='MarkdownV2')
+
+	# update stats
+	update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
 
 
 def generate_statistics_message() -> str:
@@ -2117,9 +2099,15 @@ def statistics(update, context):
 	Return statistics for LaunchBot. Statistics are generated
 	with the helper function generate_statistics_message.
 	'''
+	# run pre-handler
+	if not command_pre_handler(update, context):
+		return
 
 	# chat ID
 	chat_id = update.message['chat']['id']
+
+	# update stats
+	update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
 
 	# generate message
 	stats_str = generate_statistics_message()
@@ -2134,23 +2122,22 @@ def statistics(update, context):
 		chat_id, stats_str, reply_markup=keyboard, parse_mode='Markdown')
 
 
-# update bot token
-def update_token(data_dir: str, update_tokens: set):
+def update_token(data_dir: str, new_tokens: set):
+	'''
+	Used to update the bot token.
+	'''
 	# create /data and /chats
-	if not os.path.isdir(data_dir):
-		create_config(data_dir)
+	config_ = load_config(data_dir)
 
-	config = load_config(data_dir)
-
-	if 'bot_token' in update_tokens:
+	if 'bot_token' in new_tokens:
 		token_input = str(input('Enter the bot token for LaunchBot: '))
 		while ':' not in token_input:
 			print('Please try again – bot-tokens look like "123456789:ABHMeJViB0RHL..."')
 			token_input = str(input('Enter the bot token for launchbot: '))
 
-		config['bot_token'] = token_input
+		config_['bot_token'] = token_input
 
-	store_config(config, data_dir)
+	store_config(config_, data_dir)
 
 	time.sleep(2)
 	print('Token update successful!\n')
@@ -2158,6 +2145,7 @@ def update_token(data_dir: str, update_tokens: set):
 
 def sigterm_handler(signal, frame):
 	logging.info(f'✅ Got SIGTERM. Runtime: {datetime.datetime.now() - STARTUP_TIME}.')
+	logging.info(f'Signal: {signal}, frame: {frame}.')
 	sys.exit(0)
 
 
@@ -2168,7 +2156,7 @@ if __name__ == '__main__':
 	global DATA_DIR, STARTUP_TIME
 
 	# current version, set DATA_DIR
-	VERSION = '1.6.0'
+	VERSION = '1.6.0-rc1'
 	DATA_DIR = 'launchbot'
 
 	# log startup time, set default start mode
@@ -2214,7 +2202,7 @@ if __name__ == '__main__':
 		if START is False:
 			sys.exit('No start command given – exiting. To start the bot, include -start in startup options.')
 
-	# load config, create bot
+	# load config, create bot TODO check for telegram.error.InvalidToken
 	config = load_config(data_dir=DATA_DIR)
 	updater = Updater(config['bot_token'], use_context=True)
 
@@ -2380,9 +2368,9 @@ if __name__ == '__main__':
 	dispatcher.add_handler(
 		CallbackQueryHandler(callback_handler))
 
-	# register text message handler (feedback, time zone set)
-	dispatcher.add_handler(
-		MessageHandler(Filters.text & ~Filters.command, callback=text_handler))
+	# register text message handler (text for feedback, location for time zone stufft)
+	dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, callback=text_handler))
+	dispatcher.add_handler(MessageHandler(Filters.location, callback=location_handler))
 
 	# all up to date, start polling
 	updater.start_polling()
