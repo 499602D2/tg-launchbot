@@ -1,7 +1,7 @@
 # LaunchBot – a rocket launch information and notifications bot for Telegram 🚀
 LaunchBot keeps you up to date with what's going up, around the clock, since 2019. Reachable as [@rocketrybot](https://t.me/rocketrybot) on Telegram.
 
-LaunchBot uses the LaunchLibrary2 API to fetch launch information on intelligently scheduled intervals (due to a quite strict API call-count limit introduced with LL2). The bot provides multiple forms of information: notifications, information about upcoming flights, and a simple flight schedule showing the upcoming flights at a glance. 
+LaunchBot uses the LaunchLibrary2 API to fetch launch information on intelligently scheduled intervals. The bot provides multiple forms of information: launch notifications, information about upcoming flights, and a simple flight schedule showing upcoming flights at a glance. 
 
 ✨ **Other features include...**
 - user-configurable notifications on...
@@ -15,7 +15,7 @@ LaunchBot uses the LaunchLibrary2 API to fetch launch information on intelligent
 - automatically cleared notification messages
 - neat statistics about the bot
 - direct feedback to the developer via the bot
-- smart spam management
+- spam management
 - simple information refresh with Telegram's message buttons,
 
 and tons of other things!
@@ -34,7 +34,7 @@ SQLite: `launchbot-data.db`: houses all data the bot needs to operate, including
 
 JSON: `bot-settings.json`: used to configure the bot by setting the Telegram bot API key, alongside with some other configuration information.
 
-You can specify your personal account's Telegram user ID in bot_settings.json in the form `owner: your_user_id`. This disabled the logging of commands sent by you, and sends a notification for new feedback.
+You can specify your personal account's Telegram user ID in bot_settings.json in the form `owner: "your_user_id"`. This disabled the logging of commands sent by you, and sends a notification for new feedback.
 
 **🔒 Privacy**
 
@@ -126,9 +126,9 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 
 	- ✅ fully integrate new API and notifications systems with LaunchBot 1.5
 
-	- complete pre_handler(), so we can update time zone information and get feedback
+	- ✅ complete pre_handler(), so we can update time zone information and get feedback
 
-	- re-add statistics to all needed places
+	- ✅ re-add statistics to all needed places
 
 	- improve json-parsing performance by using pooling
 
