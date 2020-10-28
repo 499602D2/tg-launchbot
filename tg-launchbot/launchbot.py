@@ -428,7 +428,6 @@ def callback_handler(update, context):
 		if chat != OWNER:
 			logging.info(f'🔀 {map_country_code_to_flag(country_code)}-view loaded for {anonymize_id(chat)}')
 
-
 	try:
 		query = update.callback_query
 		query_data = update.callback_query['data']
@@ -864,9 +863,9 @@ def callback_handler(update, context):
 				This tool allows you to set your time zone so notifications can show your local time.
 
 				*Choose which method you'd like to use:*
-				- *automatic:* uses your location to define your locale (e.g. Europe/Berlin). DST support.
+				🌎 *automatic:* uses your location to define your locale (e.g. Europe/Berlin). DST support.
 
-				- *manual:* no DST support (!), not recommended.
+				🕹 *manual:* no DST support, not recommended.
 
 				Your current time zone is *UTC{load_time_zone_status(DATA_DIR, chat, readable=True)}*'''
 
@@ -922,44 +921,6 @@ def callback_handler(update, context):
 					text=inspect.cleandoc(text), parse_mode='Markdown',
 					reply_markup=keyboard, disable_web_page_preview=True
 				)
-
-			elif input_data[2] == 'start':
-				if context.bot.getChat(chat)['type'] != 'private':
-					context.bot.sendMessage(
-						chat, text='⚠️ This method only works for private chats. This is a Telegram API limitation.')
-
-				new_text = '🌎 Set your time zone with the button below, where your keyboard should be. To cancel, select "cancel time zone setup" from the message above.'
-
-				# construct the keyboard so we can request a location
-				keyboard = ReplyKeyboardMarkup(
-					resize_keyboard=True,
-					one_time_keyboard=True,
-					keyboard=[
-						[KeyboardButton(text='📍 Set your time zone', request_location=True)]
-					]
-				)
-
-				new_inline_text = '❗️ To cancel time zone setup and remove the keyboard, use the button below.'
-				inline_keyboard = InlineKeyboardMarkup(
-					inline_keyboard = [
-						[InlineKeyboardButton(text='🚫 Cancel time zone setup', callback_data='prefs/timezone/cancel')]
-					]
-				)
-
-				query.edit_message_text(
-					text=new_inline_text, reply_markup=inline_keyboard, parse_mode='Markdown')
-
-				sent_message = context.bot.sendMessage(
-					chat_id=chat, text=new_text, reply_markup=keyboard, parse_mode='Markdown')
-
-				''' 
-				query.edit_message_reply_markup(
-					(sent_message['chat']['id'], sent_message['message_id']), ForceReply(selective=True))
-				'''
-				query.edit_message_reply_markup(ForceReply(selective=True))
-				query.answer(text='🌎 Time zone setup loaded')
-
-				#time_zone_setup_users.append(chat)
 
 			elif input_data[2] == 'cancel':
 				rand_planet = random.choice(('🌍', '🌎', '🌏'))
@@ -1062,9 +1023,9 @@ def callback_handler(update, context):
 				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time.
 
 				*Choose which method you'd like to use:*
-				- *manual:* no DST support, not recommended.
-				
-				- *automatic:* uses your location to define your locale (e.g. Europe/Berlin). DST support.
+				🌎 *automatic:* uses your location to define your locale (e.g. Europe/Berlin). DST support.
+
+				🕹 *manual:* no DST support, not recommended.
 
 				Your current time zone is *UTC{load_time_zone_status(data_dir=DATA_DIR, chat=chat, readable=True)}*
 				'''
@@ -1151,9 +1112,7 @@ def location_handler(update, context):
 	# if location in message, verify it's a time zone setup reply
 	chat = update.message['chat']
 
-	logging.debug('location_handler ran!')
-	logging.debug(update.message.reply_to_message)
-
+	# verify it's a reply to a message
 	if update.message.reply_to_message is not None:
 		if chat['id'] not in time_zone_setup_chats.keys():
 			logging.info('🗺 Location received, but chat not in time_zone_setup_chats')
@@ -2232,7 +2191,7 @@ if __name__ == '__main__':
 					DEBUG_MODE = True
 
 		if len(update_tokens) != 0:
-			update_token(data_dir=DATA_DIR, update_tokens=update_tokens)
+			update_token(data_dir=DATA_DIR, new_tokens=update_tokens)
 
 		if START is False:
 			sys.exit('No start command given – exiting. To start the bot, include -start in startup options.')
