@@ -213,6 +213,11 @@ def load_bulk_tz_offset(data_dir: str, chat_id_set: set) -> dict:
 	conn.row_factory = sqlite3.Row
 	cursor = conn.cursor()
 
+	# verify we actually have chats to pull data for
+	if len(chat_id_set) == 0:
+		conn.close()
+		return {}
+
 	''' Construct the sql select string: this isn't idead, but the only way I've got
 	the sql IN () select statement to work in Python. Oh well. '''
 	chats_str, set_len = '', len(chat_id_set)
@@ -222,7 +227,11 @@ def load_bulk_tz_offset(data_dir: str, chat_id_set: set) -> dict:
 			chats_str += ','
 
 	# exceute our fancy select
-	cursor.execute(f'SELECT chat, time_zone, time_zone_str FROM chats WHERE chat IN ({chats_str})')
+	try:
+		cursor.execute(f'SELECT chat, time_zone, time_zone_str FROM chats WHERE chat IN ({chats_str})')
+	except sqlite3.OperationalError:
+		return {}
+
 	query_return = cursor.fetchall()
 	conn.close()
 
