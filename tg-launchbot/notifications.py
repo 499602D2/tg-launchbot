@@ -662,7 +662,7 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 	# map notify_time to a list index, so we can check for notify preference
 	notify_index = {
 		'notify_24h': 0, 'notify_12h': 1,
-		'notify_60min': 2, 'notify_5m': 3}[notify_class]
+		'notify_60min': 2, 'notify_5min': 3}[notify_class]
 
 	# parse all chat rows to figure out who to send the notification to
 	for chat_row in query_return:
