@@ -39,9 +39,8 @@ from timezone import (
 	update_time_zone_value, load_time_zone_status)
 
 from notifications import (
-	send_postpone_notification, get_user_notifications_status, toggle_notification,
-	update_notif_preference, get_notif_preference, toggle_launch_mute, get_notify_list,
-	load_mute_status, remove_previous_notification, notification_handler)
+	get_user_notifications_status, toggle_notification,
+	update_notif_preference, get_notif_preference, toggle_launch_mute,)
 
 '''
 *Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (May 2020)
@@ -2022,6 +2021,10 @@ def next_flight(update, context):
 
 
 def generate_statistics_message() -> str:
+	'''
+	Returns the message body for statistics command. Only a helper function,
+	which allows us to respond to callback queries as well.
+	'''
 	# read stats db
 	stats_conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 	stats_conn.row_factory = sqlite3.Row
@@ -2035,7 +2038,6 @@ def generate_statistics_message() -> str:
 		# parse returned global data
 		notifs = stats['notifications']
 		api_reqs = stats['api_requests']
-		db_updates = stats['db_updates']
 		commands = stats['commands']
 		data = stats['data']
 		last_db_update = stats['last_api_update']
@@ -2180,15 +2182,15 @@ if __name__ == '__main__':
 
 	if len(sys.argv) == 1:
 		err_str = '''
-		Give at least one of the following arguments:
-			launchbot.py [-start, -newBotToken, -log]\n
+		⚠️ Give at least one of the following arguments:
+		  launchbot.py [-start, -newBotToken, -log]
 		
 		E.g.: python3 launchbot.py -start
-			-start starts the bot
-			-newBotToken changes the bot API token
-			-log stores some logs
+		  -start starts the bot
+		  -newBotToken changes the bot API token
+		  -log stores some logs
 		'''
-		
+
 		print(inspect.cleandoc(err_str))
 		sys.exit('Program ending...')
 
@@ -2290,23 +2292,12 @@ if __name__ == '__main__':
 	'''
 	global LSP_IDs
 	LSP_IDs = {
-		121: 	['SpaceX', '🇺🇸'],
-		147: 	['Rocket Lab', '🇺🇸'],
-		265:	['Firefly', '🇺🇸'],
-		99: 	['Northrop Grumman', '🇺🇸'],
-		115: 	['Arianespace', '🇪🇺'],
-		124: 	['ULA', '🇺🇸'],
-		98: 	['Mitsubishi Heavy Industries', '🇯🇵'],
-		1002:	['Interstellar Tech.', '🇯🇵'],
-		88: 	['CASC', '🇨🇳'],
-		190: 	['Antrix Corporation', '🇮🇳'],
-		122: 	['Sea Launch', '🇷🇺'],
-		118: 	['ILS', '🇺🇸🇷🇺'],
-		193: 	['Eurockot', '🇪🇺🇷🇺'],
-		119:	['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'],
-		123:	['Starsem', '🇪🇺🇷🇺'],
-		194:	['ExPace', '🇨🇳'],
-		63:		['Roscosmos', '🇷🇺']
+		121: ['SpaceX', '🇺🇸'], 147: ['Rocket Lab', '🇺🇸'], 265:['Firefly', '🇺🇸'],
+		99: ['Northrop Grumman', '🇺🇸'], 115: ['Arianespace', '🇪🇺'], 124: ['ULA', '🇺🇸'],
+		98: ['Mitsubishi Heavy Industries', '🇯🇵'], 1002:['Interstellar Tech.', '🇯🇵'],
+		88: ['CASC', '🇨🇳'], 190: ['Antrix Corporation', '🇮🇳'], 122: ['Sea Launch', '🇷🇺'],
+		118: ['ILS', '🇺🇸🇷🇺'], 193: ['Eurockot', '🇪🇺🇷🇺'], 119: ['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'],
+		123: ['Starsem', '🇪🇺🇷🇺'], 194: ['ExPace', '🇨🇳'], 63: ['Roscosmos', '🇷🇺']
 	}
 
 	# start command timers, store in memory instead of storage to reduce disk writes
@@ -2329,13 +2320,12 @@ if __name__ == '__main__':
 	# handle sigterm
 	signal.signal(signal.SIGTERM, sigterm_handler)
 
-	# save log
+	# save log to disk
 	log = os.path.join(DATA_DIR, 'log-file.log')
-	# logging.basicConfig(filename=log...)
 
-	# init log
+	# init log (disk)
 	logging.basicConfig(
-		level=logging.DEBUG, format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
+		filename=log, level=logging.DEBUG, format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
 
 	# disable logging for urllib and requests because jesus fuck they make a lot of spam
 	logging.getLogger('requests').setLevel(logging.CRITICAL)
@@ -2347,6 +2337,14 @@ if __name__ == '__main__':
 	logging.getLogger('telegram.ext.updater').setLevel(logging.ERROR)
 	logging.getLogger('telegram.vendor').setLevel(logging.ERROR)
 	logging.getLogger('telegram.error.TelegramError').setLevel(logging.ERROR)
+
+	if not DEBUG_MODE:
+		# init console log if not in debug_mode
+		console = logging.StreamHandler()
+		console.setLevel(logging.DEBUG)
+
+		# add the handler to the root logger
+		logging.getLogger().addHandler(console)
 
 	# add color
 	coloredlogs.install(level='DEBUG')
@@ -2411,7 +2409,9 @@ if __name__ == '__main__':
 			# on exit, show cursor as otherwise it'll stay hidden
 			cursor.show()
 			run_time = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME), True)
-			sys.exit(f'\n🔶 Program ending... Runtime: {run_time}.')
+			run_time_str = f'\n🔶 Program ending... Runtime: {run_time}.'
+			logging.warning(run_time_str)
+			sys.exit('Press ctrl+c again to quit!')
 
 	else:
 		while True:
