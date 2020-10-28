@@ -391,70 +391,55 @@ def get_notif_preference(db_path: str, chat: str) -> tuple:
 		int(notif_preferences[2]), int(notif_preferences[3]))
 
 
-# TODO rewrite for 1.6
-def toggle_launch_mute(chat: str, launch_id: str, toggle: str):
-	data_dir = 'data'
-	if not os.path.isfile(os.path.join(data_dir,'launchbot-data.db')):
-		create_notify_database()
-
-	try:
-		int(launch_provider)
-		logging.info(f'⚠️ Integer launch_provider value provided to toggle_launch_mute! \
-			launch_provider={launch_provider}, launch_id={launch_id}, toggle={toggle}')
-		launch_provider = name_from_provider_id(launch_provider)
-		logging.info(f'⚙️ Related integer value to provider name: {launch_provider}')
-	except:
-		pass
-
+def toggle_launch_mute(db_path: str, chat: str, launch_id: str, toggle: int):
 	# get mute status
-	conn = sqlite3.connect(os.path.join(data_dir,'launchbot-data.db'))
-	c = conn.cursor()
+	conn = sqlite3.connect(os.path.join(db_path,'launchbot-data.db'))
+	conn.row_factory = sqlite3.Row
+	cursor = conn.cursor()
+
+	# stringify chat ID
+	chat = str(chat)
 
 	# pull the current muted_launches field
-	c.execute("SELECT muted_launches FROM notify WHERE chat = ? AND keyword = ?", (chat, launch_provider))
-	query_return = c.fetchall()
-
-	# mute
-	if toggle == '1':
-		if len(query_return) == 0:
-			new_mute_string = str(launch_id)
-		else:
-			if query_return[0][0] is None:
-				new_mute_string = str(launch_id)
-
-			elif query_return[0][0] != '':
-				if launch_id in query_return[0][0].split(','):
-					new_mute_string = query_return[0][0]
-				else:
-					new_mute_string = f'{query_return[0][0]},{launch_id}'
-			else:
-				new_mute_string = f'{launch_id}'
-
-			new_mute_string = new_mute_string.replace(f'None,', '')
-
-	# unmute
-	elif toggle == '0':
-		new_mute_string = ''
-		if len(query_return) == 0:
-			pass
-		else:
-			mute_string = query_return[0][0]
-			if mute_string is None:
-				new_mute_string = str(launch_id)
-			elif f'{launch_id},' in mute_string:
-				new_mute_string = mute_string.replace(f'{launch_id},', '')
-			elif f',{launch_id}' in mute_string:
-				new_mute_string = mute_string.replace(f',{launch_id}', '')
-			else:
-				new_mute_string = mute_string.replace(f'{launch_id}', '')
-
-			new_mute_string = new_mute_string.replace(f'None,', '')
+	cursor.execute("SELECT muted_by FROM launches WHERE unique_id = ?", (launch_id,))
+	query_return = [dict(row) for row in cursor.fetchall()]
 
 	if len(query_return) == 0:
-		c.execute("INSERT INTO notify (chat, keyword, muted_launches, enabled) VALUES (?, ?, ?, ?)", (chat, launch_provider, new_mute_string, 1))
-	else:
-		c.execute("UPDATE notify SET muted_launches = ? WHERE chat = ? AND keyword = ?", (new_mute_string, chat, launch_provider))
+		logging.warning(f'No launches found to mute with launch_id={launch_id}')
+		return
 
+	if query_return[0]['muted_by'] is not None:
+		muted_by = query_return[0]['muted_by'].split(',')
+	else:
+		muted_by = []
+
+	if chat in muted_by and toggle == 0:
+		# if chat is in muted_by, remove
+		muted_by.remove(chat)
+
+	elif chat not in muted_by and toggle == 1:
+		# chat isn't in mutedd_by and toggle==1: add to muted_by
+		muted_by.append(chat)
+
+	elif chat not in muted_by and toggle == 0 or chat in muted_by and toggle == 1:
+		# handle odd cases that should never happen
+		if toggle == 0:
+			logging.warning(f'Chat={chat} not found in muted_by and called with toggle==0!')
+		elif toggle == 1:
+			logging.warning(f'Chat={chat} found in muted_by, but called with toggle==1!')
+
+		return
+
+	# construct the new string we'll then insert
+	muted_by_str = ','.join(muted_by)
+
+	if len(muted_by_str) == 0:
+		muted_by_str = None
+
+	# insert
+	cursor.execute('UPDATE launches SET muted_by = ? WHERE unique_id = ?', (muted_by_str, launch_id))
+
+	# commit, close
 	conn.commit()
 	conn.close()
 
@@ -610,7 +595,6 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 	return notification_list
 
 
-# TODO integrate with all checks etc. for 1.6
 def send_notification(
 	chat: str, message: str, launch_id: str, lsp_name: str, notif_class: str,
 	bot: 'telegram.bot.Bot', tz_tuple: tuple, net_unix: int, db_path: str):
@@ -668,22 +652,23 @@ def send_notification(
 
 	except telegram.error.TelegramError as error:
 		if 'chat not found' in error.message:
-			logging.exception(f'⚠️ Chat {anonymize_id(chat)} not found – cleaning notify database... Error: {error}')
+			logging.exception(f'⚠️ Chat {anonymize_id(chat)} not found. Error: {error}')
 
 		elif 'bot was blocked' in error.message:
-			logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat)} – cleaning notify database...')
+			logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat)}. Error: {error}')
 
 		elif 'user is deactivated' in error.message:
-			logging.exception(f'⚠️ User {anonymize_id(chat)} was deactivated – cleaning notify database... Error: {error}')
+			logging.exception(f'⚠️ User {anonymize_id(chat)} was deactivated. Error: {error}')
 
 		elif 'bot was kicked from the supergroup chat' in error.message:
-			logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database... Error: {error}')
+			logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)}. Error: {error}')
 
 		elif 'bot is not a member of the supergroup chat' in error.message:
-			logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)} – cleaning notify database... Error: {error}')
+			logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)}. Error: {error}')
 		else:
 			logging.exception(f'⚠️ Unhandled telegram.error.TelegramError in send_notification: {error}')
 
+		logging.info('🗃 Cleaning notify database...')
 		clean_notify_database(db_path, chat)
 		return True, None
 
@@ -1069,7 +1054,6 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int,
 
 	# load notification statuses for launches
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
-	conn.row_factory = sqlite3.Row
 	cursor = conn.cursor()
 
 	# fields to be selected
@@ -1127,7 +1111,7 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int,
 						notif_send_times[send_time][uid] = notify_class_map[enum]
 
 	# clear previously stored notifications
-	logging.debug(f'🚮 Clearing previously queued notifications...')
+	logging.debug('🚮 Clearing previously queued notifications...')
 	cleared_count = 0
 	for job in scheduler.get_jobs():
 		if 'notification' in job.id:
