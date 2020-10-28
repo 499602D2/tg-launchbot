@@ -16,6 +16,7 @@ import time
 import sqlite3
 import logging
 import datetime
+import inspect
 
 from utils import time_delta_to_legible_eta, reconstruct_message_for_markdown
 
@@ -118,7 +119,8 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 	Returns:
 		None
 	'''
-	def verify_no_net_slip(launch_object: 'LaunchLibrary2Launch', cursor: sqlite3.Cursor) -> bool:
+	def verify_no_net_slip(
+		launch_object: 'LaunchLibrary2Launch', cursor: sqlite3.Cursor) -> (bool, tuple):
 		'''
 		Verify the NET of the launch hasn't slipped forward: if it has, verify
 		that we haven't sent a notification: if we have, send a postpone
@@ -132,7 +134,7 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 
 		# compare NETs: if they match, return
 		if launch_db['net_unix'] == launch_object.net_unix:
-			return False
+			return (False, ())
 
 		# NETs don't match: calculate slip (diff), verify we haven't sent any notifications
 		net_diff = launch_object.net_unix - launch_db['net_unix']
@@ -184,28 +186,28 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 
 			# launch name: handle possible IndexError as well, even while this should never happen
 			try:
-				launch_name = launch_object.name.split('|')[1]
+				launch_name = launch_object.name.split('|')[1].strip()
 			except IndexError:
 				launch_name = launch_object.name
 
 			# construct the postpone message
-			postpone_message = f'''
-			📢 *{launch_name}* has been postponed by {postpone_str}.
-			*{launch_object.lsp_name}* is now targeting lift-off on *{date_str}* at *{launch_time} UTC*.\n\n
-			⏱ {next_attempt_eta_str} until next launch attempt.\n\n
-			'''
+			postpone_msg = f'📢 *{launch_name}* has been postponed by {postpone_str}. '
+			postpone_msg += f'*{launch_object.lsp_name}* is now targeting lift-off on *DATEHERE* at *LAUNCHTIMEHERE*.'
+			postpone_msg += f'\n\n⏱ {next_attempt_eta_str} until next launch attempt.'
 
 			# reconstruct
-			postpone_message = reconstruct_message_for_markdown(postpone_message)
+			postpone_msg = reconstruct_message_for_markdown(postpone_msg)
 
 			# append the manually escaped footer
-			postpone_message += f'''
-			ℹ️ _You will be re\-notified of this launch\. For detailed info\, use \/next\@{bot_username}\.
-			To disable\, mute this launch with the button below\._
-			'''
+			postpone_msg += '\n\nℹ️ _You will be re\-notified of this launch\. '
+			postpone_msg += f'For detailed info\, use \/next\@{bot_username}\. '
+			postpone_msg += 'To disable\, mute this launch with the button below\._'
 
-			# TODO actually send postpone notification
-			logging.info(f'🎉 postpone_str generated: {postpone_message}')
+			# clean message
+			postpone_msg = inspect.cleandoc(postpone_msg)
+
+			# log the message
+			logging.info(f'📢 postpone_msg generated:\n{postpone_msg}')
 
 			# generate insert statement for db update
 			insert_statement = '=?,'.join(notification_states.keys()) + '=?'
@@ -220,7 +222,13 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 			logging.info(f'🚩 Notification states reset for launch_id={launch_object.unique_id}!')
 			logging.info(f'ℹ️ Postponed by {postpone_str}. New states: {notification_states}')
 
-			return True
+			''' return bool + a tuple we can use to send the postpone notification easily
+			(launch_object, message) '''
+			postpone_tup = (launch_object, postpone_msg)
+
+			return (True, postpone_tup)
+
+		return (False, ())
 
 	# check if folders exist
 	if not os.path.isfile(os.path.join(db_path, 'launchbot-data.db')):
@@ -239,6 +247,7 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 		create_launch_db(db_path=db_path, cursor=cursor)
 
 	# loop over launch objcets in launch_set
+	slipped_launches = set()
 	for launch_object in launch_set:
 		try: # try inserting as new
 			# set fields and values to be inserted according to available keys/values
@@ -265,16 +274,28 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 			set_str = ' = ?, '.join(update_fields) + ' = ?'
 
 			# verify launch hasn't been postponed
-			net_slipped = verify_no_net_slip(launch_object=launch_object, cursor=cursor)
+			net_slipped, postpone_tuple = verify_no_net_slip(launch_object=launch_object, cursor=cursor)
+
+			if net_slipped:
+				slipped_launches.add(postpone_tuple)
 
 			try:
-				cursor.execute(f"UPDATE launches SET {set_str} WHERE unique_id = ?", tuple(update_values) + (launch_object.unique_id,))
-				cursor.execute(f"UPDATE launches SET last_updated = ? WHERE unique_id = ?", (api_update,) + (launch_object.unique_id,))
+				cursor.execute(f"UPDATE launches SET {set_str} WHERE unique_id = ?",
+					tuple(update_values) + (launch_object.unique_id,))
+				cursor.execute(f"UPDATE launches SET last_updated = ? WHERE unique_id = ?",
+					(api_update,) + (launch_object.unique_id,))
 			except Exception as error:
 				logging.exception(f'⚠️ Error updating field for unique_id={launch_object.unique_id}!')
 
+	# commit changes
 	conn.commit()
 	conn.close()
+
+	# if we have launches that have been postponed, return them
+	if len(slipped_launches) > 0:
+		return slipped_launches
+
+	return set()
 
 
 def create_stats_db(db_path: str):
