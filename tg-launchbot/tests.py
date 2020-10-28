@@ -7,7 +7,7 @@ import os
 from utils import time_delta_to_legible_eta, suffixed_readable_int
 from api import construct_params
 from notifications import create_notification_message, get_notify_list, toggle_launch_mute
-from db import create_chats_db
+from db import create_chats_db, update_stats_db
 from timezone import load_bulk_tz_offset
 from config import load_config
 
@@ -41,7 +41,7 @@ class TestNotificationUtils(unittest.TestCase):
 			cursor.execute('SELECT * FROM launches WHERE unique_id = ?', (row[0],))
 			launch = [dict(row) for row in cursor.fetchall()][0]
 
-			msg = create_notification_message(launch=launch, notif_class='notify_60min')
+			msg = create_notification_message(launch=launch, notif_class='notify_60min', bot_username='rocketrybot')
 			print(msg + '\n------------------------\n\n')
 
 
@@ -50,9 +50,9 @@ class TestNotificationUtils(unittest.TestCase):
 		Test get_notify_list
 		'''
 		db_path = 'launchbot'
-		lsp = 'Arianespace'
-		launch_id = '56623c2d-7174-489c-b0ed-bf6f039b2412'
-		notif_class = 'notify_24h'
+		lsp = 'Rocket Lab Ltd'
+		launch_id = 'c183a50f-fcc0-4cdc-8fa1-750d67ca5130'
+		notif_class = 'notify_12h'
 
 		ret = get_notify_list(db_path, lsp, launch_id, notif_class)
 		print(ret)
@@ -165,6 +165,14 @@ class TestTimeZoneUtils(unittest.TestCase):
 		ret = load_bulk_tz_offset(data_dir=data_dir, chat_id_set=chat_id_set)
 		print(ret)
 
+
+class TestDBUtils(unittest.TestCase):
+	def test_update_stats_db(self):
+		notification_list = [1, 2, 3, 4]
+		db_path = 'launchbot'
+
+		update_stats_db(
+			stats_update={'notifications':len(notification_list)}, db_path=db_path)
 
 if __name__ == '__main__':
 	# init log
