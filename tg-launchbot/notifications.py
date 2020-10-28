@@ -911,10 +911,6 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 				vid_url = urls[0]
 
 			link_text = '🔴 *Watch the launch* LinkTextGoesHere'
-			link_text = link_text.replace(
-				'LinkTextGoesHere',
-				f'[live\!]({reconstruct_link_for_markdown(vid_url)})'
-			)
 	else:
 		link_text = None
 
@@ -954,8 +950,18 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	footer = f'''
 	🕓 *The launch is scheduled* for LAUNCHTIMEHERE
 	🔕 *To disable* use /notify@{bot_username}'''
-
 	base_message += footer
+
+	# reconstruct for markdown (text only: link added later)
+	base_message = reconstruct_message_for_markdown(base_message)
+
+	# add link with a simple str replace
+	if link_text is not None and 'LinkTextGoesHere' in base_message:
+		base_message = base_message.replace(
+			'LinkTextGoesHere',
+			f'[live\!]({reconstruct_link_for_markdown(vid_url)})'
+		)
+
 	return inspect.cleandoc(base_message)
 
 
@@ -1061,10 +1067,6 @@ def notification_handler(
 
 		# log message
 		logging.info(notification_message)
-
-		# parse message for markdown: done here so we can log a legible one
-		notification_message = reconstruct_message_for_markdown(notification_message)
-		logging.info('✅ notification_message reconstructed for markdown!')
 
 		# get name LSP is identified as in the db (ex. CASC isn't in the db with its full name)
 		if len(launch_dict['lsp_name']) > len('Virgin Orbit'):
