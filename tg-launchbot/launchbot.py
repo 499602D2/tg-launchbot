@@ -170,7 +170,7 @@ def command_pre_handler(update, context):
 
 		context.bot.sendMessage(chat, inspect.cleandoc(reply_msg), parse_mode='Markdown')
 
-		notify(msg)
+		notify(update, context)
 
 		logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat)}. Sent user the new inline keyboard. [1]')
 
@@ -444,6 +444,8 @@ def callback_handler(update, context):
 		else:
 			try:
 				query.edit_message_reply_markup(reply_markup=keyboard)
+			except telegram.error.BadRequest:
+				pass
 			except:
 				logging.exception('Error updating main view message reply markup!')
 
@@ -772,7 +774,7 @@ def callback_handler(update, context):
 				logging.exception(f'🛑 Ran into an error sending the mute/unmute message to chat={chat}! {exception}')
 
 		# toggle the mute here, so we can give more responsive feedback
-		toggle_launch_mute(chat=chat, launch_id=input_data[1], toggle=input_data[3])
+		toggle_launch_mute(db_path=DATA_DIR, chat=chat, launch_id=input_data[1], toggle=int(input_data[2]))
 
 	elif input_data[0] == 'next_flight':
 		# next_flight(msg, current_index, command_invoke, cmd):
@@ -1359,9 +1361,8 @@ def start(update, context):
 	context.bot.sendMessage(chat_id, inspect.cleandoc(reply_msg), parse_mode='Markdown')
 
 	# /start, send also the inline keyboard
-	command = update.message['text'].strip().split(' ')[0]
-	if command == '/start':
-		notify(context, update)
+	if update.message['text'].strip().split(' ')[0] == '/start':
+		notify(update, context)
 		logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat_id)}. Sent user the new inline keyboard. [2]')
 
 
@@ -2101,7 +2102,7 @@ def generate_statistics_message() -> str:
 	Updated: {last_db_update} {last_db_update_suffix}
 
 	🎛 *Server information*
-	Uptime {time_delta_to_legible_eta(time_delta=uptime(), full_accuracy=True)}
+	Uptime {time_delta_to_legible_eta(time_delta=uptime(), full_accuracy=False)}
 	Load {load_avg_str}
 	LaunchBot version *{VERSION}* 🚀
 	'''
