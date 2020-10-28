@@ -43,9 +43,6 @@ from notifications import (
 	get_user_notifications_status, toggle_notification,
 	update_notif_preference, get_notif_preference, toggle_launch_mute,)
 
-'''
-*Changelog* for version {VERSION.split('.')[0]}.{VERSION.split('.')[1]} (May 2020)
-'''
 
 def command_pre_handler(update, context):
 	'''
@@ -54,8 +51,8 @@ def command_pre_handler(update, context):
 	statistics, handle exceptions, etc.
 	'''
 	# these were previously pulled with telepot.glance(), extract manually
-	content_type = update.message['media_group_id']
-	chat = update.message['chat']
+	content_type = update.message.media_group_id
+	chat = update.message.chat
 
 	# verify that the user who sent this is not in spammers
 	if update.message.from_user.id in ignored_users:
@@ -71,7 +68,7 @@ def command_pre_handler(update, context):
 	so handle that here as well '''
 	try:
 		try:
-			chat_type = chat['type']
+			chat_type = chat.type
 		except KeyError:
 			chat_type = context.bot.getChat(chat)['type']
 
@@ -138,7 +135,7 @@ def command_pre_handler(update, context):
 		return False
 
 	# filter spam
-	if not timer_handle(update, context, command, chat['id'], update.message.from_user.id):
+	if not timer_handle(update, context, command, chat.id, update.message.from_user.id):
 		blocked_user = anonymize_id(update.message.from_user.id)
 		blocked_chat = anonymize_id(chat)
 
@@ -148,16 +145,16 @@ def command_pre_handler(update, context):
 	# check if sender is an admin/creator, and/or if we're in a public chat
 	if chat_type != 'private':
 		try:
-			all_admins = update.message['chat']['all_members_are_administrators']
+			all_admins = update.message.chat.all_members_are_administrators
 		except:
 			all_admins = False
 
 		if not all_admins:
 			sender = context.bot.getChatMember(chat, update.message.from_user.id)
-			if sender['status'] != 'creator' and sender['status'] != 'administrator':
+			if sender.status not in ('creator', 'administrator'):
 				# check for bot's admin status and whether we can remove the message
 				bot_chat_specs = context.bot.getChatMember(chat, context.bot.getMe()['id'])
-				if bot_chat_specs['status'] == 'administrator':
+				if bot_chat_specs.status == 'administrator':
 					try:
 						success = context.bot.deleteMessage((chat, update.message['message_id']))
 						if success:
@@ -173,94 +170,6 @@ def command_pre_handler(update, context):
 				return False
 
 	return True
-
-
-# main loop-function for messages with flavor=chat
-def handle(msg):
-	# sees a valid command
-	if content_type == 'text':
-		command_split = [arg.lower() for arg in command_split]
-		if command_split[0] in VALID_COMMANDS:
-			# command we saw
-			command = command_split[0]
-
-			if '@' in command:
-				command = command.split('@')[0]
-
-			try:
-				sent_by = msg['from']['id']
-			except:
-				sent_by = 0
-
-			# check timers
-			if not timer_handle(command, chat, sent_by):
-				logging.info(f'✋ Spam prevented from chat {anonymize_id(chat)} by {anonymize_id(msg["from"]["id"])}. Command: {command}, returning.')
-				return
-
-			# check if sender is an admin/creator, and/or if we're in a public chat
-			if chat_type != 'private':
-				try:
-					all_admins = msg['chat']['all_members_are_administrators']
-				except:
-					all_admins = False
-
-				if not all_admins:
-					sender = bot.getChatMember(chat, msg['from']['id'])
-					if sender['status'] != 'creator' and sender['status'] != 'administrator':
-						# check for bot's admin status and whether we can remove the message
-						bot_chat_specs = bot.getChatMember(chat, bot.getMe()['id'])
-						if bot_chat_specs['status'] == 'administrator':
-							try:
-								success = bot.deleteMessage((chat, msg['message_id']))
-								if success:
-									logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): successfully deleted message! ✅')
-								else:
-									logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): unable to delete message (success != True. Type:{type(success)}, val:{success}) ⚠️')
-							except Exception as error:
-								logging.exception(f'⚠️ Could not delete message sent by non-admin: {error}')
-
-						else:
-							logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(msg["from"]["id"])}): could not remove.')
-
-						return
-
-			# start timer
-			start = timer()
-
-			# /next
-			if command == '/next':
-				next_flight(msg, 0, True, None)
-
-			# /notify
-			elif command == '/notify':
-				notify(msg)
-
-			# /statistics
-			elif command == '/statistics':
-				update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
-				statistics(chat, 'cmd')
-
-			# /schedule)
-			elif command == '/schedule':
-				flight_schedule(msg, True, 'vehicle')
-
-			# /feedback
-			elif command == '/feedback':
-				feedback(msg)
-
-			t_elapsed = timer() - start
-			if msg['from']['id'] != OWNER and command != '/start':
-				try:
-					logging.info(f'🕹 {command} called by {anonymize_id(chat)} | args: {command_split[1:]} | {(1000*t_elapsed):.0f} ms')
-				except:
-					logging.info(f'🕹 {command} called by {anonymize_id(chat)} | args: [] | {(1000*t_elapsed):.0f} ms')
-
-			# store statistics here, so our stats database can't be spammed either
-			if command != '/statistics':
-				update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
-
-		else:
-			return
 
 
 def callback_handler(update, context):
