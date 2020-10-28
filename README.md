@@ -1,5 +1,5 @@
 # LaunchBot – a rocket launch information and notifications bot for Telegram 🚀
-LaunchBot keeps you up to date with what's being going up, around the clock, since 2019. Reachable as [@rocketrybot](https://t.me/rocketrybot) on Telegram.
+LaunchBot keeps you up to date with what's going up, around the clock, since 2019. Reachable as [@rocketrybot](https://t.me/rocketrybot) on Telegram.
 
 LaunchBot uses the LaunchLibrary2 API to fetch launch information on intelligently scheduled intervals (due to a quite strict API call-count limit introduced with LL2). The bot provides multiple forms of information: notifications, information about upcoming flights, and a simple flight schedule showing the upcoming flights at a glance. 
 
