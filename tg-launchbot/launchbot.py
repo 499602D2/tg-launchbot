@@ -57,8 +57,8 @@ def admin_handler(update, context):
 		cleanup
 		'''
 		try:
-			p = psutil.Process(os.getpid())
-			for handler in p.open_files() + p.connections():
+			proc = psutil.Process(os.getpid())
+			for handler in proc.open_files() + proc.connections():
 				os.close(handler.fd)
 		except Exception as error:
 			logging.error(f'Error in restart_program: {error}')
@@ -73,6 +73,7 @@ def admin_handler(update, context):
 	if update.message.text == '/debug export-logs':
 		context.bot.send_message(chat_id=chat.id, text='🔄 Exporting logs...')
 		logging.info('🔄 Exporting logs...')
+
 		with open(os.path.join(DATA_DIR, 'log-file.log'), 'rb') as log_file:
 			context.bot.send_document(
 				chat_id=chat.id, document=log_file,
@@ -81,6 +82,7 @@ def admin_handler(update, context):
 	elif update.message.text == '/debug export-db':
 		context.bot.send_message(chat_id=chat.id, text='🔄 Exporting database...')
 		logging.info('🔄 Exporting database...')
+
 		with open(os.path.join(DATA_DIR, 'launchbot-data.db'), 'rb') as db_file:
 			context.bot.send_document(
 				chat_id=chat.id, document=db_file,
@@ -96,6 +98,34 @@ def admin_handler(update, context):
 			chat_id=chat.id,
 			parse_mode='Markdown',
 			text='ℹ️ Invalid input! Arguments: `export-logs`, `export-db`, `restart`.')
+
+
+def generic_update_handler(update, context):
+	'''
+	[Description here]
+	'''
+	chat = update.message.chat
+
+	if update.message.left_chat_member is not None:
+		if update.message.left_chat_member.id == BOT_ID:
+			# bot kicked; remove corresponding chat IDs from notification database
+			conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
+			cursor = conn.cursor()
+
+			cursor.execute("DELETE FROM chats WHERE chat = ?", (chat.id,))
+			conn.commit()
+			conn.close()
+
+			logging.info(f'⚠️ Bot removed from chat {anonymize_id(chat.id)} – notifications database cleaned [2]')
+
+	elif update.message.group_chat_created is not None:
+		logging.info('✨ Group chat created! (update.message.group_chat_created is not None)')
+		start(update, context)
+
+	elif update.message.new_chat_member is not None:
+		if update.message.new_chat_member.id == BOT_ID:
+			logging.info('✨ Bot added to group! (update.message.new_chat_member.id == BOT_ID)')
+			start(update, context)
 
 
 def command_pre_handler(update, context):
@@ -191,11 +221,11 @@ def command_pre_handler(update, context):
 	try:
 		command = update.message.text.split(' ')[0]
 	except AttributeError:
-		logging.warning('Error setting value for command (AttrError). Update.message: {update.message}')
-		return
+		logging.warning(f'(ignored) Error setting value for command (AttrError). Update.message: {update.message}')
+		return True
 	except KeyError:
-		logging.warning('Error setting value for command (KeyError). Update.message: {update.message}')
-		return
+		logging.warning(f'Error setting value for command (KeyError). Update.message: {update.message}')
+		return False
 
 	if not timer_handle(update, context, command, chat.id, update.message.from_user.id):
 		blocked_user = anonymize_id(update.message.from_user.id)
@@ -1280,7 +1310,11 @@ def start(update, context):
 	context.bot.sendMessage(chat_id, inspect.cleandoc(reply_msg), parse_mode='Markdown')
 
 	# /start, send also the inline keyboard
-	if update.message['text'].strip().split(' ')[0] == '/start':
+	try:
+		if update.message['text'].strip().split(' ')[0] == '/start':
+			notify(update, context)
+			logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat_id)}. Sent user the new inline keyboard. [2]')
+	except:
 		notify(update, context)
 		logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat_id)}. Sent user the new inline keyboard. [2]')
 
@@ -2136,7 +2170,7 @@ if __name__ == '__main__':
 	global DATA_DIR, STARTUP_TIME
 
 	# current version, set DATA_DIR
-	VERSION = '1.6.0-rc1'
+	VERSION = '1.6.0-rc2'
 	DATA_DIR = 'launchbot'
 
 	# log startup time, set default start mode
@@ -2351,6 +2385,7 @@ if __name__ == '__main__':
 	# register specific handlers (text for feedback, location for time zone stuff)
 	dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, callback=feedback_handler))
 	dispatcher.add_handler(MessageHandler(Filters.location, callback=location_handler))
+	dispatcher.add_handler(MessageHandler(Filters.update, callback=generic_update_handler))
 
 	if OWNER != 0:
 		dispatcher.add_handler(
@@ -2367,6 +2402,9 @@ if __name__ == '__main__':
 	# send startup message
 	updater.bot.send_message(
 		OWNER, f'✅ Bot started with args: `{sys.argv}`', parse_mode='Markdown')
+
+	# set updater to idle
+	# updater.idle()
 
 	# fancy prints so the user can tell that we're actually doing something
 	if not DEBUG_MODE:
