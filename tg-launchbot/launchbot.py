@@ -1,5 +1,8 @@
-# -*- coding: utf-8 -*-
-# /usr/bin/python3
+'''
+launchbot.py is the main module used by launchbot. The module handles
+all command and callback query requests, and is responsible for starting
+API and notification scheduling.
+'''
 import os
 import sys
 import time
@@ -10,6 +13,9 @@ import inspect
 import random
 import sqlite3
 import signal
+import psutil
+
+from timeit import default_timer as timer
 
 import cursor
 import pytz
@@ -17,31 +23,79 @@ import coloredlogs
 import telegram
 
 from uptime import uptime
-from timeit import default_timer as timer
 from timezonefinder import TimezoneFinder
 from apscheduler.schedulers.background import BackgroundScheduler
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, ForceReply
+from telegram import ReplyKeyboardRemove, ForceReply
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram.ext import CallbackQueryHandler
 
 from spam import Spammer
 from api import api_call_scheduler
 from config import load_config, store_config
+from db import (update_stats_db, create_chats_db)
 from utils import (
 	anonymize_id, time_delta_to_legible_eta, map_country_code_to_flag,
 	timestamp_to_legible_date_string, short_monospaced_text,
 	reconstruct_message_for_markdown)
-
-from db import (update_stats_db, create_chats_db)
-
 from timezone import (
 	load_locale_string, remove_time_zone_information, update_time_zone_string,
 	update_time_zone_value, load_time_zone_status)
-
 from notifications import (
 	get_user_notifications_status, toggle_notification,
 	update_notif_preference, get_notif_preference, toggle_launch_mute,)
+
+
+def admin_handler(update, context):
+	'''
+	Allow bot owner to export logs and database remotely. Can only be called
+	in private chat with owner.
+	'''
+	def restart_program():
+		'''
+		Restarts the current program, with file objects and descriptors
+		cleanup
+		'''
+		try:
+			p = psutil.Process(os.getpid())
+			for handler in p.open_files() + p.connections():
+				os.close(handler.fd)
+		except Exception as error:
+			logging.error(f'Error in restart_program: {error}')
+
+		python = sys.executable
+		os.execl(python, python, *sys.argv)
+
+	# extract chat information
+	chat = update.message.chat
+
+	# return logs if command used
+	if update.message.text == '/debug export-logs':
+		context.bot.send_message(chat_id=chat.id, text='🔄 Exporting logs...')
+		logging.info('🔄 Exporting logs...')
+		with open(os.path.join(DATA_DIR, 'log-file.log'), 'rb') as log_file:
+			context.bot.send_document(
+				chat_id=chat.id, document=log_file,
+				filename=f'log-export-{int(time.time())}.log')
+
+	elif update.message.text == '/debug export-db':
+		context.bot.send_message(chat_id=chat.id, text='🔄 Exporting database...')
+		logging.info('🔄 Exporting database...')
+		with open(os.path.join(DATA_DIR, 'launchbot-data.db'), 'rb') as db_file:
+			context.bot.send_document(
+				chat_id=chat.id, document=db_file,
+				filename=f'db-export-{int(time.time())}.db')
+
+	elif update.message.text == '/debug restart':
+		logging.info('⚠️ Restarting program...')
+		context.bot.send_message(chat_id=chat.id, text='⚠️ Restarting...')
+		restart_program()
+
+	else:
+		context.bot.send_message(
+			chat_id=chat.id,
+			parse_mode='Markdown',
+			text='ℹ️ Invalid input! Arguments: `export-logs`, `export-db`, `restart`.')
 
 
 def command_pre_handler(update, context):
@@ -50,8 +104,7 @@ def command_pre_handler(update, context):
 	The purpose is to filter out spam and unallowed callers, update
 	statistics, handle exceptions, etc.
 	'''
-	# these were previously pulled with telepot.glance(), extract manually
-	content_type = update.message.media_group_id
+	# extract chat information
 	chat = update.message.chat
 
 	# verify that the user who sent this is not in spammers
@@ -135,6 +188,15 @@ def command_pre_handler(update, context):
 		return False
 
 	# filter spam
+	try:
+		command = update.message.text.split(' ')[0]
+	except AttributeError:
+		logging.warning('Error setting value for command (AttrError). Update.message: {update.message}')
+		return
+	except KeyError:
+		logging.warning('Error setting value for command (KeyError). Update.message: {update.message}')
+		return
+
 	if not timer_handle(update, context, command, chat.id, update.message.from_user.id):
 		blocked_user = anonymize_id(update.message.from_user.id)
 		blocked_chat = anonymize_id(chat)
@@ -987,6 +1049,9 @@ def feedback_handler(update, context):
 	if not command_pre_handler(update, context):
 		return
 
+	logging.debug('feedback_handler ran!')
+	logging.debug(f'update.message: {update.message}')
+
 	# pull chat object
 	chat = update.message['chat']
 
@@ -1181,6 +1246,8 @@ def start(update, context):
 	if not command_pre_handler(update, context):
 		return
 
+	logging.info(f'⌨️ /start called by {update.message.from_user.id} in {update.message.chat.id}')
+
 	# construct message
 	reply_msg = f'''🚀 *Hi there!* I'm *LaunchBot*, a launch information and notifications bot!
 
@@ -1209,7 +1276,7 @@ def start(update, context):
 	'''
 
 	# pull chat id, send message
-	chat_id = update.message['chat']['id']
+	chat_id = update.message.chat.id
 	context.bot.sendMessage(chat_id, inspect.cleandoc(reply_msg), parse_mode='Markdown')
 
 	# /start, send also the inline keyboard
@@ -1248,6 +1315,8 @@ def notify(update, context):
 	# run pre-handler
 	if not command_pre_handler(update, context):
 		return
+
+	logging.info(f'⌨️ /notify called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	message_text = '''
 	🚀 *LaunchBot* | Notification settings
@@ -1312,6 +1381,8 @@ def feedback(update, context):
 	# run pre-handler
 	if not command_pre_handler(update, context):
 		return
+
+	logging.info(f'⌨️ /feedback called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	chat_id = update.message['chat']['id']
 
@@ -1533,6 +1604,8 @@ def flight_schedule(update, context):
 	# run pre-handler
 	if not command_pre_handler(update, context):
 		return
+
+	logging.info(f'⌨️ /schedule called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	chat_id = update.message['chat']['id']
 
@@ -1891,6 +1964,8 @@ def next_flight(update, context):
 	if not command_pre_handler(update, context):
 		return
 
+	logging.info(f'⌨️ /next called by {update.message.from_user.id} in {update.message.chat.id}')
+
 	# chat ID
 	chat_id = update.message['chat']['id']
 
@@ -2005,6 +2080,8 @@ def statistics(update, context):
 	# run pre-handler
 	if not command_pre_handler(update, context):
 		return
+
+	logging.info(f'⌨️ /statistics called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	# chat ID
 	chat_id = update.message['chat']['id']
@@ -2271,9 +2348,13 @@ if __name__ == '__main__':
 	dispatcher.add_handler(
 		CallbackQueryHandler(callback_handler))
 
-	# register text message handler (text for feedback, location for time zone stufft)
+	# register specific handlers (text for feedback, location for time zone stuff)
 	dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, callback=feedback_handler))
 	dispatcher.add_handler(MessageHandler(Filters.location, callback=location_handler))
+
+	if OWNER != 0:
+		dispatcher.add_handler(
+			CommandHandler(command='debug', callback=admin_handler, filters=Filters.chat(OWNER)))
 
 	# all up to date, start polling
 	updater.start_polling()
@@ -2282,6 +2363,10 @@ if __name__ == '__main__':
 	api_call_scheduler(
 		db_path=DATA_DIR, ignore_60=False, scheduler=scheduler, bot_username=BOT_USERNAME,
 		bot=updater.bot)
+
+	# send startup message
+	updater.bot.send_message(
+		OWNER, f'✅ Bot started with args: `{sys.argv}`', parse_mode='Markdown')
 
 	# fancy prints so the user can tell that we're actually doing something
 	if not DEBUG_MODE:
@@ -2303,6 +2388,9 @@ if __name__ == '__main__':
 			run_time_str = f'\n🔶 Program ending... Runtime: {run_time}.'
 			logging.warning(run_time_str)
 			sys.exit('Press ctrl+c again to quit!')
+
+		except Exception as error:
+			updater.bot.send_message(OWNER, f'⚠️ Shutting down! exception: {error}')
 
 	else:
 		while True:
