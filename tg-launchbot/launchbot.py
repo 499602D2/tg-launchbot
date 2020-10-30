@@ -71,10 +71,14 @@ def admin_handler(update, context):
 
 	# return logs if command used
 	if update.message.text == '/debug export-logs':
-		context.bot.send_message(chat_id=chat.id, text='🔄 Exporting logs...')
-		logging.info('🔄 Exporting logs...')
+		log_path = os.path.join(DATA_DIR, 'log-file.log')
+		log_fsz = os.path.getsize(log_path) / 10**6
+		context.bot.send_message(
+			chat_id=chat.id, text=f'🔄 Exporting logs (`{log_fsz:.2f} MB`)...',
+			parse_mode='Markdown')
 
-		with open(os.path.join(DATA_DIR, 'log-file.log'), 'rb') as log_file:
+		logging.info('🔄 Exporting logs...')
+		with open(log_path, 'rb') as log_file:
 			context.bot.send_document(
 				chat_id=chat.id, document=log_file,
 				filename=f'log-export-{int(time.time())}.log')
@@ -105,6 +109,8 @@ def generic_update_handler(update, context):
 	[Description here]
 	'''
 	chat = update.message.chat
+
+	#logging.info(update)
 
 	if update.message.left_chat_member is not None:
 		if update.message.left_chat_member.id == BOT_ID:
@@ -1078,9 +1084,6 @@ def feedback_handler(update, context):
 	# run pre-handler
 	if not command_pre_handler(update, context):
 		return
-
-	logging.debug('feedback_handler ran!')
-	logging.debug(f'update.message: {update.message}')
 
 	# pull chat object
 	chat = update.message['chat']
@@ -2170,7 +2173,7 @@ if __name__ == '__main__':
 	global DATA_DIR, STARTUP_TIME
 
 	# current version, set DATA_DIR
-	VERSION = '1.6.0-rc2'
+	VERSION = '1.6-rc3'
 	DATA_DIR = 'launchbot'
 
 	# log startup time, set default start mode
@@ -2383,9 +2386,12 @@ if __name__ == '__main__':
 		CallbackQueryHandler(callback_handler))
 
 	# register specific handlers (text for feedback, location for time zone stuff)
-	dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, callback=feedback_handler))
-	dispatcher.add_handler(MessageHandler(Filters.location, callback=location_handler))
-	dispatcher.add_handler(MessageHandler(Filters.update, callback=generic_update_handler))
+	dispatcher.add_handler(MessageHandler(
+		Filters.text & ~Filters.command, callback=feedback_handler))
+	dispatcher.add_handler(MessageHandler(
+		Filters.location, callback=location_handler))
+	dispatcher.add_handler(MessageHandler(
+		Filters.status_update, callback=generic_update_handler))
 
 	if OWNER != 0:
 		dispatcher.add_handler(
