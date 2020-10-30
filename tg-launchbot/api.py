@@ -392,7 +392,7 @@ def api_call_scheduler(
 	logging.debug('⏲ Starting api_call_scheduler...')
 
 	# update period, in minutes
-	UPDATE_PERIOD = 20
+	UPDATE_PERIOD = 15
 
 	# load the next upcoming launch from the database
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
@@ -408,8 +408,6 @@ def api_call_scheduler(
 
 	# if we didn't return above, no need to update immediately
 	update_delta = int(time.time()) - last_update
-	to_next_update = UPDATE_PERIOD * 60 - update_delta
-	next_auto_update = int(time.time()) + to_next_update
 	last_updated_str = time_delta_to_legible_eta(update_delta, full_accuracy=False)
 
 	logging.info(f'🔀 DB up-to-date! Last updated {last_updated_str} ago.')
@@ -469,7 +467,12 @@ def api_call_scheduler(
 	# convert to a datetime object for scheduling
 	next_notif = datetime.datetime.fromtimestamp(next_notif)
 
-	# add scheduled check every UPDATE_PERIOD minutes to comparison
+	# schedule next update more loosely if next notif is far away
+	upd_period_mult = 4 if until_next_notif > 3600 * 24 * 2 else 1
+
+	# add next auto-update to notif_times
+	to_next_update = UPDATE_PERIOD * upd_period_mult * 60 - update_delta
+	next_auto_update = int(time.time()) + to_next_update
 	notif_times.add(next_auto_update)
 
 	# pick minimum of all possible API updates
