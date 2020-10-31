@@ -2256,12 +2256,17 @@ if __name__ == '__main__':
 		if START is False:
 			sys.exit('No start command given – exiting. To start the bot, include -start in startup options.')
 
-	# load config, create bot TODO check for telegram.error.InvalidToken
+	# load config, create bot
 	config = load_config(data_dir=DATA_DIR)
 	updater = Updater(config['bot_token'], use_context=True)
 
+	# get the bot: if we get a telegram.error.Unauthorized, the token is incorrect
+	try:
+		bot_specs = updater.bot.getMe()
+	except telegram.error.Unauthorized:
+		sys.exit('⚠️ Error: unable to init bot! Double-check your API token in bot-config.json!')
+
 	# get the bot's username and id
-	bot_specs = updater.bot.getMe()
 	BOT_USERNAME = bot_specs.username
 	BOT_ID = bot_specs.id
 	OWNER = config['owner']
