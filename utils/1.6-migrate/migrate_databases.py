@@ -156,8 +156,8 @@ def insert_into_new_db(new_db: str, chats_dict: dict):
 		print("⚠️ Chats table doesn't exists: creating...")
 
 		cursor.execute('''
-			CREATE TABLE chats (chat TEXT, subscribed_since INT, time_zone TEXT,
-			time_zone_str TEXT, command_permissions TEXT, postpone_notify BOOLEAN,
+			CREATE TABLE chats (chat TEXT, subscribed_since INT, member_count INT,
+			time_zone TEXT, time_zone_str TEXT, command_permissions TEXT, postpone_notify BOOLEAN,
 			notify_time_pref TEXT, enabled_notifications TEXT, disabled_notifications TEXT,
 			PRIMARY KEY (chat))
 			''')
