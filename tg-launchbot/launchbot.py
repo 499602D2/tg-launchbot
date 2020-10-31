@@ -1116,7 +1116,10 @@ def feedback_handler(update, context):
 		context (TYPE): Description
 	'''
 	# pull chat object
-	chat = update.message.chat
+	try:
+		chat = update.message.chat
+	except AttributeError:
+		logging.warning(f'Chat has no message attribute! {update}')
 
 	if update.message.reply_to_message is not None:
 		if update.message.reply_to_message.message_id in feedback_message_IDs:
