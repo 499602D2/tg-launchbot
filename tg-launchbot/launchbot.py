@@ -114,6 +114,11 @@ def generic_update_handler(update, context):
 	if update.message is None:
 		logging.debug(f'update.message == none!\n{update}')
 
+	try:
+		update.message.new_chat_member
+	except AttributeError:
+		logging.warning(f'no new_chat_member:\n{update}')
+
 	if update.message.left_chat_member not in (None, False):
 		if update.message.left_chat_member.id == BOT_ID:
 			# bot kicked; remove corresponding chat IDs from notification database
@@ -1122,7 +1127,6 @@ def feedback_handler(update, context):
 	try:
 		chat = update.message.chat
 	except AttributeError:
-		logging.warning(f'Chat has no message attribute! {update}')
 		return
 
 	if update.message.reply_to_message is not None:
