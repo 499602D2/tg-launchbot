@@ -1324,7 +1324,8 @@ def start(update, context):
 		command_ = '/start'
 
 	# run pre-handler
-	logging.info(f'⌨️ {command_} called by {update.message.from_user.id} in {update.message.chat.id}')
+	if update.message.chat.id != OWNER:
+		logging.info(f'⌨️ {command_} called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	# construct message
 	reply_msg = f'''🚀 *Hi there!* I'm *LaunchBot*, a launch information and notifications bot!
@@ -1398,7 +1399,8 @@ def notify(update, context):
 	if not command_pre_handler(update, context):
 		return
 
-	logging.info(f'⌨️ /notify called by {update.message.from_user.id} in {update.message.chat.id}')
+	if update.message.chat.id != OWNER:
+		logging.info(f'⌨️ /notify called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	message_text = '''
 	🚀 *LaunchBot* | Notification settings
@@ -1464,7 +1466,8 @@ def feedback(update, context):
 	if not command_pre_handler(update, context):
 		return
 
-	logging.info(f'⌨️ /feedback called by {update.message.from_user.id} in {update.message.chat.id}')
+	if update.message.chat.id != OWNER:
+		logging.info(f'⌨️ /feedback called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	chat_id = update.message.chat.id
 
@@ -1695,7 +1698,8 @@ def flight_schedule(update, context):
 	if not command_pre_handler(update, context):
 		return
 
-	logging.info(f'⌨️ /schedule called by {update.message.from_user.id} in {update.message.chat.id}')
+	if update.message.chat.id != OWNER:
+		logging.info(f'⌨️ /schedule called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	chat_id = update.message.chat.id
 
@@ -2064,7 +2068,8 @@ def next_flight(update, context):
 	if not command_pre_handler(update, context):
 		return
 
-	logging.info(f'⌨️ /next called by {update.message.from_user.id} in {update.message.chat.id}')
+	if update.message.chat.id != OWNER:
+		logging.info(f'⌨️ /next called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	# chat ID
 	chat_id = update.message.chat.id
@@ -2189,7 +2194,8 @@ def statistics(update, context):
 	if not command_pre_handler(update, context):
 		return
 
-	logging.info(f'⌨️ /statistics called by {update.message.from_user.id} in {update.message.chat.id}')
+	if update.message.chat.id != OWNER:
+		logging.info(f'⌨️ /statistics called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	# chat ID
 	chat_id = update.message.chat.id
@@ -2491,11 +2497,12 @@ if __name__ == '__main__':
 		bot=updater.bot)
 
 	# send startup message
-	try:
-		updater.bot.send_message(
-			OWNER, f'🤖 Bot started with args: `{sys.argv}`', parse_mode='Markdown')
-	except telegram.error.Unauthorized:
-		pass
+	if OWNER != 0:
+		try:
+			updater.bot.send_message(
+				OWNER, f'🤖 Bot started with args: `{sys.argv}`', parse_mode='Markdown')
+		except telegram.error.Unauthorized:
+			pass
 
 	# set updater to idle
 	# updater.idle()
