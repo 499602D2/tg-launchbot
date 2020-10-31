@@ -1115,10 +1115,6 @@ def feedback_handler(update, context):
 		update (TYPE): Description
 		context (TYPE): Description
 	'''
-	# run pre-handler
-	if not command_pre_handler(update, context):
-		return
-
 	# pull chat object
 	chat = update.message.chat
 
