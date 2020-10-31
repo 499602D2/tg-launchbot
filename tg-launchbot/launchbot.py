@@ -161,7 +161,11 @@ def command_pre_handler(update, context):
 	statistics, handle exceptions, etc.
 	'''
 	# extract chat information
-	chat = update.message.chat
+	try:
+		chat = update.message.chat
+	except AttributeError:
+		logging.warning(f'Unable to set chat: update.message has not property! {update}')
+		return False
 
 	# verify that the user who sent this is not in spammers
 	if update.message.from_user.id in ignored_users:
@@ -284,7 +288,7 @@ def command_pre_handler(update, context):
 				bot_chat_specs = context.bot.get_chat_member(chat.id, context.bot.getMe().id)
 				if bot_chat_specs.status == 'administrator':
 					try:
-						success = context.bot.deleteMessage((chat.id, update.message.message_id))
+						success = context.bot.deleteMessage(chat.id, update.message.message_id)
 						if success:
 							logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): successfully deleted message! ✅')
 						else:
@@ -980,8 +984,7 @@ def callback_handler(update, context):
 					reply_markup=ReplyKeyboardRemove(remove_keyboard=True)
 				)
 
-				msg_identifier = (sent_message.chat.id, sent_message.message_id)
-				context.bot.deleteMessage(msg_identifier)
+				context.bot.deleteMessage(sent_message.chat.id, sent_message.message_id)
 
 				keyboard = InlineKeyboardMarkup(
 					inline_keyboard = [
