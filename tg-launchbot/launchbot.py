@@ -1313,8 +1313,11 @@ def start(update, context):
 	'''
 	Responds to /start and /help commands.
 	'''
-	# pull the specific command (help or start)
-	command_ = update.message.text.strip().split(' ')[0]
+	try:
+		# pull the specific command (help or start)
+		command_ = update.message.text.strip().split(' ')[0]
+	except:
+		command_ = '/start'
 
 	# run pre-handler
 	logging.info(f'⌨️ {command_} called by {update.message.from_user.id} in {update.message.chat.id}')
