@@ -114,11 +114,6 @@ def generic_update_handler(update, context):
 	if update.message is None:
 		logging.debug(f'update.message == none!\n{update}')
 
-	try:
-		update.message.new_chat_member
-	except AttributeError:
-		logging.warning(f'no new_chat_member:\n{update}')
-
 	if update.message.left_chat_member not in (None, False):
 		if update.message.left_chat_member.id == BOT_ID:
 			# bot kicked; remove corresponding chat IDs from notification database
@@ -140,8 +135,9 @@ def generic_update_handler(update, context):
 		logging.info('✨ Group chat created! (update.message.group_chat_created is not None)')
 		start(update, context)
 
-	elif update.message.migrate not in (None, False):
+	elif update.message.migrate_from_chat_id not in (None, False):
 		# chat migrated from id in the migrate obj. to chat.id
+		logging.info(f'✅ Chat migrated from {update.message.migrate_from_chat_id} to {chat.id}')
 		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 		cursor_ = conn.cursor()
 
@@ -154,14 +150,11 @@ def generic_update_handler(update, context):
 		conn.commit()
 		conn.close()
 
-	try:
-		if update.message.new_chat_member not in (None, False):
-			if update.message.new_chat_member.id == BOT_ID:
-				# bot added to the chat
-				logging.info('✨ Bot added to group! (update.message.new_chat_member.id == BOT_ID)')
-				start(update, context)
-	except AttributeError:
-		pass
+	elif update.message.new_chat_members not in (None, False):
+		if BOT_ID in [user.id for user in update.message.new_chat_members]:
+			# bot added to the chat
+			logging.info('✨ Bot added to group! (update.message.new_chat_member.id == BOT_ID)')
+			start(update, context)
 
 
 
