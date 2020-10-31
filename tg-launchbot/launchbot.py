@@ -1311,8 +1311,11 @@ def start(update, context):
 	'''
 	Responds to /start and /help commands.
 	'''
+	# pull the specific command (help or start)
+	command_ = update.message.text.strip().split(' ')[0]
+
 	# run pre-handler
-	logging.info(f'⌨️ /start called by {update.message.from_user.id} in {update.message.chat.id}')
+	logging.info(f'⌨️ {command_} called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	# construct message
 	reply_msg = f'''🚀 *Hi there!* I'm *LaunchBot*, a launch information and notifications bot!
@@ -1347,7 +1350,7 @@ def start(update, context):
 
 	# /start, send also the inline keyboard
 	try:
-		if update.message.text.strip().split(' ')[0] == '/start':
+		if command_ == '/start':
 			notify(update, context)
 			logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat_id)}. Sent user the new inline keyboard. [2]')
 	except:
