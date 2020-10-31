@@ -214,7 +214,7 @@ def command_pre_handler(update, context):
 
 		# known error: clean the chat from the chats db
 		logging.info('🗃 Cleaning chats database...')
-		clean_chats_db(DATA_DIR, chat)
+		clean_chats_db(DATA_DIR, chat.id)
 
 		# succeeded in (not) sending the message
 		return False
@@ -265,7 +265,7 @@ def command_pre_handler(update, context):
 
 	if not timer_handle(update, context, command, chat.id, update.message.from_user.id):
 		blocked_user = anonymize_id(update.message.from_user.id)
-		blocked_chat = anonymize_id(chat)
+		blocked_chat = anonymize_id(chat.id)
 
 		logging.info(f'✋ [{command}] Spam prevented from {blocked_chat} by {blocked_user}.')
 		return False
@@ -278,13 +278,13 @@ def command_pre_handler(update, context):
 			all_admins = False
 
 		if not all_admins:
-			sender = context.bot.getChatMember(chat, update.message.from_user.id)
+			sender = context.bot.get_chat_member(chat.id, update.message.from_user.id)
 			if sender.status not in ('creator', 'administrator'):
 				# check for bot's admin status and whether we can remove the message
-				bot_chat_specs = context.bot.getChatMember(chat, context.bot.getMe().id)
+				bot_chat_specs = context.bot.get_chat_member(chat.id, context.bot.getMe().id)
 				if bot_chat_specs.status == 'administrator':
 					try:
-						success = context.bot.deleteMessage((chat, update.message.message_id))
+						success = context.bot.deleteMessage((chat.id, update.message.message_id))
 						if success:
 							logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): successfully deleted message! ✅')
 						else:
@@ -293,7 +293,7 @@ def command_pre_handler(update, context):
 						logging.exception(f'⚠️ Could not delete message sent by non-admin: {error}')
 
 				else:
-					logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat)} ({anonymize_id(update.message.from_user.id)}): could not remove.')
+					logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): could not remove.')
 
 				return False
 
@@ -495,7 +495,7 @@ def callback_handler(update, context):
 			all_admins = False
 
 		if not all_admins:
-			sender = context.bot.getChatMember(chat, from_id)
+			sender = context.bot.get_chat_member(chat, from_id)
 			if sender.status != 'creator' and sender.status != 'administrator':
 				try:
 					query.answer(text="⚠️ This button is only callable by admins! ⚠️")
@@ -1126,7 +1126,7 @@ def feedback_handler(update, context):
 
 			logging.info(f'✍️ Received feedback: {update.message.text}')
 
-			sender = context.bot.getChatMember(chat.id, update.message.from_user.id)
+			sender = context.bot.get_chat_member(chat.id, update.message.from_user.id)
 			if sender.status in ('creator', 'administrator') or chat.type == 'private':
 				context.bot.send_message(
 					chat.id,
