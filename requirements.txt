@@ -6,3 +6,4 @@ requests
 apscheduler
 python-telegram-bot
 coloredlogs
+psutil
