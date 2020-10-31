@@ -117,20 +117,41 @@ def generic_update_handler(update, context):
 			conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 			cursor_ = conn.cursor()
 
-			cursor_.execute("DELETE FROM chats WHERE chat = ?", (chat.id,))
+			try:
+				cursor_.execute("DELETE FROM chats WHERE chat = ?", (chat.id,))
+			except Exception as error:
+				logging.exception(f'⚠️ Error removing chat from chats db! {error}')
+
 			conn.commit()
 			conn.close()
 
 			logging.info(f'⚠️ Bot removed from chat {anonymize_id(chat.id)} – notifications database cleaned [2]')
 
 	elif update.message.group_chat_created is not None:
+		# a new group chat created, with the bot in it
 		logging.info('✨ Group chat created! (update.message.group_chat_created is not None)')
 		start(update, context)
 
 	elif update.message.new_chat_member is not None:
 		if update.message.new_chat_member.id == BOT_ID:
+			# bot added to the chat
 			logging.info('✨ Bot added to group! (update.message.new_chat_member.id == BOT_ID)')
 			start(update, context)
+
+	elif update.message.migrate is not None:
+		# chat migrated from id in the migrate obj. to chat.id
+		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
+		cursor_ = conn.cursor()
+
+		try:
+			cursor_.execute('UPDATE chats SET chat = ? WHERE chat = ?',
+				(chat.id, update.message.migrate_from_chat_id))
+		except:
+			logging.exception(f'Unable to migrate {update.message.migrate_from_chat_id} to {chat.id}!')
+
+		conn.commit()
+		conn.close()
+
 
 
 def command_pre_handler(update, context):
@@ -187,6 +208,16 @@ def command_pre_handler(update, context):
 
 		logging.info('✅ Chat data migration complete!')
 		return True
+
+	except telegram.error.Unauthorized as error:
+		logging.info('⚠️ Unauthorized in command_pre_handler')
+
+		# known error: clean the chat from the chats db
+		logging.info('🗃 Cleaning chats database...')
+		clean_chats_db(DATA_DIR, chat)
+
+		# succeeded in (not) sending the message
+		return False
 
 	except telegram.error.TelegramError as error:
 		'''
