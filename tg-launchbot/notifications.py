@@ -62,6 +62,29 @@ def postpone_notification(
 
 			return False, None
 
+		except telegram.error.Unauthorized as error:
+			logging.info(f'⚠️ Unauthorized to send: {error}')
+
+			# known error: clean the chat from the chats db
+			logging.info('🗃 Cleaning chats database...')
+			clean_chats_db(db_path, chat_id)
+
+			# succeeded in (not) sending the message
+			return True, None
+
+		except telegram.error.ChatMigrated as error:
+			logging.info(f'⚠️ Chat {chat_id} migrated to {error.new_chat_id}! Updating chats db...')
+			conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+			cursor = conn.cursor()
+
+			try:
+				cursor.execute('UPDATE chats SET chat = ? WHERE chat = ?', (error.new_chat_id, chat_id))
+			except:
+				logging.exception(f'Unable to migrate {chat_id} to {error.new_chat_id}!')
+
+			conn.commit()
+			conn.close()
+
 		except telegram.error.TelegramError as error:
 			if 'chat not found' in error.message:
 				logging.exception(f'⚠️ Chat {anonymize_id(chat_id)} not found.')
@@ -87,7 +110,7 @@ def postpone_notification(
 
 			# known error: clean the chat from the chats db
 			logging.info('🗃 Cleaning chats database...')
-			clean_notify_database(db_path, chat_id)
+			clean_chats_db(db_path, chat_id)
 
 			# succeeded in (not) sending the message
 			return True, None
@@ -530,7 +553,7 @@ def load_mute_status(db_path: str, launch_id: str):
 	return tuple(muted_by)
 
 
-def clean_notify_database(db_path, chat):
+def clean_chats_db(db_path, chat):
 	'''
 	Removes all notification settings for a chat from the chats database
 	'''
@@ -743,6 +766,29 @@ def send_notification(
 
 		return False, None
 
+	except telegram.error.Unauthorized as error:
+		logging.info(f'⚠️ Unauthorized to send: {error}')
+
+		# known error: clean the chat from the chats db
+		logging.info('🗃 Cleaning chats database...')
+		clean_chats_db(db_path, chat)
+
+		# succeeded in (not) sending the message
+		return True, None
+
+	except telegram.error.ChatMigrated as error:
+		logging.info(f'⚠️ Chat {chat} migrated to {error.new_chat_id}! Updating chats db...')
+		conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+		cursor = conn.cursor()
+
+		try:
+			cursor.execute('UPDATE chats SET chat = ? WHERE chat = ?', (error.new_chat_id, chat))
+		except:
+			logging.exception(f'Unable to migrate {chat} to {error.new_chat_id}!')
+
+		conn.commit()
+		conn.close()
+
 	except telegram.error.TelegramError as error:
 		if 'chat not found' in error.message:
 			logging.exception(f'⚠️ Chat {anonymize_id(chat)} not found.')
@@ -768,7 +814,7 @@ def send_notification(
 
 		# known error: clean the chat from the chats db
 		logging.info('🗃 Cleaning chats database...')
-		clean_notify_database(db_path, chat)
+		clean_chats_db(db_path, chat)
 
 		# succeeded in (not) sending the message
 		return True, None
