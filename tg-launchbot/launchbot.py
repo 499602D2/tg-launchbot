@@ -140,12 +140,6 @@ def generic_update_handler(update, context):
 		logging.info('✨ Group chat created! (update.message.group_chat_created is not None)')
 		start(update, context)
 
-	elif update.message.new_chat_member not in (None, False):
-		if update.message.new_chat_member.id == BOT_ID:
-			# bot added to the chat
-			logging.info('✨ Bot added to group! (update.message.new_chat_member.id == BOT_ID)')
-			start(update, context)
-
 	elif update.message.migrate not in (None, False):
 		# chat migrated from id in the migrate obj. to chat.id
 		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
@@ -159,6 +153,15 @@ def generic_update_handler(update, context):
 
 		conn.commit()
 		conn.close()
+
+	try:
+		if update.message.new_chat_member not in (None, False):
+			if update.message.new_chat_member.id == BOT_ID:
+				# bot added to the chat
+				logging.info('✨ Bot added to group! (update.message.new_chat_member.id == BOT_ID)')
+				start(update, context)
+	except AttributeError:
+		pass
 
 
 
