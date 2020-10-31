@@ -37,8 +37,8 @@ def create_chats_db(db_path: str, cursor: sqlite3.Cursor):
 
 	try:
 		cursor.execute('''
-			CREATE TABLE chats (chat TEXT, subscribed_since INT, time_zone TEXT,
-			time_zone_str TEXT, command_permissions TEXT, postpone_notify BOOLEAN,
+			CREATE TABLE chats (chat TEXT, subscribed_since INT, member_count INT,
+			time_zone TEXT, time_zone_str TEXT, command_permissions TEXT, postpone_notify BOOLEAN,
 			notify_time_pref TEXT, enabled_notifications TEXT, disabled_notifications TEXT,
 			PRIMARY KEY (chat))
 			''')
@@ -60,7 +60,6 @@ def migrate_chat(db_path: str, old_id: int, new_id: int):
 
 	conn.commit()
 	conn.close()
-
 
 
 def create_launch_db(db_path: str, cursor: sqlite3.Cursor):
