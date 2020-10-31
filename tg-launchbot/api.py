@@ -259,11 +259,11 @@ def ll2_api_call(
 		try:
 			api_json = json.loads(API_RESPONSE.text)
 		except Exception as json_parse_error:
-			logging.warning('⚠️ Error parsing json')
+			logging.exception('⚠️ Error parsing json')
 
-		# dump json for inspection / debugging use
-		with open(os.path.join(data_dir, 'll2-json.json'), 'w') as json_file:
-			json.dump(api_json, json_file, indent=4)
+			# dump json for inspection / debugging use
+			with open(os.path.join(data_dir, 'll2-json.json'), 'w') as json_file:
+				json.dump(api_json, json_file, indent=4)
 
 	# store update time
 	api_updated = int(time.time())
