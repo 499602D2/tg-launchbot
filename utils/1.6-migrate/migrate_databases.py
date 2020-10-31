@@ -1,14 +1,23 @@
 '''
 This file is used to migrate all databases used in 1.5 (0.5) to 1.6,
 as the database scheme used is extremely tedious to manually migrate.
+
+The databases to be migrated (preferences.db, notifications.db and statistics.db)
+should all be in the same folder as this script. These will be merged into one
+database, 'launchbot-data.db'.
 '''
 
 import sqlite3
 import os
-import random
 import time
 
+
 def migrate_notify_db(old_db: str):
+	'''
+	Migrate the notifications.db file's contents (notify-table)
+	into a dictionary, which we'll expand on and later insert into
+	our new db file.
+	'''
 	print('Starting migration...')
 	# Establish connection
 	conn = sqlite3.connect(old_db)
@@ -55,6 +64,10 @@ def migrate_notify_db(old_db: str):
 
 
 def migrate_preferences(old_db: str, chats_dict: dict):
+	'''
+	Migrate preferences from the old database to the chats_dict
+	dict, which we'll later insert.
+	'''
 	# Establish connection
 	conn = sqlite3.connect(old_db)
 	conn.row_factory = sqlite3.Row
@@ -88,6 +101,10 @@ def migrate_preferences(old_db: str, chats_dict: dict):
 
 
 def migrate_statistics(old_db: str):
+	'''
+	Migrate existing statistics to the newly created
+	launchbot-data.db file, into its own table.
+	'''
 	# Establish connection
 	conn = sqlite3.connect(old_db)
 	conn.row_factory = sqlite3.Row
@@ -120,6 +137,10 @@ def migrate_statistics(old_db: str):
 
 
 def insert_into_new_db(new_db: str, chats_dict: dict):
+	'''
+	Insert the generated new chats-table into the new
+	database.
+	'''
 	# remove old db if exists
 	if os.path.isfile(new_db):
 		os.remove(new_db)
