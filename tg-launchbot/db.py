@@ -49,6 +49,20 @@ def create_chats_db(db_path: str, cursor: sqlite3.Cursor):
 		logging.exception(f'⚠️ Error creating chats table: {error}')
 
 
+def migrate_chat(db_path: str, old_id: int, new_id: int):
+	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+	cursor = conn.cursor()
+
+	try:
+		cursor.execute('UPDATE chats SET chat = ? WHERE chat = ?', (new_id, old_id))
+	except:
+		logging.exception(f'⚠️ Unable to migrate chat {old_id} to {new_id}!')
+
+	conn.commit()
+	conn.close()
+
+
+
 def create_launch_db(db_path: str, cursor: sqlite3.Cursor):
 	'''
 	Creates the launch database. Only ran when the table doesn't exist.
