@@ -158,7 +158,7 @@ def generic_update_handler(update, context):
 
 
 
-def command_pre_handler(update, context):
+def command_pre_handler(update, context, skip_timer_handle):
 	'''
 	Before every command is processed, command_pre_handler is ran.
 	The purpose is to filter out spam and unallowed callers, update
@@ -271,12 +271,13 @@ def command_pre_handler(update, context):
 		logging.warning(f'Error setting value for command (KeyError). Update.message: {update.message}')
 		return False
 
-	if not timer_handle(update, context, command, chat.id, update.message.from_user.id):
-		blocked_user = anonymize_id(update.message.from_user.id)
-		blocked_chat = anonymize_id(chat.id)
+	if not skip_timer_handle:
+		if not timer_handle(update, context, command, chat.id, update.message.from_user.id):
+			blocked_user = anonymize_id(update.message.from_user.id)
+			blocked_chat = anonymize_id(chat.id)
 
-		logging.info(f'✋ [{command}] Spam prevented from {blocked_chat} by {blocked_user}.')
-		return False
+			logging.info(f'✋ [{command}] Spam prevented from {blocked_chat} by {blocked_user}.')
+			return False
 
 	# check if sender is an admin/creator, and/or if we're in a public chat
 	if chat_type != 'private':
@@ -1317,13 +1318,17 @@ def start(update, context):
 	'''
 	Responds to /start and /help commands.
 	'''
+	# run pre-handler, skip timer_handle
+	if not command_pre_handler(update, context, True):
+		return
+
 	try:
 		# pull the specific command (help or start)
 		command_ = update.message.text.strip().split(' ')[0]
 	except:
 		command_ = '/start'
 
-	# run pre-handler
+	# log command
 	if update.message.chat.id != OWNER:
 		logging.info(f'⌨️ {command_} called by {update.message.from_user.id} in {update.message.chat.id}')
 
@@ -1396,7 +1401,7 @@ def notify(update, context):
 	base message than can be manipulated with callback queries.
 	'''
 	# run pre-handler
-	if not command_pre_handler(update, context):
+	if not command_pre_handler(update, context, False):
 		return
 
 	if update.message.chat.id != OWNER:
@@ -1463,7 +1468,7 @@ def feedback(update, context):
 	Receive feedback from users.
 	'''
 	# run pre-handler
-	if not command_pre_handler(update, context):
+	if not command_pre_handler(update, context, False):
 		return
 
 	if update.message.chat.id != OWNER:
@@ -1695,7 +1700,7 @@ def flight_schedule(update, context):
 	Display a very simple schedule for all upcoming flights.
 	'''
 	# run pre-handler
-	if not command_pre_handler(update, context):
+	if not command_pre_handler(update, context, False):
 		return
 
 	if update.message.chat.id != OWNER:
@@ -2065,7 +2070,7 @@ def next_flight(update, context):
 	with the helper function generate_next_flight_message.
 	'''
 	# run pre-handler
-	if not command_pre_handler(update, context):
+	if not command_pre_handler(update, context, False):
 		return
 
 	if update.message.chat.id != OWNER:
@@ -2118,7 +2123,7 @@ def generate_statistics_message() -> str:
 		last_db_update = stats['last_api_update']
 
 	except sqlite3.OperationalError:
-		notifs = api_reqs = db_updates = commands = data = last_db_update = 0
+		notifs = api_reqs = commands = data = last_db_update = 0
 
 	# get system load average
 	load_avgs = os.getloadavg() # [1 min, 5 min, 15 min]
@@ -2136,9 +2141,13 @@ def generate_statistics_message() -> str:
 	except:
 		db_storage = 0.00
 
-	# format stored data to MB, GB
-	db_storage_prefix = 'GB' if db_storage/10**9 >= 1 else 'MB'
-	db_storage = db_storage/10**9 if db_storage/10**9 >= 1 else db_storage/10**6
+	# format stored data to KB, MB, GB
+	if db_storage/10**6 >= 1:
+		db_storage_suffix = 'GB' if db_storage/10**9 >= 1 else 'MB'
+		db_storage = db_storage/10**9 if db_storage/10**9 >= 1 else db_storage/10**6
+	else:
+		db_storage_suffix = 'KB'
+		db_storage = db_storage/10**3
 
 	# convert time since last db update to a readable ETA, add suffix
 	db_update_delta = int(time.time()) - last_db_update
@@ -2147,14 +2156,14 @@ def generate_statistics_message() -> str:
 
 	# connect to notifications db
 	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
-	cursor = conn.cursor()
+	cursor_ = conn.cursor()
 
 	# pull all rows with enabled = 1
 	try:
-		cursor.execute('''SELECT chat FROM chats
+		cursor_.execute('''SELECT chat FROM chats
 			WHERE enabled_notifications NOT NULL AND enabled_notifications != ""''')
 
-		notification_recipients = len(cursor.fetchall())
+		notification_recipients = len(cursor_.fetchall())
 	except sqlite3.OperationalError:
 		logging.exception('Error parsing notification_recipients!')
 		notification_recipients = 0
@@ -2173,7 +2182,7 @@ def generate_statistics_message() -> str:
 	API requests made: {api_reqs}
 
 	💾 *Database information*
-	Storage used: {db_storage:.2f} {db_storage_prefix}
+	Storage used: {db_storage:.2f} {db_storage_suffix}
 	Updated: {last_db_update} {last_db_update_suffix}
 
 	🎛 *Server information*
@@ -2191,7 +2200,7 @@ def statistics(update, context):
 	with the helper function generate_statistics_message.
 	'''
 	# run pre-handler
-	if not command_pre_handler(update, context):
+	if not command_pre_handler(update, context, False):
 		return
 
 	if update.message.chat.id != OWNER:
