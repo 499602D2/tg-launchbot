@@ -230,9 +230,17 @@ def get_user_notifications_status(
 	# there should only be one row
 	chat_row = query_return[0]
 
-	# enabled, disabled states: parse comma-separated entries into lists
-	enabled_notifs = chat_row['enabled_notifications'].split(',')
-	disabled_notifs= chat_row['disabled_notifications'].split(',')
+	# enabled states: parse comma-separated entries into lists
+	if chat_row['enabled_notifications'] is not None:
+		enabled_notifs = chat_row['enabled_notifications'].split(',')
+	else:
+		enabled_notifs = []
+
+	# disabled states: parse comma-separated entries into lists
+	if chat_row['disabled_notifications'] is not None:
+		disabled_notifs = chat_row['disabled_notifications'].split(',')
+	else:
+		disabled_notifs = []
 
 	# iterate over enabled lsp notifications
 	for enabled_lsp in enabled_notifs:
