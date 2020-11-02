@@ -109,10 +109,10 @@ def generic_update_handler(update, context):
 	'''
 	[Description here]
 	'''
-	chat = update.message.chat
-
 	if update.message is None:
-		logging.debug(f'update.message == none!\n{update}')
+		logging.warning(f'update.message == none!\n{update}')
+
+	chat = update.message.chat
 
 	if update.message.left_chat_member not in (None, False):
 		if update.message.left_chat_member.id == BOT_ID:
@@ -288,6 +288,7 @@ def command_pre_handler(update, context, skip_timer_handle):
 
 		if not all_admins:
 			sender = context.bot.get_chat_member(chat.id, update.message.from_user.id)
+			logging.debug(f'sender: {sender}')
 			if sender.status not in ('creator', 'administrator'):
 				# check for bot's admin status and whether we can remove the message
 				bot_chat_specs = context.bot.get_chat_member(chat.id, context.bot.getMe().id)
@@ -310,6 +311,9 @@ def command_pre_handler(update, context, skip_timer_handle):
 
 
 def callback_handler(update, context):
+	'''
+	Handles responses to callbacks.
+	'''
 	def update_main_view(chat, msg, text_refresh):
 		'''
 		Updates the main view for the notify message.
@@ -469,7 +473,10 @@ def callback_handler(update, context):
 		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 		# now we have the keyboard; update the previous keyboard
-		query.edit_message_reply_markup(reply_markup=keyboard)
+		try:
+			query.edit_message_reply_markup(reply_markup=keyboard)
+		except telegram.error.BadRequest:
+			pass
 
 		if chat != OWNER:
 			logging.info(f'🔀 {map_country_code_to_flag(country_code)}-view loaded for {anonymize_id(chat)}')
@@ -505,7 +512,17 @@ def callback_handler(update, context):
 
 		if not all_admins:
 			sender = context.bot.get_chat_member(chat, from_id)
-			if sender.status != 'creator' and sender.status != 'administrator':
+			if sender.status == 'left':
+				try:
+					query.answer(text="⚠️ Send the /command again! (chat migrated) ⚠️")
+				except Exception as error:
+					logging.exception(f'⚠️ Ran into error when answering callbackquery (left): {error}')
+					return
+
+				logging.info(f'✋ Callback query called by a left member in {anonymize_id(chat)}')
+				return
+
+			if sender.status not in ('creator', 'administrator'):
 				try:
 					query.answer(text="⚠️ This button is only callable by admins! ⚠️")
 				except Exception as error:
@@ -1124,6 +1141,7 @@ def feedback_handler(update, context):
 	try:
 		chat = update.message.chat
 	except AttributeError:
+		logging.exception('Error parsing chat in feedback_handler!')
 		return
 
 	if update.message.reply_to_message is not None:
@@ -2487,9 +2505,9 @@ if __name__ == '__main__':
 
 	# register specific handlers (text for feedback, location for time zone stuff)
 	dispatcher.add_handler(MessageHandler(
-		Filters.text & ~Filters.command, callback=feedback_handler))
+		Filters.reply & ~Filters.command, callback=feedback_handler))
 	dispatcher.add_handler(MessageHandler(
-		Filters.location, callback=location_handler))
+		Filters.reply & Filters.location, callback=location_handler))
 	dispatcher.add_handler(MessageHandler(
 		Filters.status_update, callback=generic_update_handler))
 
@@ -2535,6 +2553,7 @@ if __name__ == '__main__':
 			run_time = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME), True)
 			run_time_str = f'\n🔶 Program ending... Runtime: {run_time}.'
 			logging.warning(run_time_str)
+
 			sys.exit('Press ctrl+c again to quit!')
 
 		except Exception as error:
