@@ -37,7 +37,7 @@ from db import (update_stats_db, create_chats_db)
 from utils import (
 	anonymize_id, time_delta_to_legible_eta, map_country_code_to_flag,
 	timestamp_to_legible_date_string, short_monospaced_text,
-	reconstruct_message_for_markdown)
+	reconstruct_message_for_markdown, suffixed_readable_int)
 from timezone import (
 	load_locale_string, remove_time_zone_information, update_time_zone_string,
 	update_time_zone_value, load_time_zone_status)
@@ -288,7 +288,6 @@ def command_pre_handler(update, context, skip_timer_handle):
 
 		if not all_admins:
 			sender = context.bot.get_chat_member(chat.id, update.message.from_user.id)
-			logging.debug(f'sender: {sender}')
 			if sender.status not in ('creator', 'administrator'):
 				# check for bot's admin status and whether we can remove the message
 				bot_chat_specs = context.bot.get_chat_member(chat.id, context.bot.getMe().id)
@@ -1965,22 +1964,17 @@ def generate_next_flight_message(chat, current_index: int):
 
 		if launch['launcher_is_flight_proven']:
 			reuse_count = launch['launcher_stage_flight_number']
-			if reuse_count < 10:
-				reuse_count = {
-					1: 'first', 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth',
-					6: 'sixth', 7: 'seventh', 8: 'eighth', 9: 'ninth', 10: 'tenth'}[reuse_count]
-				reuse_str = f'{core_str} ({reuse_count} flight ♻️)'
-			else:
-				try:
-					if reuse_count in (11, 12, 13):
-						suffix = 'th'
-					else:
-						suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(reuse_count)[-1])]
-				except:
-					suffix = 'th'
 
-				reuse_str = f'{core_str} ({reuse_count}{suffix} flight ♻️)'
+			# append .x to F9 core names
+			if lsp_name == 'SpaceX' and core_str[0:2] == 'B1':
+				core_str += f'.{int(reuse_count) + 1}'
+
+			reuse_str = f'{core_str} ({suffixed_readable_int(reuse_count)} flight ♻️)'
 		else:
+			# append .x to F9 core names
+			if lsp_name == 'SpaceX' and core_str[0:2] == 'B1':
+				core_str += '.1'
+
 			reuse_str = f'{core_str} (first flight ✨)'
 
 		landing_loc_map = {
@@ -2286,7 +2280,7 @@ if __name__ == '__main__':
 	global DATA_DIR, STARTUP_TIME
 
 	# current version, set DATA_DIR
-	VERSION = '1.6-rc3'
+	VERSION = '1.6-rc4'
 	DATA_DIR = 'launchbot'
 
 	# log startup time, set default start mode
