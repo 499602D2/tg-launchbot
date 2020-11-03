@@ -157,7 +157,6 @@ def generic_update_handler(update, context):
 			start(update, context)
 
 
-
 def command_pre_handler(update, context, skip_timer_handle):
 	'''
 	Before every command is processed, command_pre_handler is ran.
@@ -537,9 +536,6 @@ def callback_handler(update, context):
 			{(1000*(timer() - start)):.0f} ms''')
 		return
 
-	# used to update the message
-	msg_identifier = (msg.chat.id, msg.message_id)
-
 	if input_data[0] == 'notify':
 		# user requests a list of launch providers for a country code
 		if input_data[1] == 'list':
@@ -805,7 +801,7 @@ def callback_handler(update, context):
 			query.edit_message_text(text=new_schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
 
 			if input_data[1] == 'refresh':
-				query_reply_text = f'🔄 Schedule updated!'
+				query_reply_text = '🔄 Schedule updated!'
 			else:
 				query_reply_text = '🚀 Vehicle schedule loaded!' if input_data[1] == 'vehicle' else '🛰 Mission schedule loaded!'
 
@@ -937,10 +933,10 @@ def callback_handler(update, context):
 
 				keyboard = InlineKeyboardMarkup(
 					inline_keyboard = [
-						[InlineKeyboardButton(text='🌎 Automatic setup', callback_data=f'prefs/timezone/auto_setup')],
-						[InlineKeyboardButton(text='🕹 Manual setup', callback_data=f'prefs/timezone/manual_setup')],
-						[InlineKeyboardButton(text='🗑 Remove my time zone', callback_data=f'prefs/timezone/remove')],
-						[InlineKeyboardButton(text='⏮ Back to menu', callback_data=f'prefs/main_menu')]
+						[InlineKeyboardButton(text='🌎 Automatic setup', callback_data='prefs/timezone/auto_setup')],
+						[InlineKeyboardButton(text='🕹 Manual setup', callback_data='prefs/timezone/manual_setup')],
+						[InlineKeyboardButton(text='🗑 Remove my time zone', callback_data='prefs/timezone/remove')],
+						[InlineKeyboardButton(text='⏮ Back to menu', callback_data='prefs/main_menu')]
 					]
 				)
 
@@ -1009,8 +1005,8 @@ def callback_handler(update, context):
 
 				keyboard = InlineKeyboardMarkup(
 					inline_keyboard = [
-						[InlineKeyboardButton(text='⏰ Notification settings', callback_data=f'prefs/notifs')],
-						[InlineKeyboardButton(text='⏮ Back to main menu', callback_data=f'notify/main_menu/refresh_text')]
+						[InlineKeyboardButton(text='⏰ Notification settings', callback_data='prefs/notifs')],
+						[InlineKeyboardButton(text='⏮ Back to main menu', callback_data='notify/main_menu/refresh_text')]
 					]
 				)
 
@@ -1020,7 +1016,7 @@ def callback_handler(update, context):
 					reply_markup=keyboard
 				)
 
-				query.answer(text=f'✅ Operation canceled!')
+				query.answer(text='✅ Operation canceled!')
 
 			elif input_data[2] == 'set':
 				update_time_zone_value(DATA_DIR, chat, input_data[3])
@@ -1037,16 +1033,16 @@ def callback_handler(update, context):
 
 				keyboard = InlineKeyboardMarkup(inline_keyboard = [
 					[
-						InlineKeyboardButton(text='-5 hours', callback_data=f'prefs/timezone/set/-5h'),
-						InlineKeyboardButton(text='-1 hour', callback_data=f'prefs/timezone/set/-1h'),
-						InlineKeyboardButton(text='+1 hour', callback_data=f'prefs/timezone/set/+1h'),
-						InlineKeyboardButton(text='+5 hours', callback_data=f'prefs/timezone/set/+5h')
+						InlineKeyboardButton(text='-5 hours', callback_data='prefs/timezone/set/-5h'),
+						InlineKeyboardButton(text='-1 hour', callback_data='prefs/timezone/set/-1h'),
+						InlineKeyboardButton(text='+1 hour', callback_data='prefs/timezone/set/+1h'),
+						InlineKeyboardButton(text='+5 hours', callback_data='prefs/timezone/set/+5h')
 					],
 					[
-						InlineKeyboardButton(text='-15 minutes', callback_data=f'prefs/timezone/set/-15m'),
-						InlineKeyboardButton(text='+15 minutes', callback_data=f'prefs/timezone/set/+15m'),
+						InlineKeyboardButton(text='-15 minutes', callback_data='prefs/timezone/set/-15m'),
+						InlineKeyboardButton(text='+15 minutes', callback_data='prefs/timezone/set/+15m'),
 					],
-					[InlineKeyboardButton(text='⏮ Back to menu', callback_data=f'prefs/main_menu')]
+					[InlineKeyboardButton(text='⏮ Back to menu', callback_data='prefs/main_menu')]
 					]
 				)
 
@@ -1094,15 +1090,16 @@ def callback_handler(update, context):
 
 				keyboard = InlineKeyboardMarkup(
 					inline_keyboard = [
-						[InlineKeyboardButton(text='🌎 Automatic setup', callback_data=f'prefs/timezone/auto_setup')],
-						[InlineKeyboardButton(text='🕹 Manual setup', callback_data=f'prefs/timezone/manual_setup')],
-						[InlineKeyboardButton(text='🗑 Remove my time zone', callback_data=f'prefs/timezone/remove')],
-						[InlineKeyboardButton(text='⏮ Back to menu', callback_data=f'prefs/main_menu')]
+						[InlineKeyboardButton(text='🌎 Automatic setup', callback_data='prefs/timezone/auto_setup')],
+						[InlineKeyboardButton(text='🕹 Manual setup', callback_data='prefs/timezone/manual_setup')],
+						[InlineKeyboardButton(text='🗑 Remove my time zone', callback_data='prefs/timezone/remove')],
+						[InlineKeyboardButton(text='⏮ Back to menu', callback_data='prefs/main_menu')]
 					]
 				)
 
 				try:
-					query.edit_message_text(text=inspect.cleandoc(text), reply_markup=keyboard, parse_mode='Markdown')
+					query.edit_message_text(
+						text=inspect.cleandoc(text), reply_markup=keyboard, parse_mode='Markdown')
 				except:
 					pass
 
@@ -1118,7 +1115,8 @@ def callback_handler(update, context):
 				return
 
 			keyboard = InlineKeyboardMarkup(
-				inline_keyboard=[[InlineKeyboardButton(text='🔄 Refresh statistics', callback_data='stats/refresh')]])
+				inline_keyboard=[[
+					InlineKeyboardButton(text='🔄 Refresh statistics', callback_data='stats/refresh')]])
 
 			query.edit_message_text(text=new_text, reply_markup=keyboard, parse_mode='Markdown')
 			query.answer(text='🔄 Statistics refreshed!')
@@ -1400,11 +1398,11 @@ def name_from_provider_id(lsp_id):
 	for a matching id/name combination.
 	'''
 	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
-	cursor = conn.cursor()
+	cursor_ = conn.cursor()
 
 	# get provider name corresponding to this ID
-	cursor.execute("SELECT lsp_name FROM launches WHERE lsp_id = ?", (lsp_id,))
-	query_return = cursor.fetchall()
+	cursor_.execute("SELECT lsp_name FROM launches WHERE lsp_id = ?", (lsp_id,))
+	query_return = cursor_.fetchall()
 
 	if len(query_return) != 0:
 		return query_return[0][0]
@@ -1536,13 +1534,13 @@ def generate_schedule_message(call_type: str, chat: str):
 	# open db connection
 	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 	conn.row_factory = sqlite3.Row
-	cursor = conn.cursor()
+	cursor_ = conn.cursor()
 
 	# perform the select; if cmd == all, just pull the next launch
-	cursor.execute('SELECT * FROM launches WHERE net_unix >= ?',(int(time.time()),))
+	cursor_.execute('SELECT * FROM launches WHERE net_unix >= ?',(int(time.time()),))
 
 	# sort in place by NET, convert to dicts
-	query_return = [dict(row) for row in cursor.fetchall()]
+	query_return = [dict(row) for row in cursor_.fetchall()]
 	query_return.sort(key=lambda tup: tup['net_unix'])
 
 	# close db
@@ -1659,10 +1657,10 @@ def generate_schedule_message(call_type: str, chat: str):
 				sec_time = time_delta.seconds + time_delta.days * 3600 * 24
 				days = math.floor(sec_time/(3600*24))
 				hours = (sec_time/(3600) - math.floor(sec_time/(3600*24))*24)
-				
+
 				if today.hour + hours >= 24:
 					days += 1
-				
+
 				eta_days = f'in {days+1} days'
 
 		eta_days = provider = ' '.join("`{}`".format(word) for word in eta_days.split(' '))
@@ -1688,7 +1686,7 @@ def generate_schedule_message(call_type: str, chat: str):
 	utc_offset = load_time_zone_status(DATA_DIR, chat, readable=True)
 
 	# add header and footer
-	header = f'📅 *5\-day flight schedule*\n'
+	header = '📅 *5\-day flight schedule*\n'
 	header_note = f'For detailed flight information, use /next@{BOT_USERNAME}. Dates relative to UTC{utc_offset}.'
 	footer_note = '\n\n🟢 = verified launch date\n🟡 = exact time to be determined'
 
@@ -1749,25 +1747,23 @@ def generate_next_flight_message(chat, current_index: int):
 	'''
 	Generates the message text for use in the next-command.
 	'''
-	# load UTC offset for launch time
-	utc_offset = load_time_zone_status(data_dir=DATA_DIR, chat=chat, readable=True)
 
 	# start db connection
 	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 	conn.row_factory = sqlite3.Row
-	cursor = conn.cursor()
+	cursor_ = conn.cursor()
 
 	# verify db exists
-	cursor.execute('SELECT name FROM sqlite_master WHERE type = ? AND name = ?', ('table', 'chats'))
-	if len(cursor.fetchall()) == 0:
-		create_chats_db(db_path=DATA_DIR, cursor=cursor)
+	cursor_.execute('SELECT name FROM sqlite_master WHERE type = ? AND name = ?', ('table', 'chats'))
+	if len(cursor_.fetchall()) == 0:
+		create_chats_db(db_path=DATA_DIR, cursor=cursor_)
 		conn.commit()
 
 	# find what launches the chat is subscribed to
-	cursor.execute('''SELECT * FROM chats WHERE chat = ?''', (chat,))
+	cursor_.execute('''SELECT * FROM chats WHERE chat = ?''', (chat,))
 
 	# convert rows into dictionaries for super easy parsing
-	query_return = [dict(row) for row in cursor.fetchall()]
+	query_return = [dict(row) for row in cursor_.fetchall()]
 
 	# flag for all notifications enabled
 	all_flag = False
@@ -1817,8 +1813,8 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# perform the select; if cmd == all, just pull the next launch
 	if cmd == 'all':
-		cursor.execute('SELECT * FROM launches WHERE net_unix >= ?',(today_unix,))
-		query_return = cursor.fetchall()
+		cursor_.execute('SELECT * FROM launches WHERE net_unix >= ?',(today_unix,))
+		query_return = cursor_.fetchall()
 
 	elif cmd is None:
 		if all_flag:
@@ -1832,12 +1828,12 @@ def generate_next_flight_message(chat, current_index: int):
 				query_str = f'''SELECT * FROM launches WHERE net_unix >= ? AND lsp_name NOT IN ({disabled_str})
 				AND lsp_short NOT IN ({disabled_str})'''
 
-				cursor.execute(query_str, (today_unix,))
-				query_return = cursor.fetchall()
+				cursor_.execute(query_str, (today_unix,))
+				query_return = cursor_.fetchall()
 
 			else:
-				cursor.execute('SELECT * FROM launches WHERE net_unix >= ?',(today_unix,))
-				query_return = cursor.fetchall()
+				cursor_.execute('SELECT * FROM launches WHERE net_unix >= ?',(today_unix,))
+				query_return = cursor_.fetchall()
 		else:
 			# if no all_flag set, simply select all that are enabled
 			enabled_str = ''
@@ -1849,8 +1845,8 @@ def generate_next_flight_message(chat, current_index: int):
 			query_str = f'''SELECT * FROM launches WHERE net_unix >= ? AND lsp_name IN ({enabled_str})
 			OR net_unix >= ? AND lsp_short IN ({enabled_str})'''
 
-			cursor.execute(query_str, (today_unix,today_unix))
-			query_return = cursor.fetchall()
+			cursor_.execute(query_str, (today_unix,today_unix))
+			query_return = cursor_.fetchall()
 
 	# close connection
 	conn.close()
@@ -1893,7 +1889,8 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# shorten very common pad names
 	if 'LC-' not in launch['pad_name']:
-		launch['pad_name'] = launch['pad_name'].replace('Space Launch Complex ', 'SLC-').replace('Launch Complex ', 'LC-')
+		launch['pad_name'] = launch['pad_name'].replace('Space Launch Complex ', 'SLC-')
+		launch['pad_name'] = launch['pad_name'].replace('Launch Complex ', 'LC-')
 
 	if 'air launch' in launch['pad_name'].lower():
 		launch['pad_name'] = 'Air launch to orbit'
@@ -2268,6 +2265,9 @@ def update_token(data_dir: str, new_tokens: set):
 
 
 def sigterm_handler(signal, frame):
+	'''
+	Logs program run time when we get sigterm.
+	'''
 	logging.info(f'✅ Got SIGTERM. Runtime: {datetime.datetime.now() - STARTUP_TIME}.')
 	logging.info(f'Signal: {signal}, frame: {frame}.')
 	sys.exit(0)
@@ -2495,11 +2495,11 @@ if __name__ == '__main__':
 
 	# register callback handler
 	dispatcher.add_handler(
-		CallbackQueryHandler(callback_handler))
+		CallbackQueryHandler(callback=callback_handler, run_async=True))
 
 	# register specific handlers (text for feedback, location for time zone stuff)
 	dispatcher.add_handler(MessageHandler(
-		Filters.reply & ~Filters.command, callback=feedback_handler))
+		Filters.reply & ~Filters.command & ~Filters.location, callback=feedback_handler))
 	dispatcher.add_handler(MessageHandler(
 		Filters.reply & Filters.location, callback=location_handler))
 	dispatcher.add_handler(MessageHandler(
@@ -2532,7 +2532,6 @@ if __name__ == '__main__':
 	if not DEBUG_MODE:
 		# hide cursor for pretty print
 		cursor.hide()
-
 		try:
 			while True:
 				for char in ('⠷', '⠯', '⠟', '⠻', '⠽', '⠾'):
