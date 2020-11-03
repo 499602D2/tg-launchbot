@@ -4,6 +4,7 @@ notifications.
 '''
 
 import os
+import sys
 import time
 import datetime
 import sqlite3
@@ -729,7 +730,7 @@ def send_notification(
 	silent = bool(notif_class not in ('notify_60min', 'notify_5min'))
 
 	# generate unique time for each chat
-	utc_offset = 3600 * tz_tuple[0]
+	utc_offset = 3600 * float(tz_tuple[0])
 	launch_unix = datetime.datetime.utcfromtimestamp(net_unix + utc_offset)
 
 	# generate lift-off time string
@@ -1158,10 +1159,14 @@ def notification_handler(
 		# iterate over chat_id and chat's UTC-offset -> send notification
 		sent_notification_ids = set()
 		for chat_id, tz_tuple in notification_list_tzs.items():
-			success, msg_id = send_notification(
-				chat=chat_id, message=notification_message, launch_id=launch_id,
-				notif_class=notify_class, bot=bot, tz_tuple=tz_tuple, net_unix=launch_dict['net_unix'],
-				db_path=db_path)
+			try:
+				success, msg_id = send_notification(
+					chat=chat_id, message=notification_message, launch_id=launch_id,
+					notif_class=notify_class, bot=bot, tz_tuple=tz_tuple,
+					net_unix=launch_dict['net_unix'], db_path=db_path)
+			except Exception as error:
+				logging.exception(f'⚠️ Exception sending notification ({error})')
+				continue
 
 			if success and msg_id is not None:
 				''' send counts as success even if we fail due to the bot being blocked etc.:
