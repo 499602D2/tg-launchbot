@@ -236,8 +236,8 @@ def ll2_api_call(
 	headers = {'user-agent': f'telegram-{bot_username}'}
 
 	# if debugging and the debug file exists, run this
-	if DEBUG_API and os.path.isfile(os.path.join(data_dir,'ll2-json.json')):
-		with open(os.path.join(data_dir, 'll2-json.json'), 'r') as json_file:
+	if DEBUG_API and os.path.isfile(os.path.join(data_dir, 'debug-json.json')):
+		with open(os.path.join(data_dir, 'debug-json.json'), 'r') as json_file:
 			api_json = json.load(json_file)
 
 		rec_data = 0
@@ -258,12 +258,15 @@ def ll2_api_call(
 
 		try:
 			api_json = json.loads(API_RESPONSE.text)
+			if DEBUG_API:
+				with open(os.path.join(data_dir, 'debug-json.json'), 'w') as jsonf:
+					json.dump(api_json, jsonf, indent=4)
 		except Exception as json_parse_error:
-			logging.exception('⚠️ Error parsing json')
+			logging.exception(f'⚠️ Error parsing json: {json_parse_error}')
 
 			# dump json for inspection / debugging use
-			with open(os.path.join(data_dir, 'll2-json.json'), 'w') as json_file:
-				json.dump(api_json, json_file, indent=4)
+			with open(os.path.join(data_dir, f'error-json-{time.time()}.json'), 'w') as jsonf:
+				json.dump(api_json, jsonf, indent=4)
 
 	# store update time
 	api_updated = int(time.time())
