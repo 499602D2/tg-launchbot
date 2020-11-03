@@ -110,10 +110,13 @@ def generic_update_handler(update, context):
 	[Description here]
 	'''
 	if update.message is None:
+		if update.channel_post is not None:
+			return
+
 		logging.warning(f'update.message == none!\n{update}')
+		return
 
 	chat = update.message.chat
-
 	if update.message.left_chat_member not in (None, False):
 		if update.message.left_chat_member.id == BOT_ID:
 			# bot kicked; remove corresponding chat IDs from notification database
