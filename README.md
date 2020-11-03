@@ -94,7 +94,7 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 	
 	- ✅ allow users to set their own timezone
 	
-### 1.6 / major back-end improvements and changes (October 2020)
+### 1.6 / major back-end changes (October 2020)
 	
 	- ✅ upgrade to the LL2 API (LL1 closes at the end of October)
 	
@@ -111,12 +111,6 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 		- ✅ on API update, check for updated launch times (notification send times) -> clear schedule queue -> schedule next checks for when a notification is supposed to be sent
 		
 	- ✅ store LL2 and SpX API data in the same database
-
-	- add "show changelog" button under /help
-
-		- load from a changelog.txt file?
-	
-		- or, replace /help with /info?
 	
 	- ✅ combine all separate database files into one file with multiple tables
 	
@@ -130,18 +124,30 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 
 	- ✅ re-add statistics to all needed places
 
-	- improve json-parsing performance by using pooling
+	- add "show changelog" button under /statistics or /help
+
+		- load from a changelog.txt file?
 
 	- open-source LaunchBot ✨
 	
-### 1.7 more backend changes
+### 1.7 / performance optimizations
 
 	- ✅ update from telepot Telegram API wrapper to python-telegram-bot
+
+	- identify bottlenecks in processing by benchmarking and timing functions
+
+		- the largest bottleneck is usually Telegram's API
+
+	- improve json-parsing performance by using multiprocessing
 	
+	- use an in-memory DB, like redis or memcached, to handle all responses
+
+		- reduce disk writes and reads: SD cards have terrible latency, LPDDR4 on RasPi is pretty snappy
+	
+		- update in-mem DB on API call
+
+		- key:vals for all chats: simple, fast, easy
+
 	- enable the disabling of postpone notifications
 
 		- globally or on a per-launch basis
-	
-	- use an in-memory DB, like redis or memcached, to handle all responses
-	
-		- update in-mem DB on API call, push update to disk -> persistence
