@@ -13,6 +13,7 @@ import inspect
 import random
 import sqlite3
 import signal
+import traceback
 
 from timeit import default_timer as timer
 
@@ -25,6 +26,7 @@ import telegram
 from uptime import uptime
 from timezonefinder import TimezoneFinder
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, JobExecutionEvent
 from telegram import ReplyKeyboardRemove, ForceReply
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
@@ -1138,12 +1140,14 @@ def feedback_handler(update, context):
 		context (TYPE): Description
 	'''
 	# pull chat object
-	try:
-		chat = update.message.chat
-	except AttributeError:
-		logging.exception('Error parsing chat in feedback_handler!')
+	if update.message is None:
+		if update.channel_post is not None:
+			return
+
+		logging.warning(f'Error parsing chat in feedback_handler!!\n{update}')
 		return
 
+	chat = update.message.chat
 	if update.message.reply_to_message is not None:
 		if update.message.reply_to_message.message_id in feedback_message_IDs:
 			if len(update.message.text) > 1000:
@@ -2276,6 +2280,16 @@ def sigterm_handler(signal, frame):
 	sys.exit(0)
 
 
+def apscheduler_event_listener(event):
+	'''
+	Listens to exceptions coming in from apscheduler's threads.
+	'''
+	if event.exception:
+		logging.critical(f'Error: scheduled job raised an exception: {event.exception}')
+		logging.critical('Exception traceback follows:')
+		logging.critical(event.traceback)
+
+
 if __name__ == '__main__':
 	# some global vars for use in other functions
 	global VERSION, OWNER
@@ -2479,6 +2493,9 @@ if __name__ == '__main__':
 	scheduler = BackgroundScheduler()
 	scheduler.start()
 
+	# add event listener to scheduler
+	scheduler.add_listener(apscheduler_event_listener, EVENT_JOB_ERROR)
+
 	# get the dispatcher to register handlers
 	dispatcher = updater.dispatcher
 
@@ -2528,9 +2545,6 @@ if __name__ == '__main__':
 		except telegram.error.Unauthorized:
 			pass
 
-	# set updater to idle
-	# updater.idle()
-
 	# fancy prints so the user can tell that we're actually doing something
 	if not DEBUG_MODE:
 		# hide cursor for pretty print
@@ -2546,6 +2560,7 @@ if __name__ == '__main__':
 		except KeyboardInterrupt:
 			# on exit, show cursor as otherwise it'll stay hidden
 			cursor.show()
+			scheduler.shutdown()
 			run_time = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME), True)
 			run_time_str = f'\n🔶 Program ending... Runtime: {run_time}.'
 			logging.warning(run_time_str)
