@@ -728,9 +728,6 @@ def send_notification(
 	# send early notifications silently
 	silent = bool(notif_class not in ('notify_60min', 'notify_5min'))
 
-	# send early notifications silently
-	logging.info(f'🔈 Sending notification {"silenty" if silent else "with sound"}...')
-
 	# generate unique time for each chat
 	utc_offset = 3600 * tz_tuple[0]
 	launch_unix = datetime.datetime.utcfromtimestamp(net_unix + utc_offset)
@@ -796,6 +793,14 @@ def send_notification(
 
 		conn.commit()
 		conn.close()
+
+	except telegram.error.BadRequest:
+		if 'Chat_write_forbidden' in error.message:
+			logging.warning('⚠️ Unallowed to send messages to chat! (Chat_write_forbidden)')
+			return True, None
+
+		logging.error('⚠️ Unknown BadRequest when sending message (telegram.error.BadRequest)')
+		return True, None
 
 	except telegram.error.TelegramError as error:
 		if 'chat not found' in error.message:
@@ -1145,6 +1150,10 @@ def notification_handler(
 		# get time zone information for each chat: this is a lot faster in bulk
 		notification_list_tzs = load_bulk_tz_offset(data_dir=db_path, chat_id_set=notification_list)
 		logging.info(f'✅ Got notification tz list {notification_list_tzs}')
+
+		# log send mode (silent or with sound)
+		without_sound = bool(notify_class not in ('notify_60min', 'notify_5min'))
+		logging.info(f'🔈 Sending notification {"silenty" if without_sound else "with sound"}...')
 
 		# iterate over chat_id and chat's UTC-offset -> send notification
 		sent_notification_ids = set()
