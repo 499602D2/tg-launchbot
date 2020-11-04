@@ -341,8 +341,15 @@ def toggle_notification(
 
 	# pull existing strs, split
 	if data_exists:
-		old_enabled_states = query_return[0]['enabled_notifications'].split(',')
-		old_disabled_states = query_return[0]['disabled_notifications'].split(',')
+		if old_enabled_states is not None:
+			old_enabled_states = query_return[0]['enabled_notifications'].split(',')
+		else:
+			old_enabled_states = []
+
+		if old_disabled_states is not None:
+			old_disabled_states = query_return[0]['disabled_notifications'].split(',')
+		else:
+			old_disabled_states = []
 
 	# merge enabled and disabled states into one dict of kw:bool
 	old_states = {}
