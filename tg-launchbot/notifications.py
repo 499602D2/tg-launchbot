@@ -750,6 +750,7 @@ def send_notification(
 				text='🔇 Mute this launch', callback_data=f'mute/{launch_id}/1')]])
 
 		# catch the sent message object so we can store its id
+		logging.info(f'Sending to {chat}...')
 		sent_msg = bot.sendMessage(chat, message, parse_mode='MarkdownV2',
 			reply_markup=keyboard, disable_notification=silent)
 
