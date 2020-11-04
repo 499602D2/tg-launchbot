@@ -373,14 +373,14 @@ def callback_handler(update, context):
 		# now we have the keyboard; update the previous keyboard
 		if text_refresh:
 			message_text = '''
-			🛰 Hi there, nice to see you! Let's set some notifications for you.
+			🚀 *LaunchBot* | Notification settings
 
 			You can search for launch providers, like SpaceX (🇺🇸) or ISRO (🇮🇳), using the flags, or simply enable all!
 
 			You can also edit your notification preferences, like your time zone, from the preferences menu (⚙️).
 
-			🔔 = *enabled* (press to disable)
-			🔕 = *disabled* (press to enable)
+			🔔 = *currently ON* (press to disable)
+			🔕 = *currently OFF* (press to enable)
 			'''
 
 			try:
@@ -1434,8 +1434,8 @@ def notify(update, context):
 
 	You can also edit your notification preferences, like your time zone, from the preferences menu (⚙️).
 
-	🔔 = *currently enabled*
-	🔕 = *currently disabled*
+	🔔 = *currently ON* (press to disable)
+	🔕 = *currently OFF* (press to enable)
 	'''
 
 	# chat id
