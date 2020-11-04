@@ -11,6 +11,7 @@ from db import create_chats_db, update_stats_db
 from timezone import load_bulk_tz_offset
 from config import load_config
 
+
 class TestNotificationUtils(unittest.TestCase):
 	'''
 	Run tests for the API calls and associated functions.
@@ -112,6 +113,18 @@ class TestUtils(unittest.TestCase):
 			for i in range(0, 100):
 				rand_delta = random.randint(0, 3600 * 24 * 2)
 				time_delta_to_legible_eta(rand_delta, True)
+
+			# test days only
+			print(time_delta_to_legible_eta(3600*24*3, False))
+
+			# test hours only
+			print(time_delta_to_legible_eta(3600*12, False))
+
+			# test minutes only
+			print(time_delta_to_legible_eta(60*10, False))
+
+			# test seconds only
+			print(time_delta_to_legible_eta(30, False))
 
 
 			# test with 0 seconds
