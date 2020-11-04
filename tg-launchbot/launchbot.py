@@ -371,9 +371,6 @@ def callback_handler(update, context):
 			]
 		)
 
-		# tuple containing necessary information to edit the message
-		msg_identifier = (msg.chat.id, msg.message_id)
-
 		# now we have the keyboard; update the previous keyboard
 		if text_refresh:
 			message_text = '''
@@ -487,7 +484,6 @@ def callback_handler(update, context):
 	try:
 		query = update.callback_query
 		query_data = update.callback_query.data
-		query_id = update.callback_query.id
 		from_id = update.callback_query.from_user.id
 	except Exception as caught_exception:
 		logging.exception(f'⚠️ Exception in callback_handler: {caught_exception}')
@@ -744,7 +740,7 @@ def callback_handler(update, context):
 			logging.info(f'⚠️ Error with callback_handler input_data[1] for next_flight. input_data={input_data}')
 			return
 
-		current_index, cmd = input_data[2], input_data[3]
+		current_index = input_data[2]
 		if input_data[1] == 'next':
 			new_message_text, keyboard = generate_next_flight_message(chat, int(current_index)+1)
 
@@ -1164,7 +1160,7 @@ def feedback_handler(update, context):
 
 				try: # remove the original feedback message
 					context.bot.deleteMessage(chat.id, update.message.reply_to_message.message_id)
-				except Exception as error:
+				except Exception:
 					logging.exception(f'''Unable to remove sent feedback message with params
 						chat={chat.id}, message_id={update.message.reply_to_message.message_id}''')
 
@@ -1571,7 +1567,6 @@ def generate_schedule_message(call_type: str, chat: str):
 	# pick 5 dates, map missions into dict with dates
 	sched_dict = {}
 	for i, row in enumerate(query_return):
-		net_unix = row['net_unix']
 		launch_unix = datetime.datetime.utcfromtimestamp(row['net_unix'])
 
 		provider = row['lsp_name'] if len(row['lsp_name']) <= len('Arianespace') else row['lsp_short']
@@ -2141,9 +2136,12 @@ def generate_statistics_message() -> str:
 	except sqlite3.OperationalError:
 		notifs = api_reqs = commands = data = last_db_update = 0
 
-	# get system load average
-	load_avgs = os.getloadavg() # [1 min, 5 min, 15 min]
-	load_avg_str = f'{load_avgs[0]:.2f} {load_avgs[1]:.2f} {load_avgs[2]:.2f}'
+	# get system load average for linux/darwin/aix systems
+	if sys.platform != 'win32':
+		load_avgs = os.getloadavg() # [1 min, 5 min, 15 min]
+		load_avg_str = f'{load_avgs[0]:.2f} {load_avgs[1]:.2f} {load_avgs[2]:.2f}'
+	else:
+		load_avg_str = 'unknown'
 
 	# format transfered API data to MB, GB
 	data_suffix = 'GB' if data/10**9 >= 1 else 'MB'

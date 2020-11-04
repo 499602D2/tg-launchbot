@@ -173,26 +173,6 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 			# we've got the pretty eta: log
 			logging.info(f'⏱ ETA string generated for net_diff={net_diff}: {postpone_str}')
 
-			# generate launch time (UTC) string TODO add support for user time zone
-			launch_dt = datetime.datetime.utcfromtimestamp(launch_object.net_unix)
-			launch_time = f'{launch_dt.hour}:{"0" if launch_dt.minute < 10 else ""}{launch_dt.minute}'
-
-			# lift-off date string in a pretty format
-			ymd_split = f'{launch_dt.year}-{launch_dt.month}-{launch_dt.day}'.split('-')
-			try:
-				suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(ymd_split[2])[-1])]
-			except:
-				suffix = 'th'
-
-			# map integer month number to string-format
-			month_map = {
-				1: 'January', 2: 'February', 3: 'March', 4: 'April',
-				5: 'May', 6: 'June', 7: 'July', 8: 'August',
-				9: 'September', 10: 'October', 11: 'November', 12: 'December'}
-
-			# construct launch date string
-			date_str = f'{month_map[int(ymd_split[1])]} {ymd_split[2]}{suffix}'
-
 			# calculate days until next launch attempt
 			eta_sec = launch_object.net_unix - time.time()
 			next_attempt_eta_str = time_delta_to_legible_eta(time_delta=int(eta_sec), full_accuracy=False)
@@ -297,7 +277,7 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 					tuple(update_values) + (launch_object.unique_id,))
 				cursor.execute(f"UPDATE launches SET last_updated = ? WHERE unique_id = ?",
 					(api_update,) + (launch_object.unique_id,))
-			except Exception as error:
+			except Exception:
 				logging.exception(f'⚠️ Error updating field for unique_id={launch_object.unique_id}!')
 
 	# commit changes

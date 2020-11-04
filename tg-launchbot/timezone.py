@@ -56,7 +56,7 @@ def remove_time_zone_information(db_path: str, chat: str):
 		logging.info(f'✅ User successfully removed their time zone information!')
 
 	except:
-		logging.exception(f'❓ User tried to remove their time zone information, but ran into exception: {e}')
+		logging.exception(f'❓ User tried to remove their time zone information, but ran into exception.')
 
 	conn.commit()
 	conn.close()
