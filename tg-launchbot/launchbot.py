@@ -2297,7 +2297,7 @@ if __name__ == '__main__':
 	global DATA_DIR, STARTUP_TIME
 
 	# current version, set DATA_DIR
-	VERSION = '1.6-rc4'
+	VERSION = '1.6.0'
 	DATA_DIR = 'launchbot'
 
 	# log startup time, set default start mode
@@ -2519,12 +2519,15 @@ if __name__ == '__main__':
 
 	# register specific handlers (text for feedback, location for time zone stuff)
 	dispatcher.add_handler(MessageHandler(
-		Filters.reply & ~Filters.command & ~Filters.location, callback=feedback_handler))
+		Filters.reply & ~Filters.forwarded & ~Filters.command & ~Filters.location,
+		callback=feedback_handler))
 	dispatcher.add_handler(MessageHandler(
-		Filters.reply & Filters.location, callback=location_handler))
+		Filters.reply & Filters.location & ~Filters.forwarded & ~Filters.command,
+		callback=location_handler))
 	dispatcher.add_handler(MessageHandler(
 		Filters.status_update, callback=generic_update_handler))
 
+	# if owner has been set, add handler for debug command in private
 	if OWNER != 0:
 		dispatcher.add_handler(
 			CommandHandler(command='debug', callback=admin_handler, filters=Filters.chat(OWNER)))
