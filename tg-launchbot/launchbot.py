@@ -1139,6 +1139,9 @@ def feedback_handler(update, context):
 		if update.channel_post is not None:
 			return
 
+		if update.edited_message is not None:
+			return
+
 		logging.warning(f'Error parsing chat in feedback_handler!!\n{update}')
 		return
 
