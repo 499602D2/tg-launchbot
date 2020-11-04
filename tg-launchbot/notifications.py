@@ -796,9 +796,13 @@ def send_notification(
 		conn.commit()
 		conn.close()
 
-	except telegram.error.BadRequest:
+	except telegram.error.BadRequest as error:
 		if 'Chat_write_forbidden' in error.message:
 			logging.warning('⚠️ Unallowed to send messages to chat! (Chat_write_forbidden)')
+			return True, None
+
+		if 'Have no rights to send a message' in error.message:
+			logging.warning('⚠️ Unallowed to send messages to chat! (Have no rights to send message)')
 			return True, None
 
 		logging.error('⚠️ Unknown BadRequest when sending message (telegram.error.BadRequest)')
@@ -1147,7 +1151,7 @@ def notification_handler(
 		# get list of people to send the notification to
 		notification_list = get_notify_list(
 			db_path=db_path, lsp=lsp_db_name, launch_id=launch_id, notify_class=notify_class)
-		logging.info(f'✅ Got notification list {notification_list}')
+		logging.info(f'✅ Got notification list (len={len(notification_list)}) {notification_list}')
 
 		# get time zone information for each chat: this is a lot faster in bulk
 		notification_list_tzs = load_bulk_tz_offset(data_dir=db_path, chat_id_set=notification_list)
