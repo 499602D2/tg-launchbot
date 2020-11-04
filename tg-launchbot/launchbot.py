@@ -13,7 +13,6 @@ import inspect
 import random
 import sqlite3
 import signal
-import traceback
 
 from timeit import default_timer as timer
 
@@ -26,7 +25,7 @@ import telegram
 from uptime import uptime
 from timezonefinder import TimezoneFinder
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, JobExecutionEvent
+from apscheduler.events import EVENT_JOB_ERROR
 from telegram import ReplyKeyboardRemove, ForceReply
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
