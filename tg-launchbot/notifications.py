@@ -341,12 +341,12 @@ def toggle_notification(
 
 	# pull existing strs, split
 	if data_exists:
-		if old_enabled_states is not None:
+		if query_return[0]['enabled_notifications'] is not None:
 			old_enabled_states = query_return[0]['enabled_notifications'].split(',')
 		else:
 			old_enabled_states = []
 
-		if old_disabled_states is not None:
+		if query_return[0]['disabled_notifications'] is not None:
 			old_disabled_states = query_return[0]['disabled_notifications'].split(',')
 		else:
 			old_disabled_states = []
