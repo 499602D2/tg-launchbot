@@ -20,7 +20,7 @@ from notifications import (
 	remove_previous_notification, store_notification_identifiers)
 
 class LaunchLibrary2Launch:
-	'''Description
+	'''
 	A class for simplifying the handling of launch objects. Contains all the properties needed
 	by the bot.
 	'''
@@ -341,7 +341,7 @@ def ll2_api_call(
 def api_call_scheduler(
 	db_path: str, scheduler: BackgroundScheduler, ignore_60: bool,
 	bot_username: str, bot: 'telegram.bot.Bot') -> int:
-	"""Summary
+	"""
 	Schedules upcoming API calls for when they'll be required.
 	Calls are scheduled with the following logic:
 	- every 20 minutes, unless any of the following has triggered an update:
@@ -503,7 +503,12 @@ def api_call_scheduler(
 
 
 if __name__ == '__main__':
-	BOT_USERNAME = 'rocketrybot'
+	'''
+	api.py can be run directly for API and scheduling testing purposes.
+	In this case, the bot will do everything but send a message, as the bot hasn't
+	been defined/initialized.
+	'''
+	BOT_USERNAME = 'debug-tg-launchbot'
 	DATA_DIR = 'launchbot'
 
 	# verify data_dir exists
