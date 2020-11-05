@@ -1566,10 +1566,13 @@ def generate_schedule_message(call_type: str, chat: str):
 	vehicle_map = {
 		'Falcon 9 Block 5': 'Falcon 9 B5'}
 
+	# pull user time zone preferences, set tz_offset from hours to seconds
+	user_tz_offset = 3600 * load_time_zone_status(DATA_DIR, chat, readable=False)
+
 	# pick 5 dates, map missions into dict with dates
 	sched_dict = {}
 	for i, row in enumerate(query_return):
-		launch_unix = datetime.datetime.utcfromtimestamp(row['net_unix'])
+		launch_unix = datetime.datetime.utcfromtimestamp(row['net_unix'] + user_tz_offset)
 
 		provider = row['lsp_name'] if len(row['lsp_name']) <= len('Arianespace') else row['lsp_short']
 		mission = row['name'].split('|')[1].strip()
@@ -1644,7 +1647,6 @@ def generate_schedule_message(call_type: str, chat: str):
 		launch_date = datetime.datetime.strptime(key, '%Y-%m-%d')
 
 		# get today based on chat preferences: if not available, use UTC+0
-		user_tz_offset = 3600 * load_time_zone_status(DATA_DIR, chat, readable=False)
 		today = datetime.datetime.utcfromtimestamp(time.time() + user_tz_offset)
 		time_delta = abs(launch_date - today)
 
