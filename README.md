@@ -128,7 +128,7 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 
 		- load from a changelog.txt file?
 
-	- open-source LaunchBot ✨
+	- ✅ open-source LaunchBot ✨
 	
 ### 1.7 / performance optimizations
 
@@ -140,11 +140,11 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 
 	- improve json-parsing performance by using multiprocessing
 	
-	- use an in-memory DB, like redis or memcached, to handle all responses
+	- use in-memory caching, like redis or memcached, to handle all responses
 
 		- reduce disk writes and reads: SD cards have terrible latency, LPDDR4 on RasPi is pretty snappy
 	
-		- update in-mem DB on API call
+		- update cache on API call
 
 		- key:vals for all chats: simple, fast, easy
 
