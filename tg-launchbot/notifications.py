@@ -891,7 +891,11 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	# generate location
 	launch_site = launch['location_name'].split(',')[0].strip()
 	location_flag = map_country_code_to_flag(launch['location_country_code'])
-	location = f'{launch["pad_name"]}, {launch_site} {location_flag}'
+
+	if 'Starship' in launch['rocket_name']:
+		location = f'SpaceX South Texas Launch Site, Boca Chica {location_flag}'
+	else:
+		location = f'{launch["pad_name"]}, {launch_site} {location_flag}'
 
 	# add mission information: type, orbit
 	mission_type = launch['mission_type'].capitalize() if launch['mission_type'] is not None else 'Unknown purpose'
@@ -1014,8 +1018,13 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 
 	if recovery_str is not None:
 		base_message += '\n\t'
-		base_message += '*Booster information* 🚀\n\t'
-		base_message += f'*Core* {short_monospaced_text(reuse_str)}\n\t'
+		base_message += '*Vehicle information* 🚀\n\t'
+
+		if 'Starship' in launch['rocket_name']:
+			base_message += f'*Starship* {short_monospaced_text(reuse_str)}\n\t'
+		else:
+			base_message += f'*Core* {short_monospaced_text(reuse_str)}\n\t'
+
 		base_message += f'*Landing* {short_monospaced_text(landing_str)}'
 		base_message += '\n\t'
 
