@@ -1898,16 +1898,19 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# launch name
 	try:
-		launch_name = launch['name'].split('|')[1]
+		launch_name = launch['name'].split('|')[1].strip()
 	except IndexError:
-		launch_name = launch['name']
+		launch_name = launch['name'].strip()
 
 	# shorten long launch service provider name
-	if len(launch['lsp_name']) > len('Virgin Orbit'):
+	if len(launch['lsp_name']) > len('Galactic Energy'):
 		if launch['lsp_id'] in LSP_IDs.keys():
 			lsp_name = LSP_IDs[launch['lsp_id']][0]
 		else:
-			lsp_name = launch['lsp_short']
+			if launch['lsp_short'] not in (None, ''):
+				lsp_name = launch['lsp_short']
+			else:
+				lsp_name = launch['lsp_name']
 	else:
 		lsp_name = launch['lsp_name']
 
