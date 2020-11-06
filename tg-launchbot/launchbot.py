@@ -52,6 +52,17 @@ def admin_handler(update, context):
 	Allow bot owner to export logs and database remotely. Can only be called
 	in private chat with owner.
 	'''
+	def api_update_on_restart():
+		'''
+		Updates launch database to force API update on next bot restart
+		'''
+		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
+		cursor_ = conn.cursor()
+
+		cursor_.execute('UPDATE stats SET last_api_update = ?', (None,))
+		conn.commit()
+		conn.close()
+
 	def restart_program():
 		'''
 		Restarts the current program, with file objects and descriptors
@@ -99,11 +110,16 @@ def admin_handler(update, context):
 		context.bot.send_message(chat_id=chat.id, text='⚠️ Restarting...')
 		restart_program()
 
+	elif update.message.text == '/debug force-api-update':
+		logging.info('⚠️ Updating stats to enable immediate API update...')
+		api_update_on_restart()
+		context.bot.send_message(chat_id=chat.id, text='⚠️ DB updated for immediate API update')
+
 	else:
 		context.bot.send_message(
 			chat_id=chat.id,
 			parse_mode='Markdown',
-			text='ℹ️ Invalid input! Arguments: `export-logs`, `export-db`, `restart`.')
+			text='ℹ️ Invalid input! Arguments: `export-logs`, `export-db`, `restart`, `force-api-update`.')
 
 
 def generic_update_handler(update, context):
@@ -2393,7 +2409,7 @@ if __name__ == '__main__':
 			'Arianespace', 'Eurockot', 'Starsem SA'},
 
 		'CHN': {
-			'CASC', 'ExPace'},
+			'CASC', 'ExPace', 'Galactic Energy'},
 
 		'RUS': {
 			'KhSC', 'ISC Kosmotras', 'Russian Space Forces', 'Eurockot', 'Sea Launch',
