@@ -1590,12 +1590,18 @@ def generate_schedule_message(call_type: str, chat: str):
 	for i, row in enumerate(query_return):
 		launch_unix = datetime.datetime.utcfromtimestamp(row['net_unix'] + user_tz_offset)
 
-		provider = row['lsp_name'] if len(row['lsp_name']) <= len('Arianespace') else row['lsp_short']
+		if len(row['lsp_name']) <= len('Arianespace'):
+			provider = row['lsp_name']
+		else:
+			if row['lsp_short'] not in (None, ''):
+				provider = row['lsp_short']
+			else:
+				provider = row['lsp_name']
 
 		try:
 			mission = row['name'].split('|')[1].strip()
 		except IndexError:
-			mission = row['name']
+			mission = row['name'].strip()
 
 		verified_date = bool(row['tbd_date'] == 0)
 		verified_time = bool(row['tbd_time'] == 0)

@@ -181,7 +181,7 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 			try:
 				launch_name = launch_object.name.split('|')[1].strip()
 			except IndexError:
-				launch_name = launch_object.name
+				launch_name = launch_object.name.strip()
 
 			# construct the postpone message
 			postpone_msg = f'📢 *{launch_name}* has been postponed by {postpone_str}. '

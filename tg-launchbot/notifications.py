@@ -869,8 +869,11 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	if launch['lsp_name'] in provider_name_map.keys():
 		lsp_name = provider_name_map[launch['lsp_name']]
 	else:
-		if len(launch['lsp_name']) > len('Virgin Orbit'):
-			lsp_name = launch['lsp_short']
+		if len(launch['lsp_name']) > len('Galactic Energy'):
+			if launch['lsp_short'] not in (None, ''):
+				lsp_name = launch['lsp_short']
+			else:
+				lsp_name = launch['lsp_name']
 		else:
 			lsp_name = launch['lsp_name']
 
