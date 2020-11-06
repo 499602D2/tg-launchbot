@@ -1575,7 +1575,11 @@ def generate_schedule_message(call_type: str, chat: str):
 		launch_unix = datetime.datetime.utcfromtimestamp(row['net_unix'] + user_tz_offset)
 
 		provider = row['lsp_name'] if len(row['lsp_name']) <= len('Arianespace') else row['lsp_short']
-		mission = row['name'].split('|')[1].strip()
+
+		try:
+			mission = row['name'].split('|')[1].strip()
+		except IndexError:
+			mission = row['name']
 
 		verified_date = bool(row['tbd_date'] == 0)
 		verified_time = bool(row['tbd_time'] == 0)
@@ -1877,7 +1881,10 @@ def generate_next_flight_message(chat, current_index: int):
 		return reconstruct_message_for_markdown(msg_text), keyboard
 
 	# launch name
-	launch_name = launch['name'].split('|')[1]
+	try:
+		launch_name = launch['name'].split('|')[1]
+	except IndexError:
+		launch_name = launch['name']
 
 	# shorten long launch service provider name
 	if len(launch['lsp_name']) > len('Virgin Orbit'):
@@ -2299,7 +2306,7 @@ if __name__ == '__main__':
 	global DATA_DIR, STARTUP_TIME
 
 	# current version, set DATA_DIR
-	VERSION = '1.6.0'
+	VERSION = '1.6.1'
 	DATA_DIR = 'launchbot'
 
 	# log startup time, set default start mode
