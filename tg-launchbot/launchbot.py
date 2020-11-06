@@ -2023,11 +2023,19 @@ def generate_next_flight_message(chat, current_index: int):
 			landing_type = launch['landing_type']
 			landing_str = f"{launch['launcher_landing_location']} ({landing_type})"
 
-		recovery_str = f'''
-		*Booster information* 🚀
-		*Core* {short_monospaced_text(reuse_str)}
-		*Landing* {short_monospaced_text(landing_str)}
-		'''
+		if lsp_name == 'SpaceX' and 'Starship' in launch["rocket_name"]:
+			location = f'SpaceX South Texas Launch Site, Boca Chica {location_flag}'
+			recovery_str = f'''
+			*Vehicle information* 🚀
+			*Starship* {short_monospaced_text(reuse_str)}
+			*Landing* {short_monospaced_text(landing_str)}
+			'''
+		else:
+			recovery_str = f'''
+			*Vehicle information* 🚀
+			*Core* {short_monospaced_text(reuse_str)}
+			*Landing* {short_monospaced_text(landing_str)}
+			'''
 	else:
 		recovery_str = None
 
