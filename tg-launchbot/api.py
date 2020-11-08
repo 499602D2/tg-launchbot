@@ -268,6 +268,13 @@ def ll2_api_call(
 			with open(os.path.join(data_dir, f'error-json-{time.time()}.json'), 'w') as jsonf:
 				json.dump(api_json, jsonf, indent=4)
 
+			logging.warning('⚠️ Trying again after 10 seconds...')
+			time.sleep(10)
+
+			return ll2_api_call(
+				data_dir=data_dir, scheduler=scheduler,
+				bot_username=bot_username, bot=bot)
+
 	# store update time
 	api_updated = int(time.time())
 
