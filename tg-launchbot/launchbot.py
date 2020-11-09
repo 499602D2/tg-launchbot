@@ -117,19 +117,16 @@ def admin_handler(update, context):
 		current = repo.head.commit
 		repo.remotes.origin.pull()
 		if current != repo.head.commit:
-			ret = repo.remotes.origin.pull()
-
-			info_str = ''
-			for fetch_info in ret:
-				info_str += f'\n*ref*: {fetch_info.ref}\n*note*: {fetch_info.note}\n'
-
+			last_commit = repo.heads[0].commit.hexsha
 			context.bot.send_message(
-				chat_id=chat.id, text=f'🐙 Git pull completed!\n{info_str}',
+				chat_id=chat.id, text=f'🐙 Git pull completed!\n\nLast commit: `{last_commit}`',
 				parse_mode='Markdown')
 		else:
 			context.bot.send_message(
 				chat_id=chat.id, text=f'🐙 Git pull completed: no changes.',
 				parse_mode='Markdown')
+
+		repo.close()
 
 	elif update.message.text == '/debug force-api-update':
 		logging.info('⚠️ Updating stats to enable immediate API update...')
