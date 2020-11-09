@@ -113,15 +113,23 @@ def admin_handler(update, context):
 
 	elif update.message.text == '/debug git-pull':
 		repo = git.Repo('../')
-		ret = repo.remotes.origin.pull()
 
-		info_str = ''
-		for fetch_info in ret:
-			info_str += f'\n*ref*: {fetch_info.ref}\n*note*: {fetch_info.note}\n'
+		current = repo.head.commit
+		repo.remotes.origin.pull()
+		if current != repo.head.commit:
+			ret = repo.remotes.origin.pull()
 
-		context.bot.send_message(
-			chat_id=chat.id, text=f'🐙 Git pull completed!\n{info_str}',
-			parse_mode='Markdown')
+			info_str = ''
+			for fetch_info in ret:
+				info_str += f'\n*ref*: {fetch_info.ref}\n*note*: {fetch_info.note}\n'
+
+			context.bot.send_message(
+				chat_id=chat.id, text=f'🐙 Git pull completed!\n{info_str}',
+				parse_mode='Markdown')
+		else:
+			context.bot.send_message(
+				chat_id=chat.id, text=f'🐙 Git pull completed: no changes.',
+				parse_mode='Markdown')
 
 	elif update.message.text == '/debug force-api-update':
 		logging.info('⚠️ Updating stats to enable immediate API update...')
