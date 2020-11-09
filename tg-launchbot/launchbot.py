@@ -2004,7 +2004,7 @@ def generate_next_flight_message(chat, current_index: int):
 
 			# append .x to F9 core names
 			if lsp_name == 'SpaceX' and core_str[0:2] == 'B1':
-				core_str += f'.{int(reuse_count) + 1}'
+				core_str += f'.{int(reuse_count)}'
 
 			reuse_str = f'{core_str} ({suffixed_readable_int(reuse_count)} flight ♻️)'
 		else:
