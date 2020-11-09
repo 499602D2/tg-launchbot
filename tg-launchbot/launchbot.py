@@ -2255,6 +2255,13 @@ def generate_statistics_message() -> str:
 	# close conn
 	conn.close()
 
+	# get repo head's commit hex hash
+	try:
+		head_hash = git.Repo('../').heads[0].commit.hexsha[0:6]
+	except Exception as error:
+		logging.exception(f'[?] unable to set head_hash: {error}')
+		head_hash = '??????'
+
 	stats_str = f'''
 	📊 *LaunchBot global statistics*
 	Notifications delivered: {notifs}
@@ -2272,7 +2279,7 @@ def generate_statistics_message() -> str:
 	🎛 *Server information*
 	Uptime {time_delta_to_legible_eta(time_delta=uptime(), full_accuracy=False)}
 	Load {load_avg_str}
-	LaunchBot version *{VERSION}* 🚀
+	LaunchBot *{VERSION}* ({head_hash}) 🚀
 	'''
 
 	return inspect.cleandoc(stats_str)
