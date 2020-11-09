@@ -16,6 +16,7 @@ import signal
 
 from timeit import default_timer as timer
 
+import git
 import psutil
 import cursor
 import pytz
@@ -110,16 +111,31 @@ def admin_handler(update, context):
 		context.bot.send_message(chat_id=chat.id, text='⚠️ Restarting...')
 		restart_program()
 
+	elif update.message.text == '/debug git-pull':
+		repo = git.Repo('../')
+		ret = repo.remotes.origin.pull()
+
+		info_str = ''
+		for fetch_info in ret:
+			info_str += f'\n*ref*: {fetch_info.ref}\n*note*: {fetch_info.note}\n'
+
+		context.bot.send_message(
+			chat_id=chat.id, text=f'🐙 Git pull completed!\n{info_str}',
+			parse_mode='Markdown')
+
 	elif update.message.text == '/debug force-api-update':
 		logging.info('⚠️ Updating stats to enable immediate API update...')
 		api_update_on_restart()
 		context.bot.send_message(chat_id=chat.id, text='⚠️ DB updated for immediate API update')
 
 	else:
+		args_list = (
+			'`export-logs`', '`export-db`', '`force-api-update`', '`git-pull`', '`restart`')
+
 		context.bot.send_message(
 			chat_id=chat.id,
 			parse_mode='Markdown',
-			text='ℹ️ Invalid input! Arguments: `export-logs`, `export-db`, `restart`, `force-api-update`.')
+			text=f'ℹ️ *Invalid input!* Arguments: {", ".join(args_list)}.')
 
 
 def generic_update_handler(update, context):
