@@ -1942,8 +1942,11 @@ def generate_next_flight_message(chat, current_index: int):
 	eta = abs(int(time.time()) - launch['net_unix'])
 	eta_str = time_delta_to_legible_eta(time_delta=eta, full_accuracy=True)
 
+	# # pull user time zone preferences, set tz_offset from hours to seconds
+	user_tz_offset = 3600 * load_time_zone_status(DATA_DIR, chat, readable=False)
+
 	# generate launch time string
-	launch_datetime = datetime.datetime.fromtimestamp(launch['net_unix'])
+	launch_datetime = datetime.datetime.fromtimestamp(launch['net_unix'] + user_tz_offset)
 	if launch_datetime.minute < 10:
 		min_time = f'0{launch_datetime.minute}'
 	else:
@@ -1952,7 +1955,7 @@ def generate_next_flight_message(chat, current_index: int):
 	launch_time = f'{launch_datetime.hour}:{min_time}'
 
 	# generate date string
-	date_str = timestamp_to_legible_date_string(launch['net_unix'])
+	date_str = timestamp_to_legible_date_string(launch['net_unix'] + user_tz_offset)
 
 	# verified launch date
 	if launch['tbd_date'] == 0:
