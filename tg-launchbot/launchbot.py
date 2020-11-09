@@ -1964,8 +1964,8 @@ def generate_next_flight_message(chat, current_index: int):
 			# time isn't tbd, append it as well
 			time_str = f'{date_str}, {launch_time} UTC{readable_utc_offset}'
 		else:
-			# unverified launch time
-			time_str = f'{date_str}, {launch_time} UTC{readable_utc_offset}'
+			# unverified launch time, but verified launch date
+			time_str = f'{date_str}, NET {launch_time} UTC{readable_utc_offset}'
 	else:
 		# unverified launch date
 		time_str = f'Not before {date_str}'
