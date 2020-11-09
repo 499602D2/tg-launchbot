@@ -1946,7 +1946,7 @@ def generate_next_flight_message(chat, current_index: int):
 	user_tz_offset = 3600 * load_time_zone_status(DATA_DIR, chat, readable=False)
 
 	# generate launch time string
-	launch_datetime = datetime.datetime.fromtimestamp(launch['net_unix'] + user_tz_offset)
+	launch_datetime = datetime.datetime.utcfromtimestamp(launch['net_unix'] + user_tz_offset)
 	if launch_datetime.minute < 10:
 		min_time = f'0{launch_datetime.minute}'
 	else:
