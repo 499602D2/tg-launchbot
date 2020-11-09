@@ -1956,15 +1956,14 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# verified launch date
 	if launch['tbd_date'] == 0:
-		# verified launch time
-		if launch['tbd_time'] == 0:
-			# load UTC offset in readable format
-			readable_utc_offset = load_time_zone_status(data_dir=DATA_DIR, chat=chat, readable=True)
+		# load UTC offset in readable format
+		readable_utc_offset = load_time_zone_status(data_dir=DATA_DIR, chat=chat, readable=True)
 
-			# time isn't tbd, append it as well
+		if launch['tbd_time'] == 0:
+			# verified launch date and launch time
 			time_str = f'{date_str}, {launch_time} UTC{readable_utc_offset}'
 		else:
-			# unverified launch time, but verified launch date
+			# verified launch date, but unverified launch time
 			time_str = f'{date_str}, NET {launch_time} UTC{readable_utc_offset}'
 	else:
 		# unverified launch date
