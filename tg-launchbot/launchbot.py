@@ -112,10 +112,13 @@ def admin_handler(update, context):
 		restart_program()
 
 	elif update.message.text == '/debug git-pull':
-		repo = git.Repo('../')
+		context.bot.send_message(
+				chat_id=chat.id, text='🐙 Pulling master...', parse_mode='Markdown')
 
+		repo = git.Repo('../')
 		current = repo.head.commit
 		repo.remotes.origin.pull()
+
 		if current != repo.head.commit:
 			last_commit = repo.heads[0].commit.hexsha
 			context.bot.send_message(
@@ -2071,7 +2074,12 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# inform the user whether they'll be notified or not
 	if user_notif_enabled:
-		notify_str = '🔔 You will be notified of this launch!'
+		user_notif_states = chat_row['notify_time_pref']
+		if '1' in user_notif_states:
+			notify_str = '🔔 You will be notified of this launch!'
+		else:
+			notify_str = '🔕 You will *not* be notified of this launch!'
+			notify_str += f'\nℹ️ *To enable:* /notify@{BOT_USERNAME} (change notification settings with ⚙️)'
 	else:
 		notify_str = '🔕 You will *not* be notified of this launch.'
 		notify_str += f'\nℹ️ *To enable:* /notify@{BOT_USERNAME}'
