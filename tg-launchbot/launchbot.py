@@ -2022,6 +2022,19 @@ def generate_next_flight_message(chat, current_index: int):
 		orbit_info = '🌍'
 		orbit_str = 'Unknown orbit'
 
+	# add crew str here, if the launch has astros on board
+	if launch['spacecraft_crew_count'] not in (None, 0):
+		if 'Dragon' in launch['spacecraft_name']:
+			spacecraft_info = f'''
+			*Dragon information* 🐉
+			*Crew* {"👨‍🚀" * launch["spacecraft_crew_count"]}
+			*Capsule* {launch["spacecraft_sn"]}
+			'''
+		else:
+			spacecraft_info = None
+	else:
+		spacecraft_info = None
+
 	# if there's a landing attempt, generate the string for the booster
 	if launch['launcher_landing_attempt']:
 		core_str = launch['launcher_serial_number']
@@ -2100,11 +2113,24 @@ def generate_next_flight_message(chat, current_index: int):
 	*Mission information* {orbit_info}
 	*Type* {short_monospaced_text(mission_type)}
 	*Orbit* {short_monospaced_text(orbit_str)}
-	{recovery_str if recovery_str is not None else ""}
+	'''
+
+	if spacecraft_info is not None:
+		next_str += spacecraft_info
+
+	if recovery_str is not None:
+		next_str += recovery_str
+
+	# {spacecraft_info if spacecraft_info is not None else ""}
+	# {recovery_str if recovery_str is not None else ""}
+
+	next_str += f'''
 	ℹ️ {info_str}
 
 	{notify_str}
-	'''.replace('\t', '')
+	'''
+
+	next_str = next_str.replace('\t', '')
 
 	# generate the keyboard here
 	if max_index > 1:

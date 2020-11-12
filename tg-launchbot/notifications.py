@@ -928,6 +928,14 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	else:
 		probability = None
 
+	if launch['spacecraft_crew_count'] not in (None, 0):
+		if 'Dragon' in launch['spacecraft_name']:
+			spacecraft_info = True
+		else:
+			spacecraft_info = None
+	else:
+		spacecraft_info = None
+
 	# if there's a landing attempt, generate the string for the booster
 	if launch['launcher_landing_attempt']:
 		core_str = launch['launcher_serial_number']
@@ -968,7 +976,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 		else:
 			if len(launch['mission_description'].split('.')) > 3:
 				# if longer than 3 sentences, use the first 3
-				info_str = '.'.join(info_str.split('\n')[0].split('.')[0:3])
+				info_str = '.'.join(launch['mission_description'].split('\n')[0].split('.')[0:3])
 			else:
 				# otherwise, just use the entire thing
 				info_str = launch['mission_description']
@@ -1016,6 +1024,13 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	*Type* {short_monospaced_text(mission_type)}
 	*Orbit* {short_monospaced_text(orbit_str)}
 	'''
+
+	if spacecraft_info is not None:
+		base_message += '\n\t'
+		base_message += '*Dragon information* 🐉\n\t'
+		base_message += f'*Crew* {"👨‍🚀" * launch["spacecraft_crew_count"]}\n\t'
+		base_message += f'*Capsule* {short_monospaced_text(launch["spacecraft_sn"])}'
+		base_message += '\n\t'
 
 	if recovery_str is not None:
 		base_message += '\n\t'
