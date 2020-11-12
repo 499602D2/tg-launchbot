@@ -107,8 +107,10 @@ def admin_handler(update, context):
 				filename=f'db-export-{int(time.time())}.db')
 
 	elif update.message.text == '/debug restart':
-		logging.info('⚠️ Restarting program...')
-		context.bot.send_message(chat_id=chat.id, text='⚠️ Restarting...')
+		run_time = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME), True)
+		logging.info(f'⚠️ Restarting program... Runtime: {run_time}')
+
+		context.bot.send_message(chat_id=chat.id, text=f'⚠️ Restarting... Runtime: {run_time}')
 		restart_program()
 
 	elif update.message.text == '/debug git-pull':
