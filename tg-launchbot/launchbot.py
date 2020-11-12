@@ -2005,9 +2005,9 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# TODO add orbits for TMI and TLI, once these pop up for the first time
 	orbit_map = {
-		'Sub Orbital': 'Sub-orbital', 'VLEO': 'Very low-Earth orbit', 'LEO': 'Low-Earth orbit',
-		'SSO': 'Sun-synchronous orbit', 'MEO': 'Medium-Earth orbit', 'GEO': 'Geostationary (direct)',
-		'GTO': 'Geostationary (transfer)', 'GSO': 'Geosynchronous orbit', 'LO': 'Lunar orbit'
+		'Sub': 'Sub-orbital', 'VLEO': 'Very-low Earth orbit', 'LEO': 'Low Earth orbit',
+		'SSO': 'Sun-synchronous orbit', 'MEO': 'Medium Earth orbit', 'GTO': 'Geostationary (transfer)',
+		'Direct-GEO': 'Geostationary (direct)', 'GSO': 'Geosynchronous orbit', 'LO': 'Lunar orbit'
 	}
 
 	try:
