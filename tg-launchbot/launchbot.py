@@ -110,7 +110,9 @@ def admin_handler(update, context):
 		run_time = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME), True)
 		logging.info(f'⚠️ Restarting program... Runtime: {run_time}')
 
-		context.bot.send_message(chat_id=chat.id, text=f'⚠️ Restarting... Runtime: {run_time}')
+		context.bot.send_message(
+			chat_id=chat.id, text=f'⚠️ ™Restarting...* Runtime: {run_time}',
+			parse_mode='Markdown')
 		restart_program()
 
 	elif update.message.text == '/debug git-pull':
