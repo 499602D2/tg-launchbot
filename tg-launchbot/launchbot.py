@@ -108,10 +108,10 @@ def admin_handler(update, context):
 
 	elif update.message.text == '/debug restart':
 		run_time = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME), True)
-		logging.info(f'⚠️ Restarting program... Runtime: {run_time}')
+		logging.info(f'⚠️ Restarting program... Runtime: {run_time}.')
 
 		context.bot.send_message(
-			chat_id=chat.id, text=f'⚠️ ™Restarting...* Runtime: {run_time}',
+			chat_id=chat.id, text=f'⚠️ *Restarting...* Runtime: {run_time}.',
 			parse_mode='Markdown')
 		restart_program()
 
@@ -2407,7 +2407,7 @@ if __name__ == '__main__':
 	global DATA_DIR, STARTUP_TIME
 
 	# current version, set DATA_DIR
-	VERSION = '1.6.1'
+	VERSION = '1.6.2'
 	DATA_DIR = 'launchbot'
 
 	# log startup time, set default start mode
