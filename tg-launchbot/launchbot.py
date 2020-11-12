@@ -2027,8 +2027,8 @@ def generate_next_flight_message(chat, current_index: int):
 		if 'Dragon' in launch['spacecraft_name']:
 			spacecraft_info = f'''
 			*Dragon information* 🐉
-			*Crew* {"👨‍🚀" * launch["spacecraft_crew_count"]}
-			*Capsule* {launch["spacecraft_sn"]}
+			*Crew* {short_monospaced_text("👨‍🚀" * launch["spacecraft_crew_count"])}
+			*Capsule* {short_monospaced_text(launch["spacecraft_sn"])}
 			'''
 		else:
 			spacecraft_info = None

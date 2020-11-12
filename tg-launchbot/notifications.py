@@ -1028,7 +1028,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	if spacecraft_info is not None:
 		base_message += '\n\t'
 		base_message += '*Dragon information* 🐉\n\t'
-		base_message += f'*Crew* {"👨‍🚀" * launch["spacecraft_crew_count"]}\n\t'
+		base_message += f'*Crew* {short_monospaced_text("👨‍🚀" * launch["spacecraft_crew_count"])}\n\t'
 		base_message += f'*Capsule* {short_monospaced_text(launch["spacecraft_sn"])}'
 		base_message += '\n\t'
 
