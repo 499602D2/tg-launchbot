@@ -962,17 +962,18 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 
 	# parse for info text
 	if launch['mission_description'] not in ('', None):
-		# remove newlines and the (occasional) resulting double-spaces
-		launch['mission_description'] = launch['mission_description'].replace('\n', ' ')
-		launch['mission_description'] = launch['mission_description'].replace('  ', ' ')
-
-		if len(launch['mission_description'].split(' ')) > 60:
-			# shorten the info message if it's longer than 60 words
-			info_text = ". ".join(launch['mission_description'].split(". ")[0:2])
-			info_text = 'ℹ️ ' + info_text + '.'
+		# pull launch info
+		if launch['mission_description'] is None:
+			info_str = 'No launch information available.'
 		else:
-			# otherwise, just use the entire thing
-			info_text = f'ℹ️ {launch["mission_description"]}'
+			if len(launch['mission_description'].split('.')) > 3:
+				# if longer than 3 sentences, use the first 3
+				info_str = '.'.join(info_str.split('\n')[0].split('.')[0:3])
+			else:
+				# otherwise, just use the entire thing
+				info_str = launch['mission_description']
+
+		info_text = f'ℹ️ {info_str}'
 	else:
 		info_text = None
 
