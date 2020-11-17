@@ -39,7 +39,8 @@ from db import (update_stats_db, create_chats_db)
 from utils import (
 	anonymize_id, time_delta_to_legible_eta, map_country_code_to_flag,
 	timestamp_to_legible_date_string, short_monospaced_text,
-	reconstruct_message_for_markdown, suffixed_readable_int)
+	reconstruct_message_for_markdown, reconstruct_link_for_markdown,
+	suffixed_readable_int)
 from timezone import (
 	load_locale_string, remove_time_zone_information, update_time_zone_string,
 	update_time_zone_value, load_time_zone_status)
@@ -1162,7 +1163,10 @@ def callback_handler(update, context):
 				inline_keyboard=[[
 					InlineKeyboardButton(text='🔄 Refresh statistics', callback_data='stats/refresh')]])
 
-			query.edit_message_text(text=new_text, reply_markup=keyboard, parse_mode='Markdown')
+			query.edit_message_text(
+				text=new_text, reply_markup=keyboard, parse_mode='Markdown',
+				disable_web_page_preview=True)
+
 			query.answer(text='🔄 Statistics refreshed!')
 
 	# update stats, except if command was a stats refresh
@@ -2292,10 +2296,13 @@ def generate_statistics_message() -> str:
 
 	# get repo head's commit hex hash
 	try:
-		head_hash = git.Repo('../').heads[0].commit.hexsha[0:6]
+		head_hash = git.Repo('../').heads[0].commit.hexsha[0:7]
 	except Exception as error:
 		logging.exception(f'[?] unable to set head_hash: {error}')
-		head_hash = '??????'
+		head_hash = 'unknown version'
+
+	parsed_github_link = reconstruct_link_for_markdown(
+		'https://github.com/499602D2/tg-launchbot')
 
 	stats_str = f'''
 	📊 *LaunchBot global statistics*
@@ -2314,7 +2321,7 @@ def generate_statistics_message() -> str:
 	🎛 *Server information*
 	Uptime {time_delta_to_legible_eta(time_delta=uptime(), full_accuracy=False)}
 	Load {load_avg_str}
-	LaunchBot *{VERSION}* ({head_hash}) 🚀
+	LaunchBot *{VERSION}* [({head_hash})]({parsed_github_link}) 🚀
 	'''
 
 	return inspect.cleandoc(stats_str)
@@ -2348,7 +2355,9 @@ def statistics(update, context):
 
 	try:
 		context.bot.send_message(
-			chat_id, stats_str, reply_markup=keyboard, parse_mode='Markdown')
+			chat_id, stats_str, reply_markup=keyboard, parse_mode='Markdown',
+			disable_web_page_preview=True
+			)
 
 	except telegram.error.Unauthorized as error:
 		logging.info(f'Unauthorized to send message! Error.message: {error.message}')
@@ -2576,6 +2585,7 @@ if __name__ == '__main__':
 	logging.getLogger('urllib3').setLevel(logging.CRITICAL)
 	logging.getLogger('chardet.charsetprober').setLevel(logging.CRITICAL)
 	logging.getLogger('apscheduler').setLevel(logging.WARNING)
+	logging.getLogger('git').setLevel(logging.WARNING)
 	logging.getLogger('telegram').setLevel(logging.ERROR)
 	logging.getLogger('telegram.bot').setLevel(logging.ERROR)
 	logging.getLogger('telegram.ext.updater').setLevel(logging.ERROR)
