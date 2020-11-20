@@ -1915,6 +1915,7 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# check if a cached response exists
 	if rd.exists(f'next-{chat}-{current_index}'):
+		logging.debug(f'🐇 cache-hit for next/{chat}/{current_index}')
 		return cached_response()
 
 	# start db connection
