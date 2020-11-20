@@ -24,13 +24,21 @@ and tons of other things!
 
 Install the Python3 dependencies with pip, using the requirements.txt file found in the repository: `python3 -m pip install -R requirements.txt`.
 
-After the dependencies are installed, you can run the bot with `python3 launchbot.py -start`. For debugging purposes and running in the background with nohup, add `-debug`: this prevents the flooding of the `nohup.out` file.
+LaunchBot also requires a running redis server instance. Redis is used to reduce disk accesses, as redis is an in-memory (caching) database, compared to the sqlite database sitting on the disk. This should help the longevity of cheap flash storage media, like SD-cards, while also improving latency.
+
+To install redis, follow the instructions at [redis.io](https://redis.io/download). On Linux-based systems, `redis-server` can be installed through most package managers like `apt`. On macOS, `redis-server` can be found in the Homebrew package repository, and can be installed via `brew install redis-server`.
+
+LaunchBot expects a running redis instance to be found at `127.0.0.1:6379`, which is also the default location. You should be fine running `redis-server` with the default configuration. However you might want to add the `--daemonize` flag to run the instance in the background: `redis-server --daemonize`.
+
+After the dependencies are installed and you have a redis-server instance running, you can run the bot with `python3 launchbot.py -start`. Once you have set up the bot, you can run the bot in the background with `nohup` – in this case, it's advisable to add the `-debug` flag to prevent the flooding of the `nohup.out` file: `nohup python3 launchbot.py -start -debug &`.
 
 **🖥 Data structures**
 
 The bot creates the following supporting files under `../launchbot/`:
 
-SQLite: `launchbot-data.db`: houses all data the bot needs to operate, including launch caching, statistics, etc.
+SQLite: `launchbot-data.db`: houses all data the bot needs to operate, including launch information, statistics, etc.
+
+Redis: redis is an in-memory database used to cache various responses: this speeds up various operations and reduces disk IO operations.
 
 JSON: `bot-settings.json`: used to configure the bot by setting the Telegram bot API key, alongside with some other configuration information.
 
@@ -140,7 +148,7 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 
 	- improve json-parsing performance by using multiprocessing
 	
-	- use in-memory caching, like redis or memcached, to handle all responses
+	- 🚧 use in-memory caching, like redis or memcached, to handle all responses
 
 		- reduce disk writes and reads: SD cards have terrible latency, LPDDR4 on RasPi is pretty snappy
 	
