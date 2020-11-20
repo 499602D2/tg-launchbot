@@ -6,6 +6,7 @@ import difflib
 import datetime
 import sqlite3
 
+import redis
 import requests
 import coloredlogs
 import ujson as json
@@ -32,6 +33,7 @@ class LaunchLibrary2Launch:
 
 		# net and status
 		self.net_unix = timestamp_to_unix(launch_json['net'])
+
 		self.status_id = launch_json['status']['id']
 		self.status_state = launch_json['status']['name']
 		self.in_hold = launch_json['inhold']
@@ -498,6 +500,10 @@ def api_call_scheduler(
 
 	# pick minimum of all possible API updates
 	next_api_update = min(notif_times)
+
+	# push to redis so we can expire a bunch of keys just after next update
+	rd = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+	rd.set('next-api-update', next_api_update)
 
 	# if next update is same as auto-update, log as information
 	if next_api_update == next_auto_update:

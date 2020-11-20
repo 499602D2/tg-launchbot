@@ -16,12 +16,14 @@ import signal
 
 from timeit import default_timer as timer
 
+import ujson as json
 import git
 import psutil
 import cursor
 import pytz
 import coloredlogs
 import telegram
+import redis
 
 from uptime import uptime
 from timezonefinder import TimezoneFinder
@@ -32,7 +34,6 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram.ext import CallbackQueryHandler
 
-from spam import Spammer
 from api import api_call_scheduler
 from config import load_config, store_config
 from db import (update_stats_db, create_chats_db)
@@ -47,6 +48,10 @@ from timezone import (
 from notifications import (
 	get_user_notifications_status, toggle_notification,
 	update_notif_preference, get_notif_preference, toggle_launch_mute, clean_chats_db)
+
+
+# redis db connection
+rd = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
 
 def admin_handler(update, context):
@@ -719,7 +724,10 @@ def callback_handler(update, context):
 			keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 			# update message
-			query.edit_message_text(text=inspect.cleandoc(msg_text), reply_markup=keyboard, parse_mode='Markdown')
+			try:
+				query.edit_message_text(text=inspect.cleandoc(msg_text), reply_markup=keyboard, parse_mode='Markdown')
+			except telegram.error.BadRequest:
+				pass
 
 			try:
 				query.answer(text=reply_text)
@@ -799,10 +807,11 @@ def callback_handler(update, context):
 				new_message_text = '🔄 No launches found! Try enabling notifications for other providers, or searching for all flights.'
 				inline_keyboard = []
 				inline_keyboard.append([InlineKeyboardButton(text='🔔 Adjust your notification settings', callback_data=f'notify/main_menu/refresh_text')])
-				inline_keyboard.append([InlineKeyboardButton(text='🔎 Search for all flights', callback_data=f'next_flight/refresh/0/all')])
+				inline_keyboard.append([InlineKeyboardButton(text='🔎 Search for all flights', callback_data=f'next_flight/refresh/0')])
 				keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
-				logging.info(f'🔎 No launches found after next refresh. Sent user the "No launches found" message.')
+				logging.info(
+					'🔎 No launches found after next refresh. Sent user the "No launches found" message.')
 
 			except Exception as e:
 				new_message_text, keyboard = generate_next_flight_message(chat, int(current_index))
@@ -870,7 +879,10 @@ def callback_handler(update, context):
 		if input_data[1] == 'done':
 			query.answer(text='✅ All done!')
 			message_text = '💫 Your preferences were saved!'
-			query.edit_message_text(text=message_text, reply_markup=None, parse_mode='Markdown')
+			try:
+				query.edit_message_text(text=message_text, reply_markup=None, parse_mode='Markdown')
+			except telegram.error.BadRequest:
+				pass
 
 		elif input_data[1] == 'main_menu':
 			rand_planet = random.choice(('🌍', '🌎', '🌏'))
@@ -902,8 +914,11 @@ def callback_handler(update, context):
 					[InlineKeyboardButton(text='✅ Exit', callback_data=f'prefs/done')]])
 			'''
 
-			query.edit_message_text(text=inspect.cleandoc(message_text),
-				reply_markup=keyboard, parse_mode='Markdown')
+			try:
+				query.edit_message_text(text=inspect.cleandoc(message_text),
+					reply_markup=keyboard, parse_mode='Markdown')
+			except telegram.error.BadRequest:
+				pass
 
 		elif input_data[1] == 'notifs':
 			if len(input_data) == 3:
@@ -954,9 +969,11 @@ def callback_handler(update, context):
 					[InlineKeyboardButton(
 						text='⏮ Return to menu',
 						callback_data='prefs/main_menu')]])
-
-			query.edit_message_text(
-				text=inspect.cleandoc(new_prefs_text), reply_markup=keyboard, parse_mode='Markdown')
+			try:
+				query.edit_message_text(
+					text=inspect.cleandoc(new_prefs_text), reply_markup=keyboard, parse_mode='Markdown')
+			except telegram.error.BadRequest:
+				pass
 
 		elif input_data[1] == 'timezone':
 			if input_data[2] == 'menu':
@@ -985,8 +1002,12 @@ def callback_handler(update, context):
 					]
 				)
 
-				query.edit_message_text(
-					text=inspect.cleandoc(text), reply_markup=keyboard, parse_mode='Markdown')
+				try:
+					query.edit_message_text(
+						text=inspect.cleandoc(text), reply_markup=keyboard, parse_mode='Markdown')
+				except telegram.error.BadRequest:
+					pass
+
 				query.answer('🌎 Time zone settings loaded')
 
 
@@ -1020,10 +1041,13 @@ def callback_handler(update, context):
 					]
 				)
 
-				query.edit_message_text(
-					text=inspect.cleandoc(text), parse_mode='Markdown',
-					reply_markup=keyboard, disable_web_page_preview=True
-				)
+				try:
+					query.edit_message_text(
+						text=inspect.cleandoc(text), parse_mode='Markdown',
+						reply_markup=keyboard, disable_web_page_preview=True
+					)
+				except telegram.error.BadRequest:
+					pass
 
 			elif input_data[2] == 'cancel':
 				rand_planet = random.choice(('🌍', '🌎', '🌏'))
@@ -1092,9 +1116,12 @@ def callback_handler(update, context):
 				)
 
 				query.answer(text=f'🌎 Time zone set to UTC{current_time_zone}')
-				query.edit_message_text(
-					text=inspect.cleandoc(text), reply_markup=keyboard,
+				try:
+					query.edit_message_text(
+						text=inspect.cleandoc(text), reply_markup=keyboard,
 					parse_mode='Markdown', disable_web_page_preview=True)
+				except telegram.error.BadRequest:
+					pass
 
 			elif input_data[2] == 'auto_setup':
 				# send message with ForceReply()
@@ -1163,9 +1190,12 @@ def callback_handler(update, context):
 				inline_keyboard=[[
 					InlineKeyboardButton(text='🔄 Refresh statistics', callback_data='stats/refresh')]])
 
-			query.edit_message_text(
-				text=new_text, reply_markup=keyboard, parse_mode='Markdown',
-				disable_web_page_preview=True)
+			try:
+				query.edit_message_text(
+					text=new_text, reply_markup=keyboard, parse_mode='Markdown',
+					disable_web_page_preview=True)
+			except telegram.error.BadRequest:
+				pass
 
 			query.answer(text='🔄 Statistics refreshed!')
 
@@ -1348,13 +1378,20 @@ def timer_handle(update, context, command, chat, user):
 			# stringify datetime object, store
 			chat_command_calls[chat][command] = now_called
 		else:
-			spammer = next((spammer for spammer in spammers if spammer.id == user), None)
-			if spammer is not None:
-				spammer.add_offense()
+			# pull spammers from redis db
+			if rd.exists('spammers'):
+				if rd.hexists('spammers', user):
+					offenses = int(rd.hget('spammers', user))
+			else:
+				offenses = None
 
-				logging.info(f'⚠️ User {anonymize_id(user)} now has {spammer.get_offenses()} spam offenses.')
+			if offenses is not None:
+				# add offense, log
+				offenses += 1
+				logging.info(f'⚠️ User {anonymize_id(user)} now has {offenses} spam offenses.')
 
-				if spammer.get_offenses() >= 10:
+				# if more than 10 offenses, block user
+				if offenses >= 10:
 					bot_running = time.time() - STARTUP_TIME
 					if bot_running > 60:
 						ignored_users.add(user)
@@ -1368,13 +1405,17 @@ def timer_handle(update, context, command, chat, user):
 						run_time_ = int(time.time()) - STARTUP_TIME
 						logging.info(f'''
 							✅ Successfully avoided blocking a user on bot startup! Run_time was {run_time_} seconds.
-							Spam offenses set to 0 for user {anonymize_id(user)} from original {spammer.get_offenses()}''')
-						spammer.clear_offenses()
+							Spam offenses set to 0 for user {anonymize_id(user)} from original {offenses}''')
+
+						# clear offenses
+						rd.hset('spammers', user, 0)
 
 					return False
 
+				# update database
+				rd.hset('spammers', user, offenses)
 			else:
-				spammers.add(Spammer(user))
+				rd.hset('spammers', user, 1)
 				logging.info(f'⚠️ Added user {anonymize_id(user)} to spammers.')
 
 			return False
@@ -1615,6 +1656,7 @@ def generate_schedule_message(call_type: str, chat: str):
 		'Falcon 9 Block 5': 'Falcon 9 B5'}
 
 	# pull user time zone preferences, set tz_offset from hours to seconds
+	# TODO cache in redis under chat ID, update on tz update
 	user_tz_offset = 3600 * load_time_zone_status(DATA_DIR, chat, readable=False)
 
 	# pick 5 dates, map missions into dict with dates
@@ -1810,7 +1852,70 @@ def flight_schedule(update, context):
 def generate_next_flight_message(chat, current_index: int):
 	'''
 	Generates the message text for use in the next-command.
+
+	Caching to redis with setex:
+		"next-$chat-$index" -> str
+
+	TODO cache the entire string, replace ETA str with "<*ETA_STR*>"
+	-> recalculate ETA on cache pull
+
+	Purge cache on API updates
 	'''
+	def cached_response():
+		# generate the keyboard here
+		max_index = int(rd.get(f'next-{chat}-maxindex'))
+		if max_index > 1:
+			inline_keyboard = [[]]
+			back, fwd = False, False
+
+			if current_index != 0:
+				back = True
+				inline_keyboard[0].append(
+						InlineKeyboardButton(
+							text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}'))
+
+			# if we can go forward, add a next button
+			if current_index+1 < max_index:
+				fwd = True
+				inline_keyboard[0].append(
+					InlineKeyboardButton(text='Next ⏩', callback_data=f'next_flight/next/{current_index}'))
+
+			# if the length is one, make the button really wide
+			if len(inline_keyboard[0]) == 1:
+				# only forwards, so the first entry; add a refresh button
+				if fwd:
+					inline_keyboard = [[]]
+					inline_keyboard[0].append(InlineKeyboardButton(
+						text='🔄 Refresh', callback_data=f'next_flight/refresh/0'))
+					inline_keyboard[0].append(InlineKeyboardButton(
+						text='Next ⏩', callback_data=f'next_flight/next/{current_index}'))
+				elif back:
+					inline_keyboard = [([InlineKeyboardButton(
+						text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}')])]
+					inline_keyboard.append([(InlineKeyboardButton(
+						text='⏮ First', callback_data=f'next_flight/prev/1'))])
+
+			keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+		elif max_index == 1:
+			inline_keyboard = []
+			inline_keyboard.append([InlineKeyboardButton(
+				text='🔄 Refresh', callback_data=f'next_flight/prev/1')])
+
+			keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+		eta = abs(int(time.time()) - int(rd.get(f'next-{chat}-{current_index}-net')))
+		eta_str = time_delta_to_legible_eta(time_delta=eta, full_accuracy=True)
+
+		next_str = rd.get(f'next-{chat}-{current_index}')
+		next_str = next_str.replace('???ETASTR???', short_monospaced_text(eta_str))
+
+		# return msg + keyboard
+		return inspect.cleandoc(next_str), keyboard
+
+	# check if a cached response exists
+	if rd.exists(f'next-{chat}-{current_index}'):
+		return cached_response()
 
 	# start db connection
 	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
@@ -2112,7 +2217,7 @@ def generate_next_flight_message(chat, current_index: int):
 	*Pad* {short_monospaced_text(location)}
 
 	📅 {short_monospaced_text(time_str)}
-	⏰ {short_monospaced_text(eta_str)}
+	⏰ ???ETASTR???
 
 	*Mission information* {orbit_info}
 	*Type* {short_monospaced_text(mission_type)}
@@ -2145,13 +2250,13 @@ def generate_next_flight_message(chat, current_index: int):
 			back = True
 			inline_keyboard[0].append(
 					InlineKeyboardButton(
-						text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}/{cmd}'))
+						text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}'))
 
 		# if we can go forward, add a next button
 		if current_index+1 < max_index:
 			fwd = True
 			inline_keyboard[0].append(
-				InlineKeyboardButton(text='Next ⏩', callback_data=f'next_flight/next/{current_index}/{cmd}'))
+				InlineKeyboardButton(text='Next ⏩', callback_data=f'next_flight/next/{current_index}'))
 
 		# if the length is one, make the button really wide
 		if len(inline_keyboard[0]) == 1:
@@ -2159,26 +2264,43 @@ def generate_next_flight_message(chat, current_index: int):
 			if fwd:
 				inline_keyboard = [[]]
 				inline_keyboard[0].append(InlineKeyboardButton(
-					text='🔄 Refresh', callback_data=f'next_flight/refresh/0/{cmd}'))
+					text='🔄 Refresh', callback_data=f'next_flight/refresh/0'))
 				inline_keyboard[0].append(InlineKeyboardButton(
-					text='Next ⏩', callback_data=f'next_flight/next/{current_index}/{cmd}'))
+					text='Next ⏩', callback_data=f'next_flight/next/{current_index}'))
 			elif back:
 				inline_keyboard = [([InlineKeyboardButton(
-					text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}/{cmd}')])]
+					text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}')])]
 				inline_keyboard.append([(InlineKeyboardButton(
-					text='⏮ First', callback_data=f'next_flight/prev/1/{cmd}'))])
+					text='⏮ First', callback_data=f'next_flight/prev/1'))])
 
 		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 	elif max_index == 1:
 		inline_keyboard = []
 		inline_keyboard.append([InlineKeyboardButton(
-			text='🔄 Refresh', callback_data=f'next_flight/prev/1/{cmd}')])
+			text='🔄 Refresh', callback_data=f'next_flight/prev/1')])
 
 		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 	# parse for markdown
 	next_str = reconstruct_message_for_markdown(next_str)
+
+	# expire keys 15 seconds after next api update
+	if rd.exists('next-api-update'):
+		next_update = float(rd.get('next-api-update')) - time.time() + 15
+	else:
+		next_update = 30*60
+
+	# cache string, NET timestamp
+	rd.setex(f'next-{chat}-maxindex',
+		datetime.timedelta(seconds=next_update), max_index)
+	rd.setex(f'next-{chat}-{current_index}',
+		datetime.timedelta(seconds=next_update), value=next_str)
+	rd.setex(f'next-{chat}-{current_index}-net',
+		datetime.timedelta(seconds=next_update), value=launch['net_unix'])
+
+	# TODO replace ETA
+	next_str = next_str.replace('???ETASTR???', short_monospaced_text(eta_str))
 
 	# return msg + keyboard
 	return inspect.cleandoc(next_str), keyboard
@@ -2225,44 +2347,62 @@ def generate_statistics_message() -> str:
 	Returns the message body for statistics command. Only a helper function,
 	which allows us to respond to callback queries as well.
 	'''
-	# read stats db
-	stats_conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
-	stats_conn.row_factory = sqlite3.Row
-	stats_cursor = stats_conn.cursor()
+	# verify stats exist in hot db
+	if not rd.exists('stats'):
+		# pull from disk
+		stats_conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
+		stats_conn.row_factory = sqlite3.Row
+		stats_cursor = stats_conn.cursor()
 
-	try:
-		# select stats field
-		stats_cursor.execute("SELECT * FROM stats")
-		stats = [dict(row) for row in stats_cursor.fetchall()][0]
+		try:
+			# select stats field
+			stats_cursor.execute("SELECT * FROM stats")
+			stats = [dict(row) for row in stats_cursor.fetchall()][0]
 
-		# parse returned global data
-		notifs = stats['notifications']
-		api_reqs = stats['api_requests']
-		commands = stats['commands']
-		data = stats['data']
-		last_db_update = stats['last_api_update']
+			# parse returned global data
+			data = stats['data']
+			last_db_update = stats['last_api_update']
+		except sqlite3.OperationalError:
+			notifs = api_reqs = commands = data = last_db_update = 0
 
-	except sqlite3.OperationalError:
-		notifs = api_reqs = commands = data = last_db_update = 0
+		# insert into redis | stats: {key:val, key:val, key:val}
+		rd.hmset('stats', stats)
+
+	# pull from redis
+	stats = rd.hgetall('stats')
+
+	# fields we operate on
+	data = int(stats['data'])
+	last_db_update = int(stats['last_api_update'])
 
 	# get system load average for linux/darwin/aix systems
-	if sys.platform != 'win32':
-		load_avgs = os.getloadavg() # [1 min, 5 min, 15 min]
-		load_avg_str = f'{load_avgs[0]:.2f} {load_avgs[1]:.2f} {load_avgs[2]:.2f}'
+	if rd.exists('load_avg'):
+		load_avg_str = rd.get('load_avg')
 	else:
-		load_avg_str = 'unknown'
+		if sys.platform != 'win32':
+			load_avgs = os.getloadavg() # [1 min, 5 min, 15 min]
+			load_avg_str = f'{load_avgs[0]:.2f} {load_avgs[1]:.2f} {load_avgs[2]:.2f}'
+		else:
+			load_avg_str = 'unknown'
+
+		rd.setex('load_avg', datetime.timedelta(minutes=5), value=load_avg_str)
 
 	# format transfered API data to MB, GB
 	data_suffix = 'GB' if data/10**9 >= 1 else 'MB'
 	data = data/10**9 if data/10**9 >= 1 else data/10**6
 
 	# get amount of stored data
-	try:
-		db_storage = 0.00
-		db_storage += os.path.getsize(os.path.join(DATA_DIR, 'launchbot-data.db'))
-		db_storage += os.path.getsize(os.path.join(DATA_DIR, 'bot-config.json'))
-	except:
-		db_storage = 0.00
+	if rd.exists('disk_storage'):
+		db_storage = float(rd.get('disk_storage'))
+	else:
+		try:
+			db_storage = 0.00
+			db_storage += os.path.getsize(os.path.join(DATA_DIR, 'launchbot-data.db'))
+			db_storage += os.path.getsize(os.path.join(DATA_DIR, 'bot-config.json'))
+		except:
+			db_storage = 0.00
+
+		rd.setex('disk_storage', datetime.timedelta(minutes=60), value=db_storage)
 
 	# format stored data to KB, MB, GB
 	if db_storage/10**6 >= 1:
@@ -2277,42 +2417,59 @@ def generate_statistics_message() -> str:
 	last_db_update = time_delta_to_legible_eta(time_delta=db_update_delta, full_accuracy=False)
 	last_db_update_suffix = 'ago' if last_db_update not in ('never', 'just now') else ''
 
-	# connect to notifications db
-	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
-	cursor_ = conn.cursor()
+	# check if we have enabled_notifications count cached: if not, pull from disk and cache
+	if rd.exists('subscribed_chats'):
+		notification_recipients = rd.get('subscribed_chats')
+	else:
+		# connect to notifications db
+		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
+		cursor_ = conn.cursor()
 
-	# pull all rows with enabled = 1
-	try:
-		cursor_.execute('''SELECT chat FROM chats
-			WHERE enabled_notifications NOT NULL AND enabled_notifications != ""''')
+		try:
+			# pull all rows with enabled = 1
+			cursor_.execute('''SELECT COUNT(chat) FROM chats
+				WHERE enabled_notifications NOT NULL AND enabled_notifications != ""''')
 
-		notification_recipients = len(cursor_.fetchall())
-	except sqlite3.OperationalError:
-		logging.exception('Error parsing notification_recipients!')
-		notification_recipients = 0
+			notification_recipients = cursor_.fetchall()[0][0]
+			conn.close()
+		except sqlite3.OperationalError:
+			logging.exception('Error parsing notification_recipients!')
+			notification_recipients = 0
 
-	# close conn
-	conn.close()
+		# cache value
+		rd.setex(
+			'subscribed_chats', datetime.timedelta(minutes=60),
+			value=notification_recipients)
 
 	# get repo head's commit hex hash
-	try:
-		head_hash = git.Repo('../').heads[0].commit.hexsha[0:7]
-	except Exception as error:
-		logging.exception(f'[?] unable to set head_hash: {error}')
-		head_hash = 'unknown version'
+	if rd.exists('git_head_hash'):
+		head_hash = rd.get('git_head_hash')
+	else:
+		try:
+			head_hash = git.Repo('../').heads[0].commit.hexsha[0:7]
+		except Exception as error:
+			logging.exception(f'[?] unable to set head_hash: {error}')
+			head_hash = 'unknown version'
 
-	parsed_github_link = reconstruct_link_for_markdown(
-		'https://github.com/499602D2/tg-launchbot')
+		rd.set('head_hash', head_hash)
+
+	if rd.exists('parsed_github_link'):
+		parsed_github_link = rd.get('parsed_github_link')
+	else:
+		parsed_github_link = reconstruct_link_for_markdown(
+			'https://github.com/499602D2/tg-launchbot')
+
+		rd.set('parsed_github_link', parsed_github_link)
 
 	stats_str = f'''
 	📊 *LaunchBot global statistics*
-	Notifications delivered: {notifs}
+	Notifications delivered: {stats['notifications']}
 	Notification recipients: {notification_recipients}
-	Commands parsed: {commands}
+	Commands parsed: {int(stats['commands'])}
 
 	🛰 *Network statistics*
 	Data transferred: {data:.2f} {data_suffix}
-	API requests made: {api_reqs}
+	API requests made: {stats['api_requests']}
 
 	💾 *Database information*
 	Storage used: {db_storage:.2f} {db_storage_suffix}
@@ -2416,7 +2573,7 @@ if __name__ == '__main__':
 	global DATA_DIR, STARTUP_TIME
 
 	# current version, set DATA_DIR
-	VERSION = '1.6.2'
+	VERSION = '1.7.0'
 	DATA_DIR = 'launchbot'
 
 	# log startup time, set default start mode

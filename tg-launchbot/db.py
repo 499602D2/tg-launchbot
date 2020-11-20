@@ -18,6 +18,9 @@ import logging
 import datetime
 import inspect
 
+import redis
+import ujson as json
+
 from utils import time_delta_to_legible_eta, reconstruct_message_for_markdown
 
 
@@ -340,9 +343,10 @@ def update_stats_db(stats_update: dict, db_path: str):
 	if not os.path.isfile(os.path.join(db_path, 'launchbot-data.db')):
 		create_stats_db(db_path=db_path)
 
-	# Establish connection
+	# Establish connection: sqlite + redis
 	stats_conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	stats_cursor = stats_conn.cursor()
+	rd = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
 	# verify table exists
 	stats_cursor.execute('SELECT name FROM sqlite_master WHERE type = ? AND name = ?', ('table', 'stats'))
@@ -350,12 +354,33 @@ def update_stats_db(stats_update: dict, db_path: str):
 		logging.warning("⚠️ Statistics table doesn't exists: creating...")
 		create_stats_db(db_path)
 
+	# verify cache exists
+	if not rd.exists('stats'):
+		# pull from disk
+		stats_conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+		stats_conn.row_factory = sqlite3.Row
+		stats_cursor = stats_conn.cursor()
+
+		try:
+			# select stats field
+			stats_cursor.execute("SELECT * FROM stats")
+			stats = [dict(row) for row in stats_cursor.fetchall()][0]
+		except sqlite3.OperationalError:
+			stats = {
+				'notifications': 0, 'api_requests': 0, 'db_updates': 0,
+				'commands': 0, 'data': 0, 'last_api_update': 0}
+
+		rd.hmset('stats', stats)
+
 	# Update stats with the provided data
 	for stat, val in stats_update.items():
 		if stat == 'last_api_update':
 			stats_cursor.execute(f"UPDATE stats SET {stat} = {val}")
+			rd.hset('stats', stat, val)
 		else:
 			stats_cursor.execute(f"UPDATE stats SET {stat} = {stat} + {val}")
+			rd.hset('stats', stat, int(rd.hget('stats', stat)) + int(val))
 
+	# commit changes
 	stats_conn.commit()
 	stats_conn.close()
