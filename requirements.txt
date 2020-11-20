@@ -7,3 +7,5 @@ apscheduler
 python-telegram-bot
 coloredlogs
 psutil
+redis
+hiredis
