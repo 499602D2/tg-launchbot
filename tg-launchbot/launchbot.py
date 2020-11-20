@@ -1874,6 +1874,10 @@ def generate_next_flight_message(chat, current_index: int):
 						InlineKeyboardButton(
 							text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}'))
 
+			inline_keyboard[0].append(
+				InlineKeyboardButton(
+					text='🔄 Refresh', callback_data=f'next_flight/refresh/{current_index}'))
+
 			# if we can go forward, add a next button
 			if current_index+1 < max_index:
 				fwd = True
@@ -1915,7 +1919,8 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# check if a cached response exists
 	if rd.exists(f'next-{chat}-{current_index}'):
-		logging.debug(f'🐇 cache-hit for next/{chat}/{current_index}')
+		if chat != OWNER:
+			logging.debug(f'🐇 cache-hit for next/{chat}/{current_index}')
 		return cached_response()
 
 	# start db connection
@@ -2022,7 +2027,7 @@ def generate_next_flight_message(chat, current_index: int):
 	conn.close()
 
 	# sort ascending by NET, pick smallest
-	max_index = len(query_return)
+	max_index = len(query_return) - 1
 	if max_index > 0:
 		query_return.sort(key=lambda tup: tup[3])
 		try:
@@ -2252,6 +2257,10 @@ def generate_next_flight_message(chat, current_index: int):
 			inline_keyboard[0].append(
 					InlineKeyboardButton(
 						text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}'))
+
+		inline_keyboard[0].append(
+			InlineKeyboardButton(
+				text='🔄 Refresh', callback_data=f'next_flight/refresh/{current_index}'))
 
 		# if we can go forward, add a next button
 		if current_index+1 < max_index:
