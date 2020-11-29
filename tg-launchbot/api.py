@@ -425,7 +425,8 @@ def api_call_scheduler(
 	logging.info(f'🔀 DB up-to-date! Last updated {last_updated_str} ago.')
 
 	# pull all launches with a net greater than or equal to notification window start
-	select_fields = 'net_unix, launched, notify_24h, notify_12h, notify_60min, notify_5min'
+	select_fields = 'net_unix, launched, tbd_time, tbd_date'
+	select_fields += ', notify_24h, notify_12h, notify_60min, notify_5min'
 	notify_window = int(time.time()) - 60*5
 
 	try:
@@ -454,11 +455,16 @@ def api_call_scheduler(
 	'''
 	notif_times, time_map = set(), {0: 24*3600, 1: 12*3600, 2: 3600, 3: 5*60}
 	for launch_row in query_return:
+		launch_tbd_date, launch_tbd_time = int(launch_row[2]), int(launch_row[3])
+		if (launch_tbd_date, launch_tbd_time) == (1, 1):
+			logging.warning(f'Skipping net_unix={launch_row[0]} due to tbd_date, tbd_time')
+			continue
+
 		# shortly after launch time for possible postpone/abort, if not launched
 		if not launch_row[1] and time.time() - launch_row[0] < 60:
 			notif_times.add(launch_row[0] + 60)
 
-		for enum, notif_bool in enumerate(launch_row[2::]):
+		for enum, notif_bool in enumerate(launch_row[4::]):
 			if not notif_bool:
 				# time for check: launch time - notification time - 60 (60s before)
 				check_time = launch_row[0] - time_map[enum] - 60
