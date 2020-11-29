@@ -1382,6 +1382,8 @@ def timer_handle(update, context, command, chat, user):
 			if rd.exists('spammers'):
 				if rd.hexists('spammers', user):
 					offenses = int(rd.hget('spammers', user))
+				else:
+					offenses = None
 			else:
 				offenses = None
 

@@ -637,6 +637,8 @@ def remove_previous_notification(
 					success_count += 1
 				else:
 					logging.info(f'Failed to delete message {message_identifier}! Ret={success}')
+			except telegram.error.BadRequest:
+				pass
 			except Exception as error:
 				logging.exception(f'⚠️ Unable to delete previous notification. msg_id: {message_identifier}')
 				logging.warning(f'Error: {error} | vars: {vars(error)}')
