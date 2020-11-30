@@ -254,6 +254,9 @@ def clean_launch_db(last_update, db_path):
 	cursor.execute('DELETE FROM launches WHERE launched = 0 AND last_updated < ?',
 		(last_update,))
 
+	conn.commit()
+	conn.close()
+
 
 def ll2_api_call(
 	data_dir: str, scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
