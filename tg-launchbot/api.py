@@ -530,15 +530,16 @@ def api_call_scheduler(
 	next_notif = datetime.datetime.fromtimestamp(next_notif)
 
 	# schedule next update more loosely if next notif is far away
+	# times are 15 min * upd_period_mult, e.g. 4 == 1 hour
 	if until_next_notif >= 3600 * 24:
-		# if more than 24 hours until next notif, check once every 2 hours
-		upd_period_mult = 8
+		# if more than 24 hours until next notif, check once every 4 hours
+		upd_period_mult = 16
 	elif until_next_notif >= 3600 * 12:
-		# if more than 12 hours until next notif, check once an hour
-		upd_period_mult = 4
+		# if 12 - 24 hours until next notif, check every 90 minutes
+		upd_period_mult = 6
 	elif until_next_notif >= 3600:
-		# if still more than hour (1-12 hours), check every 30 minutes
-		upd_period_mult = 2
+		# if 1 - 12, check once an hour
+		upd_period_mult = 4
 	else:
 		# if less than an hour, check every 10.5 minutes
 		upd_period_mult = 0.7
