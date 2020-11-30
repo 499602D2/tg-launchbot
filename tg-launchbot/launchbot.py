@@ -2585,7 +2585,7 @@ if __name__ == '__main__':
 	global DATA_DIR, STARTUP_TIME
 
 	# current version, set DATA_DIR
-	VERSION = '1.7.0'
+	VERSION = '1.7.1'
 	DATA_DIR = 'launchbot'
 
 	# log startup time, set default start mode
