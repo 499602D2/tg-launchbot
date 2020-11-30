@@ -217,6 +217,44 @@ def construct_params(PARAMS: dict) -> str:
 	return param_url
 
 
+def clean_launch_db(last_update, db_path):
+	'''
+	Function cleans launches from the database that are effectively
+	out of bounds of the 50 launch update request, thus representing
+	false launches.
+
+	last_update: the time the API was updated, for cleaning the launches
+	'''
+
+	# connect to db
+	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+	conn.row_factory = sqlite3.Row
+	cursor = conn.cursor()
+
+	cursor.execute('SELECT name FROM sqlite_master WHERE type = ? AND name = ?', ('table', 'launches'))
+	if len(cursor.fetchall()) == 0:
+		return
+
+	# select launches that have not happened and weren't updated in the last API update
+	cursor.execute('SELECT unique_id FROM launches WHERE launched = 0 AND last_updated < ?',
+		(last_update,))
+
+	# this is the slow way, but let's do it this way for the sake of logging what's happening
+	deleted_launches = set()
+	for launch_row in cursor.fetchall():
+		deleted_launches.add(launch_row[0])
+
+	if len(deleted_launches) == 0:
+		logging.info('✨ Database already clean: nothing to do!')
+		return
+
+	logging.info(f'✨ Deleting {len(deleted_launches)} launches that have slipped out of range...')
+	logging.info(f'⚠️ Deleting: {deleted_launches}')
+
+	cursor.execute('DELETE FROM launches WHERE launched = 0 AND last_updated < ?',
+		(last_update,))
+
+
 def ll2_api_call(
 	data_dir: str, scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
 	# debug everything but the API: "true" simply loads the previous .json
@@ -293,7 +331,10 @@ def ll2_api_call(
 		launch_set=launch_obj_set, db_path=data_dir,
 		bot_username=bot_username, api_update=api_updated)
 
-	logging.debug('✅ DB update complete!')
+	# clean launches that have yet to launch and that weren't updated
+	clean_launch_db(last_update=api_updated, db_path=data_dir)
+
+	logging.debug('✅ DB update & cleaning complete!')
 
 	# if a launch (or multiple) has been postponed, handle it here
 	if len(postponed_launches) > 0:
@@ -455,9 +496,9 @@ def api_call_scheduler(
 	'''
 	notif_times, time_map = set(), {0: 24*3600, 1: 12*3600, 2: 3600, 3: 5*60}
 	for launch_row in query_return:
+		# don't use unverified launches for scheduling (tbd_date + tbd_time)
 		launch_tbd_date, launch_tbd_time = int(launch_row[2]), int(launch_row[3])
 		if (launch_tbd_date, launch_tbd_time) == (1, 1):
-			logging.warning(f'Skipping net_unix={launch_row[0]} due to tbd_date, tbd_time')
 			continue
 
 		# shortly after launch time for possible postpone/abort, if not launched

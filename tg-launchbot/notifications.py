@@ -1321,9 +1321,9 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int,
 	# create a dict of notif_send_time: launch(es) tags
 	notif_send_times, time_map = {}, {0: 24*3600+30, 1: 12*3600+30, 2: 3600+30, 3: 5*60+30}
 	for launch_row in query_return:
+		# don't notify of unverified launches (tbd_date + tbd_time)
 		launch_tbd_date, launch_tbd_time = int(launch_row[2]), int(launch_row[3])
 		if (launch_tbd_date, launch_tbd_time) == (1, 1):
-			logging.warning(f'⚠️ Skipping notif. scheduling for {launch_row[1]} due to tbd_date and tbd_time!')
 			continue
 
 		for enum, notif_bool in enumerate(launch_row[4::]):
