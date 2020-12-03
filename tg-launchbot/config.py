@@ -60,13 +60,24 @@ def create_config(data_dir: str):
 	with open(os.path.join(data_dir, 'bot-config.json'), 'w') as config_file:
 		print('\nTo function, LaunchBot needs a bot API key;')
 		print('to get one, send a message to @botfather on Telegram.')
-		
+
 		bot_token = input('Enter bot token: ')
 		print()
 
 		config = {
 			'bot_token': bot_token,
-			'owner': 0
+			'owner': 0,
+			'redis': {
+				'host': 'localhost',
+				'port': 6379,
+				'db_num': 0
+			},
+			'local_api_server': {
+				'enabled': False,
+				'address': None,
+    			'api_id': None,
+    			'api_hash': None
+			}
 		}
 
 		json.dump(config, config_file, indent=4)
