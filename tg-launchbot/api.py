@@ -236,8 +236,9 @@ def clean_launch_db(last_update, db_path):
 		return
 
 	# select launches that have not happened and weren't updated in the last API update
-	cursor.execute('SELECT unique_id FROM launches WHERE launched = 0 AND last_updated < ?',
-		(last_update,))
+	cursor.execute(
+		'SELECT unique_id FROM launches WHERE launched = 0 AND last_updated < ? AND net_unix > ?',
+		(last_update, int(time.time())))
 
 	# this is the slow way, but let's do it this way for the sake of logging what's happening
 	deleted_launches = set()
@@ -251,8 +252,9 @@ def clean_launch_db(last_update, db_path):
 	logging.info(f'✨ Deleting {len(deleted_launches)} launches that have slipped out of range...')
 	logging.info(f'⚠️ Deleting: {deleted_launches}')
 
-	cursor.execute('DELETE FROM launches WHERE launched = 0 AND last_updated < ?',
-		(last_update,))
+	cursor.execute(
+		'DELETE FROM launches WHERE launched = 0 AND last_updated < ? AND net_unix > ?',
+		(last_update, int(time.time())))
 
 	conn.commit()
 	conn.close()
