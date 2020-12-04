@@ -250,11 +250,14 @@ def clean_launch_db(last_update, db_path):
 		return
 
 	logging.info(f'✨ Deleting {len(deleted_launches)} launches that have slipped out of range...')
-	logging.info(f'⚠️ Deleting: {deleted_launches}')
+	try:
+		cursor.execute(
+			'DELETE FROM launches WHERE launched = 0 AND last_updated < ? AND net_unix > ?',
+			(last_update, int(time.time())))
 
-	cursor.execute(
-		'DELETE FROM launches WHERE launched = 0 AND last_updated < ? AND net_unix > ?',
-		(last_update, int(time.time())))
+		logging.info(f'⚠️ Deleted: {deleted_launches}')
+	except Exception:
+		logging.exception('⚠️ Error deleting slipped launches!')
 
 	conn.commit()
 	conn.close()
