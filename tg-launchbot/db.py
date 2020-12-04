@@ -162,13 +162,23 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 		notif_pre_time_map = {
 			'notify_24h': 24, 'notify_12h': 12, 'notify_60min': 1, 'notify_5min': 5/60}
 
+		# keep track of wheter we reset a notification state to 0
+		notification_state_reset = False
+
 		# if we have at least one sent notification, the net has slipped >5 min, and we haven't launched
-		if 1 in notification_states.values() and net_diff >= 5*60 and launch_object.launched != True:
+		if 1 in notification_states.values() and net_diff >= 5*60 and not launch_object.launched:
 			# iterate over the notification states loaded from the database
 			for key, status in notification_states.items():
 				# reset if net_diff > the notification send period (we're outside the window again)
-				if status == 1 and net_diff > 3600 * notif_pre_time_map[key]:
+				if int(status) == 1 and net_diff > 3600 * notif_pre_time_map[key]:
 					notification_states[key] = 0
+					notification_state_reset = True
+
+			if not notification_state_reset:
+				logging.warning('⚠️ No notification states were reset: exiting...')
+				return (False, None)
+
+			logging.warning('✅ A notification state was reset: continuing...')
 
 			# generate the postpone string
 			postpone_str = time_delta_to_legible_eta(time_delta=int(net_diff), full_accuracy=False)
