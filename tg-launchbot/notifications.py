@@ -687,6 +687,20 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 
 	# if a postpone, check for mutes/disabled launches only
 	if notify_class == 'postpone':
+		# only notify of postpone if chat has already been notified once
+		cursor.execute('''SELECT notify_24h, notify_12h, notify_60min, notify_5min
+			FROM launches WHERE unique_id = ?''', (launch_id,))
+
+		launch_notif_states = query.fetchall[0]
+		for enum, state in enumerate(launch_notif_states):
+			if int(state) == 0:
+				min_enabled_state = enum - 1
+				break
+
+			if enum == 3 and int(state) != 0:
+				logging.info('⚠️ All notif states enabled: avoided ValueError...')
+				min_enabled_state = 3
+
 		for chat_row in query_return:
 			if chat_row['chat'] in muted_by:
 				continue
@@ -696,7 +710,18 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 
 			''' TODO determine which chats have disabled postpone notifs
 			i.e. (implement the setting for users) '''
-			notification_list.add(chat_row['chat'])
+
+			# not muted, and not explicitly disabled: verify chat wants this type of notif
+			# should result in e.g. a ['1','1','1','1'] (not, strings)
+			chat_notif_prefs = chat_row['notify_time_pref'].split(',')
+
+			# if any notify preference ≤ min_enabled_state == 1, add to notification_list
+			for notif_state in range(min_enabled_state, -1, -1):
+				''' if index matches, chat has a ≥ notification state enabled and
+				 should have been previously notified -> add to notification list '''
+				if chat_notif_prefs[notif_state] == '1':
+					notification_list.add(chat_row['chat'])
+					break
 
 		return notification_list
 
@@ -726,6 +751,7 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 		else:
 			logging.info(f'Chat {chat_row["chat"]} has disabled notify_class={notify_class}')
 
+	conn.close()
 	return notification_list
 
 
