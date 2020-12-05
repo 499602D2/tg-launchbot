@@ -16,7 +16,6 @@ import signal
 
 from timeit import default_timer as timer
 
-import ujson as json
 import git
 import psutil
 import cursor
@@ -113,11 +112,11 @@ def admin_handler(update, context):
 				filename=f'db-export-{int(time.time())}.db')
 
 	elif update.message.text == '/debug restart':
-		run_time = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME), True)
-		logging.info(f'⚠️ Restarting program... Runtime: {run_time}.')
+		running = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME), True)
+		logging.info(f'⚠️ Restarting program... Runtime: {running}.')
 
 		context.bot.send_message(
-			chat_id=chat.id, text=f'⚠️ *Restarting...* Runtime: {run_time}.',
+			chat_id=chat.id, text=f'⚠️ *Restarting...* Runtime: {running}.',
 			parse_mode='Markdown')
 		restart_program()
 
@@ -136,7 +135,7 @@ def admin_handler(update, context):
 				parse_mode='Markdown')
 		else:
 			context.bot.send_message(
-				chat_id=chat.id, text=f'🐙 Git pull completed: no changes.',
+				chat_id=chat.id, text='🐙 Git pull completed: no changes.',
 				parse_mode='Markdown')
 
 		repo.close()
@@ -198,7 +197,7 @@ def generic_update_handler(update, context):
 		try:
 			cursor_.execute('UPDATE chats SET chat = ? WHERE chat = ?',
 				(chat.id, update.message.migrate_from_chat_id))
-		except:
+		except Exception:
 			logging.exception(f'Unable to migrate {update.message.migrate_from_chat_id} to {chat.id}!')
 
 		conn.commit()
@@ -316,27 +315,27 @@ def command_pre_handler(update, context, skip_timer_handle):
 
 	# filter spam
 	try:
-		command = update.message.text.split(' ')[0]
+		cmd = update.message.text.split(' ')[0]
 	except AttributeError:
-		logging.warning(f'(ignored) Error setting value for command (AttrError). Update.message: {update.message}')
+		logging.warning(f'(ignored) Error setting value for cmd (AttrError). Update.message: {update.message}')
 		return True
 	except KeyError:
-		logging.warning(f'Error setting value for command (KeyError). Update.message: {update.message}')
+		logging.warning(f'Error setting value for cmd (KeyError). Update.message: {update.message}')
 		return False
 
 	if not skip_timer_handle:
-		if not timer_handle(update, context, command, chat.id, update.message.from_user.id):
+		if not timer_handle(update, context, cmd, chat.id, update.message.from_user.id):
 			blocked_user = anonymize_id(update.message.from_user.id)
 			blocked_chat = anonymize_id(chat.id)
 
-			logging.info(f'✋ [{command}] Spam prevented from {blocked_chat} by {blocked_user}.')
+			logging.info(f'✋ [{cmd}] Spam prevented from {blocked_chat} by {blocked_user}.')
 			return False
 
 	# check if sender is an admin/creator, and/or if we're in a public chat
 	if chat_type != 'private':
 		try:
 			all_admins = update.message.chat.all_members_are_administrators
-		except:
+		except Exception:
 			all_admins = False
 
 		if not all_admins:
@@ -348,14 +347,14 @@ def command_pre_handler(update, context, skip_timer_handle):
 					try:
 						success = context.bot.deleteMessage(chat.id, update.message.message_id)
 						if success:
-							logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): successfully deleted message! ✅')
+							logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): successfully deleted message! ✅')
 						else:
-							logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): unable to delete message (success != True. Type:{type(success)}, val:{success}) ⚠️')
+							logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): unable to delete message (success != True. Type:{type(success)}, val:{success}) ⚠️')
 					except Exception as error:
 						logging.exception(f'⚠️ Could not delete message sent by non-admin: {error}')
 
 				else:
-					logging.info(f'✋ {command} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): could not remove.')
+					logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): could not remove.')
 
 				return False
 
