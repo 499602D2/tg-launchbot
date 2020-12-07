@@ -181,7 +181,8 @@ def generic_update_handler(update, context):
 			conn.commit()
 			conn.close()
 
-			logging.info(f'⚠️ Bot removed from chat {anonymize_id(chat.id)} – notifications database cleaned [2]')
+			logging.info(
+				f'⚠️ Bot removed from chat {anonymize_id(chat.id)} – notifications database cleaned [2]')
 
 	elif update.message.group_chat_created not in (None, False):
 		# a new group chat created, with the bot in it
@@ -345,11 +346,24 @@ def command_pre_handler(update, context, skip_timer_handle):
 				bot_chat_specs = context.bot.get_chat_member(chat.id, context.bot.getMe().id)
 				if bot_chat_specs.status == 'administrator':
 					try:
-						success = context.bot.deleteMessage(chat.id, update.message.message_id)
-						if success:
+						if context.bot.deleteMessage(chat.id, update.message.message_id):
 							logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): successfully deleted message! ✅')
 						else:
 							logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): unable to delete message (success != True. Type:{type(success)}, val:{success}) ⚠️')
+					except telegram.error.RetryAfter as error:
+						# sleep for a while
+						retry_time = error.retry_after
+						logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
+						time.sleep(retry_time + 0.25)
+
+						try:
+							if context.bot.deleteMessage(chat.id, update.message.message_id):
+								logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)}: removed!')
+							else:
+								logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)}: failed to remove!')
+						except Exception:
+							pass
+
 					except Exception as error:
 						logging.exception(f'⚠️ Could not delete message sent by non-admin: {error}')
 
