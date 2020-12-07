@@ -164,6 +164,7 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 
 		# keep track of wheter we reset a notification state to 0
 		notification_state_reset = False
+		skipped_postpones = set()
 
 		# if we have at least one sent notification, the net has slipped >5 min, and we haven't launched
 		if 1 in notification_states.values() and net_diff >= 5*60 and not launch_object.launched:
@@ -173,9 +174,15 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 				if int(status) == 1 and net_diff > 3600 * notif_pre_time_map[key]:
 					notification_states[key] = 0
 					notification_state_reset = True
+				else:
+					# log skipped postpones
+					postpone = {'status': status, 'net_diff': net_diff, 'multipl.': notif_pre_time_map[key]}
+					skipped_postpones.add(postpone)
 
 			if not notification_state_reset:
 				logging.warning('⚠️ No notification states were reset: exiting...')
+				logging.warning(f'📜 notification_states: {notification_states}')
+				logging.warning(f'📜 skipped_postpones: {skipped_postpones}')
 				return (False, None)
 
 			logging.warning('✅ A notification state was reset: continuing...')
