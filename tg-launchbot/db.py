@@ -171,7 +171,7 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 			# iterate over the notification states loaded from the database
 			for key, status in notification_states.items():
 				# reset if net_diff > the notification send period (we're outside the window again)
-				if int(status) == 1 and net_diff > 3600 * notif_pre_time_map[key]:
+				if int(status) == 1 and net_diff >= 3600 * notif_pre_time_map[key]:
 					notification_states[key] = 0
 					notification_state_reset = True
 				else:
