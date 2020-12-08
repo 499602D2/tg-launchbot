@@ -2312,17 +2312,22 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# expire keys 15 seconds after next api update
 	if rd.exists('next-api-update'):
-		next_update = float(rd.get('next-api-update')) - time.time() + 15
+		to_next_update = int(rd.get('next-api-update')) - int(time.time()) + 15
 	else:
-		next_update = 30*60
+		to_next_update = 30*60
+
+	if to_next_update < 0:
+		to_next_update = 10*60
+
+	logging.info(f'Set expiry for next: {to_next_update}')
 
 	# cache string, NET timestamp
 	rd.setex(f'next-{chat}-maxindex',
-		datetime.timedelta(seconds=next_update), max_index)
+		datetime.timedelta(seconds=to_next_update), value=max_index)
 	rd.setex(f'next-{chat}-{current_index}',
-		datetime.timedelta(seconds=next_update), value=next_str)
+		datetime.timedelta(seconds=to_next_update), value=next_str)
 	rd.setex(f'next-{chat}-{current_index}-net',
-		datetime.timedelta(seconds=next_update), value=launch['net_unix'])
+		datetime.timedelta(seconds=to_next_update), value=launch['net_unix'])
 
 	# TODO replace ETA
 	next_str = next_str.replace('???ETASTR???', short_monospaced_text(eta_str))
