@@ -2317,7 +2317,7 @@ def generate_next_flight_message(chat, current_index: int):
 		to_next_update = 30*60
 
 	if to_next_update < 0:
-		to_next_update = 10*60
+		to_next_update = 60
 
 	# cache string, NET timestamp
 	rd.setex(f'next-{chat}-maxindex',
