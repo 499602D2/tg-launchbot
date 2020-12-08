@@ -2495,15 +2495,17 @@ def generate_statistics_message() -> str:
 
 		rd.set('parsed_github_link', parsed_github_link)
 
+	# add thousand separators to all number values
+
 	stats_str = f'''
 	📊 *LaunchBot global statistics*
-	Notifications delivered: {stats['notifications']}
+	Notifications delivered: {int(stats['notifications']):,}
 	Notification recipients: {notification_recipients}
-	Commands parsed: {int(stats['commands'])}
+	Commands parsed: {int(stats['commands']):,}
 
 	🛰 *Network statistics*
 	Data transferred: {data:.2f} {data_suffix}
-	API requests made: {stats['api_requests']}
+	API requests made: {int(stats['api_requests']):,}
 
 	💾 *Database information*
 	Storage used: {db_storage:.2f} {db_storage_suffix}
