@@ -703,7 +703,7 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 		cursor.execute('''SELECT notify_24h, notify_12h, notify_60min, notify_5min
 			FROM launches WHERE unique_id = ?''', (launch_id,))
 
-		launch_notif_states = cursor.fetchall[0]
+		launch_notif_states = cursor.fetchall()[0]
 		for enum, state in enumerate(launch_notif_states):
 			if int(state) == 0:
 				min_enabled_state = enum - 1
