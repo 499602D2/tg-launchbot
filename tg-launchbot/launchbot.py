@@ -841,6 +841,7 @@ def callback_handler(update, context):
 				pass
 			else:
 				logging.exception(f'⚠️ TelegramError updating message text: {exception}, {vars(exception)}')
+				logging.warning(f'⚠️new_message_text: {new_message_text}')
 
 		try:
 			query.answer(text=query_reply_text)
