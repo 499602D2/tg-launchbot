@@ -1879,7 +1879,12 @@ def generate_next_flight_message(chat, current_index: int):
 	'''
 	def cached_response():
 		# generate the keyboard here
-		max_index = int(rd.get(f'next-{chat}-maxindex'))
+		try:
+			max_index = int(rd.get(f'next-{chat}-maxindex'))
+		except TypeError:
+			generate_next_flight_message(chat, current_index)
+			return
+
 		if max_index > 1:
 			inline_keyboard = [[]]
 			back, fwd = False, False
