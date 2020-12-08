@@ -2312,7 +2312,7 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# expire keys 15 seconds after next api update
 	if rd.exists('next-api-update'):
-		to_next_update = int(rd.get('next-api-update')) - int(time.time()) + 15
+		to_next_update = int(float(rd.get('next-api-update'))) - int(time.time()) + 15
 	else:
 		to_next_update = 30*60
 
