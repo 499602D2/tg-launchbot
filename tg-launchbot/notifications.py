@@ -704,8 +704,12 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 			FROM launches WHERE unique_id = ?''', (launch_id,))
 
 		launch_notif_states = cursor.fetchall()[0]
+		logging.debug('notify_class==postpone: parsing...')
+		logging.debug(f'got launch_notif_states: {launch_notif_states}')
 		for enum, state in enumerate(launch_notif_states):
+			logging.debug(f'enum: {enum}, state: {state}')
 			if int(state) == 0:
+				logging.debug(f'\tint(state) == 0 | min_enabled_state = {enum - 1}')
 				min_enabled_state = enum - 1
 				break
 
@@ -714,9 +718,11 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 				min_enabled_state = 3
 
 		for chat_row in query_return:
+			# if muted, pass
 			if chat_row['chat'] in muted_by:
 				continue
 
+			# if disabled, pass
 			if lsp in chat_row['disabled_notifications']:
 				continue
 
@@ -724,14 +730,18 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 			i.e. (implement the setting for users) '''
 
 			# not muted, and not explicitly disabled: verify chat wants this type of notif
-			# should result in e.g. a ['1','1','1','1'] (not, strings)
+			# should result in e.g. a ['1','1','1','1'] (note: strings)
 			chat_notif_prefs = chat_row['notify_time_pref'].split(',')
+			logging.debug(f'{chat_row["chat"]}')
+			logging.debug(f'\tchat_notif_prefs: {chat_notif_prefs}')
 
 			# if any notify preference ≤ min_enabled_state == 1, add to notification_list
 			for notif_state in range(min_enabled_state, -1, -1):
 				''' if index matches, chat has a ≥ notification state enabled and
 				 should have been previously notified -> add to notification list '''
+				logging.debug(f'\tnotif_state: {notif_state}')
 				if chat_notif_prefs[notif_state] == '1':
+					logging.debug(f'\t{chat_notif_prefs[notif_state]} == "1" | notif_state={notif_state}')
 					notification_list.add(chat_row['chat'])
 					break
 
