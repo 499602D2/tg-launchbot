@@ -2689,7 +2689,7 @@ if __name__ == '__main__':
 	global provider_by_cc
 	provider_by_cc = {
 		'USA': {
-			'NASA', 'SpaceX', 'ULA', 'Rocket Lab Ltd', 'Astra Space', 'Virgin Orbit',
+			'NASA', 'SpaceX', 'ULA', 'Rocket Lab Ltd', 'Blue Origin', 'Astra Space', 'Virgin Orbit',
 			'Firefly Aerospace', 'Northrop Grumman', 'International Launch Services'},
 
 		'EU': {
@@ -2739,11 +2739,12 @@ if __name__ == '__main__':
 	global LSP_IDs
 	LSP_IDs = {
 		121: ['SpaceX', '🇺🇸'], 147: ['Rocket Lab', '🇺🇸'], 265:['Firefly', '🇺🇸'],
-		99: ['Northrop Grumman', '🇺🇸'], 115: ['Arianespace', '🇪🇺'], 124: ['ULA', '🇺🇸'],
-		98: ['Mitsubishi Heavy Industries', '🇯🇵'], 1002:['Interstellar Tech.', '🇯🇵'],
-		88: ['CASC', '🇨🇳'], 190: ['Antrix Corporation', '🇮🇳'], 122: ['Sea Launch', '🇷🇺'],
-		118: ['ILS', '🇺🇸🇷🇺'], 193: ['Eurockot', '🇪🇺🇷🇺'], 119: ['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'],
-		123: ['Starsem', '🇪🇺🇷🇺'], 194: ['ExPace', '🇨🇳'], 63: ['Roscosmos', '🇷🇺']
+		141: ['Blue Origin', '🇺🇸'], 99: ['Northrop Grumman', '🇺🇸'],
+		115: ['Arianespace', '🇪🇺'], 124: ['ULA', '🇺🇸'], 98: ['Mitsubishi Heavy Industries', '🇯🇵'],
+		1002:['Interstellar Tech.', '🇯🇵'], 88: ['CASC', '🇨🇳'], 190: ['Antrix Corporation', '🇮🇳'],
+		122: ['Sea Launch', '🇷🇺'], 118: ['ILS', '🇺🇸🇷🇺'], 193: ['Eurockot', '🇪🇺🇷🇺'],
+		119: ['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'], 123: ['Starsem', '🇪🇺🇷🇺'], 194: ['ExPace', '🇨🇳'],
+		63: ['Roscosmos', '🇷🇺']
 	}
 
 	# start command timers, store in memory instead of storage to reduce disk writes
