@@ -713,6 +713,15 @@ def callback_handler(update, context):
 				# update keyboard list view
 				update_list_view(msg, chat, provider_list)
 
+			# clear /next cache for user
+			if rd.exists(f'next-{chat}-maxindex'):
+				max_index = rd.get(f'next-{chat}-maxindex')
+				rd.expire(f'next-{chat}-maxindex')
+
+				for i in range(0, int(max_index)):
+					rd.expire(f'next-{chat}-{i}')
+					rd.expire(f'next-{chat}-{i}-net')
+
 			# update main view if "enable all" button was pressed, as in this case we're in the main view
 			else:
 				update_main_view(chat, msg, False)
