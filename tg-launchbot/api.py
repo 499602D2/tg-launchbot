@@ -65,11 +65,11 @@ class LaunchLibrary2Launch:
 
 		# url_list is a list of dictionaries
 		if len(launch_json['vidURLs']) >= 1:
-			url_set = set()
+			urls = []
 			for url_dict in launch_json['vidURLs']:
-				url_set.add(url_dict['url'])
+				urls.append(url_dict['url'])
 
-			self.webcast_url_list = ','.join(url_set)
+			self.webcast_url_list = ','.join(urls)
 
 		# rocket information
 		self.rocket_name = launch_json['rocket']['configuration']['name']
