@@ -324,8 +324,8 @@ def command_pre_handler(update, context, skip_timer_handle):
 
 	if not skip_timer_handle:
 		if not timer_handle(update, context, cmd, chat.id, update.message.from_user.id):
-			blocked_user = anonymize_id(update.message.from_user.id)
-			blocked_chat = anonymize_id(chat.id)
+			blocked_user = update.message.from_user.id
+			blocked_chat = chat.id
 
 			logging.info(f'✋ [{cmd}] Spam prevented from {blocked_chat} by {blocked_user}.')
 			return False
@@ -715,15 +715,15 @@ def callback_handler(update, context):
 
 			# clear /next cache for user
 			if rd.exists(f'next-{chat}-maxindex'):
+				logging.debug(f'📕 Expiring /next cache for {chat} after notify toggle...')
 				max_index = rd.get(f'next-{chat}-maxindex')
 
-				# expire in 0.1 seconds
-				td_obj = datetime.timedelta(seconds=0.1)
-				rd.expire(f'next-{chat}-maxindex', td_obj)
+				# expire keys in 0.1 seconds
+				rd.expire(f'next-{chat}-maxindex', datetime.timedelta(seconds=0.1))
 
 				for i in range(0, int(max_index)):
-					rd.expire(f'next-{chat}-{i}', td_obj)
-					rd.expire(f'next-{chat}-{i}-net', td_obj)
+					rd.expire(f'next-{chat}-{i}', datetime.timedelta(seconds=0.1))
+					rd.expire(f'next-{chat}-{i}-net', datetime.timedelta(seconds=0.1))
 
 			# update main view if "enable all" button was pressed, as in this case we're in the main view
 			else:
