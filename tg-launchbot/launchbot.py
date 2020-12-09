@@ -716,11 +716,14 @@ def callback_handler(update, context):
 			# clear /next cache for user
 			if rd.exists(f'next-{chat}-maxindex'):
 				max_index = rd.get(f'next-{chat}-maxindex')
-				rd.expire(f'next-{chat}-maxindex')
+
+				# expire in 0.1 seconds
+				td_obj = datetime.timedelta(seconds=0.1)
+				rd.expire(f'next-{chat}-maxindex', td_obj)
 
 				for i in range(0, int(max_index)):
-					rd.expire(f'next-{chat}-{i}')
-					rd.expire(f'next-{chat}-{i}-net')
+					rd.expire(f'next-{chat}-{i}', td_obj)
+					rd.expire(f'next-{chat}-{i}-net', td_obj)
 
 			# update main view if "enable all" button was pressed, as in this case we're in the main view
 			else:
@@ -1288,17 +1291,17 @@ def feedback_handler(update, context):
 					logging.exception(f'''Unable to remove sent feedback message with params
 						chat={chat.id}, message_id={update.message.reply_to_message.message_id}''')
 
-				if OWNER != 0:
-					# parse the message so it's suitable for markdown
-					update.message.text = reconstruct_message_for_markdown(update.message.text)
-
-					# if owner is defined, notify of a new feedback message
-					feedback_notify_msg = f'''
-						✍️ *Received feedback* from `{anonymize_id(update.message.from_user.id)}`\n
-						{update.message.text}'''
-
-					context.bot.send_message(
-						OWNER, inspect.cleandoc(feedback_notify_msg),parse_mode='MarkdownV2')
+				#if OWNER != 0:
+				#	# parse the message so it's suitable for markdown
+				#	update.message.text = reconstruct_message_for_markdown(update.message.text)
+				#
+				#	# if owner is defined, notify of a new feedback message
+				#	feedback_notify_msg = f'''
+				#		✍️ *Received feedback* from `{anonymize_id(update.message.from_user.id)}`\n
+				#		{update.message.text}'''
+				#
+				#	context.bot.send_message(
+				#		OWNER, inspect.cleandoc(feedback_notify_msg),parse_mode='MarkdownV2')
 
 
 def location_handler(update, context):
