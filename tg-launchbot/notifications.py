@@ -1058,6 +1058,10 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	else:
 		link_text = None
 
+	sn8_id = 'fdfc71c4-37a7-4d36-a27c-90b132f0e4aa'
+	if notif_class in ('notify_60min', 'notify_5min') and launch['unique_id'] == sn8_id:
+		vid_url = 'https://www.youtube.com/watch?v=ap-BkkrRg-o'
+
 	# map notif_class to a more readable string
 	t_minus = {
 		'notify_24h': '24 hours', 'notify_12h': '12 hours',
