@@ -562,6 +562,8 @@ def api_call_scheduler(
 
 	# push to redis so we can expire a bunch of keys just after next update
 	rd = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+	rd.flushdb()
+	logging.debug('📕 Redis db flushed!')
 	rd.set('next-api-update', next_api_update)
 
 	# if next update is same as auto-update, log as information
