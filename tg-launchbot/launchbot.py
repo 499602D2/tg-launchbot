@@ -1981,11 +1981,17 @@ def generate_next_flight_message(chat, current_index: int):
 
 			keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
-		eta = abs(int(time.time()) - int(rd.get(f'next-{chat}-{current_index}-net')))
-		eta_str = time_delta_to_legible_eta(time_delta=eta, full_accuracy=True)
+		launch_net = int(rd.get(f'next-{chat}-{current_index}-net'))
+		eta = abs(int(time.time()) - launch_net)
 
 		next_str = rd.get(f'next-{chat}-{current_index}')
-		next_str = next_str.replace('???ETASTR???', short_monospaced_text(eta_str))
+
+		if launch_net < int(time.time()):
+			eta_str = '⏸ Launch in hold: stand by'
+			next_str = next_str.replace('⏰ ???ETASTR???', short_monospaced_text(eta_str))
+		else:
+			eta_str = time_delta_to_legible_eta(time_delta=eta, full_accuracy=True)
+			next_str = next_str.replace('???ETASTR???', short_monospaced_text(eta_str))
 
 		# return msg + keyboard
 		return inspect.cleandoc(next_str), keyboard
