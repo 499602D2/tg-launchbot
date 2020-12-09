@@ -64,12 +64,15 @@ class LaunchLibrary2Launch:
 		self.webcast_url_list = None # preset to None
 
 		# url_list is a list of dictionaries
-		if len(launch_json['vidURLs']) >= 1:
-			urls = []
-			for url_dict in launch_json['vidURLs']:
-				urls.append(url_dict['url'])
+		if self.unique_id == 'fdfc71c4-37a7-4d36-a27c-90b132f0e4aa':
+			self.webcast_url_list = 'https://www.youtube.com/watch?v=ap-BkkrRg-o'
+		else:
+			if len(launch_json['vidURLs']) >= 1:
+				urls = []
+				for url_dict in launch_json['vidURLs']:
+					urls.append(url_dict['url'])
 
-			self.webcast_url_list = ','.join(urls)
+				self.webcast_url_list = ','.join(urls)
 
 		# rocket information
 		self.rocket_name = launch_json['rocket']['configuration']['name']
