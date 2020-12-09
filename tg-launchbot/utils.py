@@ -22,8 +22,16 @@ Misc variables:
 
 
 import datetime
+import time
 
 from hashlib import sha1
+
+
+def retry_after(retry_after_secs):
+	if retry_after_secs > 15:
+		time.sleep(15)
+	else:
+		time.sleep(retry_after_secs)
 
 
 def anonymize_id(chat: str) -> str:

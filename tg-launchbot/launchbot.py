@@ -40,7 +40,7 @@ from utils import (
 	anonymize_id, time_delta_to_legible_eta, map_country_code_to_flag,
 	timestamp_to_legible_date_string, short_monospaced_text,
 	reconstruct_message_for_markdown, reconstruct_link_for_markdown,
-	suffixed_readable_int)
+	suffixed_readable_int, retry_after)
 from timezone import (
 	load_locale_string, remove_time_zone_information, update_time_zone_string,
 	update_time_zone_value, load_time_zone_status)
@@ -51,7 +51,6 @@ from notifications import (
 
 # redis db connection
 rd = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
-
 
 def admin_handler(update, context):
 	'''
@@ -245,9 +244,8 @@ def command_pre_handler(update, context, skip_timer_handle):
 	except telegram.error.RetryAfter as error:
 			''' Rate-limited by Telegram
 			https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this '''
-			retry_time = error.retry_after
-			logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
-			time.sleep(retry_time)
+			logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+			retry_after(error.retry_after)
 
 			return False
 
@@ -352,9 +350,8 @@ def command_pre_handler(update, context, skip_timer_handle):
 							logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): unable to delete message (success != True. Type:{type(success)}, val:{success}) ⚠️')
 					except telegram.error.RetryAfter as error:
 						# sleep for a while
-						retry_time = error.retry_after
-						logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
-						time.sleep(retry_time + 0.25)
+						logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+						retry_after(error.retry_after)
 
 						try:
 							if context.bot.deleteMessage(chat.id, update.message.message_id):
@@ -1077,14 +1074,30 @@ def callback_handler(update, context):
 				
 				*Note:* time zone and command permission support is coming later.
 				'''
+				try:
+					sent_message = context.bot.send_message(
+						chat, inspect.cleandoc(message_text),
+						parse_mode='Markdown',
+						reply_markup=ReplyKeyboardRemove(remove_keyboard=True)
+					)
+				except telegram.error.RetryAfter as error:
+					logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+					retry_after(error.retry_after)
 
-				sent_message = context.bot.send_message(
-					chat, inspect.cleandoc(message_text),
-					parse_mode='Markdown',
-					reply_markup=ReplyKeyboardRemove(remove_keyboard=True)
-				)
+					sent_message = context.bot.send_message(
+						chat, inspect.cleandoc(message_text),
+						parse_mode='Markdown',
+						reply_markup=ReplyKeyboardRemove(remove_keyboard=True)
+					)
 
-				context.bot.deleteMessage(sent_message.chat.id, sent_message.message_id)
+
+				try:
+					context.bot.deleteMessage(sent_message.chat.id, sent_message.message_id)
+				except telegram.error.RetryAfter as error:
+					logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+					retry_after(error.retry_after)
+
+					context.bot.deleteMessage(sent_message.chat.id, sent_message.message_id)
 
 				keyboard = InlineKeyboardMarkup(
 					inline_keyboard = [
@@ -1093,11 +1106,19 @@ def callback_handler(update, context):
 					]
 				)
 
-				sent_message = context.bot.send_message(
-					chat, inspect.cleandoc(message_text),
-					parse_mode='Markdown',
-					reply_markup=keyboard
-				)
+				try:
+					sent_message = context.bot.send_message(
+						chat, inspect.cleandoc(message_text),
+						parse_mode='Markdown',
+						reply_markup=keyboard)
+				except telegram.error.RetryAfter as error:
+					logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+					retry_after(error.retry_after)
+
+					sent_message = context.bot.send_message(
+						chat, inspect.cleandoc(message_text),
+						parse_mode='Markdown',
+						reply_markup=keyboard)
 
 				query.answer(text='✅ Operation canceled!')
 
@@ -1581,8 +1602,14 @@ def notify(update, context):
 
 				[InlineKeyboardButton(text='✅ Save and exit', callback_data='notify/done')]])
 
-	context.bot.send_message(
-		chat, inspect.cleandoc(message_text), parse_mode='Markdown', reply_markup=keyboard)
+	try:
+		context.bot.send_message(
+			chat, inspect.cleandoc(message_text), parse_mode='Markdown', reply_markup=keyboard)
+	except telegram.error.RetryAfter as error:
+		logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		retry_after(error.retry_after)
+		context.bot.send_message(
+			chat, inspect.cleandoc(message_text), parse_mode='Markdown', reply_markup=keyboard)
 
 	# update stats
 	update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
@@ -1621,6 +1648,13 @@ def feedback(update, context):
 	except telegram.error.Unauthorized as error:
 		logging.info(f'Unauthorized to send message! Error.message: {error.message}')
 		clean_chats_db(db_path=DATA_DIR, chat=chat_id)
+	except telegram.error.RetryAfter as error:
+		logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		retry_after(error.retry_after)
+
+		sent_msg = context.bot.send_message(
+			chat_id, inspect.cleandoc(message_text), parse_mode='Markdown',
+			reply_markup=ForceReply(selective=True), reply_to_message_id=update.message.message_id)
 	except telegram.error.TimedOut as error:
 		logging.info(f'Error: timed out! Error.message: {error.message}')
 		time.sleep(1)
@@ -1856,6 +1890,12 @@ def flight_schedule(update, context):
 		logging.info(f'Unauthorized to send message! Error.message: {error.message}')
 		clean_chats_db(db_path=DATA_DIR, chat=chat_id)
 
+	except telegram.error.RetryAfter as error:
+		logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		retry_after(error.retry_after)
+
+		context.bot.send_message(chat_id, schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
+
 	except telegram.error.TimedOut as error:
 		logging.info(f'Error: timed out! Error.message: {error.message}')
 		time.sleep(1)
@@ -1977,8 +2017,16 @@ def generate_next_flight_message(chat, current_index: int):
 
 		# parse the strings into lists
 		enabled, disabled = [], []
-		enabled = chat_row['enabled_notifications'].split(',')
-		disabled = chat_row['disabled_notifications'].split(',')
+
+		try:
+			enabled = chat_row['enabled_notifications'].split(',')
+		except AttributeError:
+			enabled = []
+
+		try:
+			disabled = chat_row['disabled_notifications'].split(',')
+		except AttributeError:
+			disabled = []
 
 		# remove possible empty entires
 		if '' in enabled:
@@ -2367,6 +2415,13 @@ def next_flight(update, context):
 		logging.info(f'Unauthorized to send message! Error.message: {error.message}')
 		clean_chats_db(db_path=DATA_DIR, chat=chat_id)
 
+	except telegram.error.RetryAfter as error:
+		logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		retry_after(error.retry_after)
+
+		context.bot.send_message(
+			chat_id, message, reply_markup=keyboard, parse_mode='MarkdownV2')
+
 	except telegram.error.TimedOut as error:
 		logging.info(f'Error: timed out! Error.message: {error.message}')
 		time.sleep(1)
@@ -2555,6 +2610,15 @@ def statistics(update, context):
 	except telegram.error.Unauthorized as error:
 		logging.info(f'Unauthorized to send message! Error.message: {error.message}')
 		clean_chats_db(db_path=DATA_DIR, chat=chat_id)
+
+	except telegram.error.RetryAfter as error:
+		logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		retry_after(error.retry_after)
+
+		context.bot.send_message(
+			chat_id, stats_str, reply_markup=keyboard, parse_mode='Markdown',
+			disable_web_page_preview=True
+			)
 
 	except telegram.error.TimedOut as error:
 		logging.info(f'Error: timed out! Error.message: {error.message}')
