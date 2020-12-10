@@ -361,6 +361,9 @@ def command_pre_handler(update, context, skip_timer_handle):
 						except Exception:
 							pass
 
+					except telegram.error.BadRequest:
+						logging.warning('Unable to remove message sent by non-admin due to BadRequest')
+
 					except Exception as error:
 						logging.exception(f'⚠️ Could not delete message sent by non-admin: {error}')
 
@@ -569,7 +572,16 @@ def callback_handler(update, context):
 			all_admins = False
 
 		if not all_admins:
-			sender = context.bot.get_chat_member(chat, from_id)
+			try:
+				sender = context.bot.get_chat_member(chat, from_id)
+			except telegram.error.Unauthorized:
+				if 'bot was kicked' in error.message:
+					logging.info('🗃 Bot was kicked: cleaning chats database...')
+					clean_chats_db(DATA_DIR, chat.id)
+				else:
+					logging.exception('Unknown Unauthorized error')
+					return
+
 			if sender.status == 'left':
 				try:
 					query.answer(text="⚠️ Send the /command again! (chat migrated) ⚠️")
