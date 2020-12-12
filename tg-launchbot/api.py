@@ -33,12 +33,29 @@ class LaunchLibrary2Launch:
 
 		# net and status
 		self.net_unix = timestamp_to_unix(launch_json['net'])
-
 		self.status_id = launch_json['status']['id']
-		self.status_state = launch_json['status']['name']
+		self.status_state = launch_json['status']['abbrev']
+
+		status_map = {
+			'Go': 'GO',
+			'Hold': 'HOLD',
+			'In Flight': 'FLYING',
+			'Success': 'SUCCESS',
+			'Partial Failure': 'PFAILURE',
+			'Failure': 'FAILURE'
+		}
+
+		if self.status_state in status_map.keys():
+			self.status_state = status_map[self.status_state]
+
 		self.in_hold = launch_json['inhold']
-		self.probability = launch_json['probability']
 		self.success = bool('Success' in launch_json['status']['name'])
+
+		# pull probability
+		self.probability = launch_json['probability']
+
+		# WARNING: DEPRECATED IN LL ≥2.1.0: TODO remove in a future version
+		# set tbd_time and tbd_date
 		self.tbd_time = launch_json['tbdtime'] if 'tbdtime' in launch_json else True
 		self.tbd_date = launch_json['tbddate'] if 'tbddate' in launch_json else True
 
@@ -269,14 +286,14 @@ def clean_launch_db(last_update, db_path):
 def ll2_api_call(
 	data_dir: str, scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
 	# debug everything but the API: "true" simply loads the previous .json
-	DEBUG_API = False
+	DEBUG_API = True
 
 	# debug print
 	logging.debug('🔄 Running API call...')
 
 	# what we're throwing at the API
 	API_URL = 'https://ll.thespacedevs.com'
-	API_VERSION = '2.0.0'
+	API_VERSION = '2.1.0'
 	API_REQUEST = 'launch/upcoming'
 	PARAMS = {'mode': 'detailed', 'limit': 50}
 
@@ -377,7 +394,7 @@ def ll2_api_call(
 			logging.info(f'📃 Notification identifiers stored! identifiers="{msg_id_str}"')
 
 			# update stats
-			update_stats_db(stats_update={'notifications':len(notify_list)}, db_path=data_dir)
+			update_stats_db(stats_update={ 'notifications': len(notify_list) }, db_path=data_dir)
 			logging.info('📊 Stats updated!')
 
 	# update statistics
@@ -477,7 +494,7 @@ def api_call_scheduler(
 	logging.info(f'🔀 DB up-to-date! Last updated {last_updated_str} ago.')
 
 	# pull all launches with a net greater than or equal to notification window start
-	select_fields = 'net_unix, launched, tbd_time, tbd_date'
+	select_fields = 'net_unix, launched, status_state'
 	select_fields += ', notify_24h, notify_12h, notify_60min, notify_5min'
 	notify_window = int(time.time()) - 60*5
 
@@ -507,16 +524,16 @@ def api_call_scheduler(
 	'''
 	notif_times, time_map = set(), {0: 24*3600, 1: 12*3600, 2: 3600, 3: 5*60}
 	for launch_row in query_return:
-		# don't use unverified launches for scheduling (tbd_date + tbd_time)
-		launch_tbd_date, launch_tbd_time = int(launch_row[2]), int(launch_row[3])
-		if (launch_tbd_date, launch_tbd_time) == (1, 1):
+		# don't use unverified launches for scheduling (status_state == TBD)
+		launch_status = launch_row[2]
+		if launch_status == 'TBD':
 			continue
 
 		# shortly after launch time for possible postpone/abort, if not launched
 		if not launch_row[1] and time.time() - launch_row[0] < 60:
 			notif_times.add(launch_row[0] + 60)
 
-		for enum, notif_bool in enumerate(launch_row[4::]):
+		for enum, notif_bool in enumerate(launch_row[3::]):
 			if not notif_bool:
 				# time for check: launch time - notification time - 60 (60s before)
 				check_time = launch_row[0] - time_map[enum] - 60

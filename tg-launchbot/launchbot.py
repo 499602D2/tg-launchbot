@@ -13,6 +13,7 @@ import inspect
 import random
 import sqlite3
 import signal
+import argparse
 
 from timeit import default_timer as timer
 
@@ -52,22 +53,35 @@ from notifications import (
 # redis db connection
 rd = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
+try:
+	# verify redis connection so we don't run into issues later on
+	ret = rd.setex(name='foo', value='bar', time=datetime.timedelta(seconds=1))
+except redis.exceptions.ConnectionError:
+	sys.exit('🛑 Error connecting to redis instance! Verify redis-server configuration.')
+
+
+def api_update_on_restart():
+	'''
+	Updates launch database to force API update on next bot restart.
+	Used as both a CLI argument and through Telegram.
+	'''
+	conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
+	cursor_ = conn.cursor()
+
+	try:
+		cursor_.execute('UPDATE stats SET last_api_update = ?', (None,))
+	except sqlite3.OperationalError:
+		logging.warning('Database doesn\'t exist! Ignoring flag...')
+
+	conn.commit()
+	conn.close()
+
+
 def admin_handler(update, context):
 	'''
 	Allow bot owner to export logs and database remotely. Can only be called
 	in private chat with owner.
 	'''
-	def api_update_on_restart():
-		'''
-		Updates launch database to force API update on next bot restart
-		'''
-		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
-		cursor_ = conn.cursor()
-
-		cursor_.execute('UPDATE stats SET last_api_update = ?', (None,))
-		conn.commit()
-		conn.close()
-
 	def restart_program():
 		'''
 		Restarts the current program, with file objects and descriptors
@@ -1751,9 +1765,6 @@ def generate_schedule_message(call_type: str, chat: str):
 		except IndexError:
 			mission = row['name'].strip()
 
-		verified_date = bool(row['tbd_date'] == 0)
-		verified_time = bool(row['tbd_time'] == 0)
-
 		if mission[0] == ' ':
 			mission = mission[1:]
 
@@ -1781,10 +1792,14 @@ def generate_schedule_message(call_type: str, chat: str):
 		flt_str = flag if flag is not None else ''
 
 		# add a button indicating the status of the launch
-		if verified_date and verified_time:
+		# GO: green, TBC: yellow, TBD: red
+		go_status = row['status_state']
+		if go_status == 'GO':
 			flt_str += '🟢'
-		else:
+		elif go_status == 'TBC':
 			flt_str += '🟡'
+		elif go_status == 'TBD':
+			flt_str += '🔴'
 
 		if call_type == 'vehicle':
 			flt_str += f' {provider} {vehicle}'
@@ -1868,7 +1883,7 @@ def generate_schedule_message(call_type: str, chat: str):
 	# add header and footer
 	header = '📅 *5\-day flight schedule*\n'
 	header_note = f'For detailed flight information, use /next@{BOT_USERNAME}. Dates relative to UTC{utc_offset}.'
-	footer_note = '\n\n🟢 = verified launch date\n🟡 = exact time to be determined'
+	footer_note = '\n\n🟢 = verified launch time\n🟡 = unconfirmed launch time\n🔴 = unknown launch time'
 
 	# parse for markdown
 	footer = f'_{reconstruct_message_for_markdown(footer_note)}_'
@@ -1998,9 +2013,29 @@ def generate_next_flight_message(chat, current_index: int):
 
 		next_str = rd.get(f'next-{chat}-{current_index}')
 
-		if launch_net < int(time.time()):
-			eta_str = '⏸ Launch in hold: stand by'
-			next_str = next_str.replace('⏰ ???ETASTR???', short_monospaced_text(eta_str))
+		launch_status = rd.get(f'next-{chat}-{current_index}-status')
+		if launch_status is not False:
+			if launch_status in ('GO', 'TBC', 'TBD'):
+				if launch_net < int(time.time()):
+					eta_str = '⏸ Waiting for status update'
+					next_str = next_str.replace('⏰ ???ETASTR???', short_monospaced_text(eta_str))
+				else:
+					eta_str = time_delta_to_legible_eta(time_delta=eta, full_accuracy=True)
+					next_str = next_str.replace('???ETASTR???', short_monospaced_text(eta_str))
+			else:
+				if launch_status == 'HOLD':
+					t_prefx, eta_str = '⏸', 'Launch in hold: stand by'
+
+				elif launch_status == 'FLYING':
+					t_prefx, eta_str = '🚀', 'Vehicle in flight: stand by'
+
+				else:
+					logging.warning(f'Unknown status_state: {launch["status_state"]}')
+					t_prefx, eta_str = '⚠️', 'Internal server error'
+
+				next_str = next_str.replace(
+					'⏰ ???ETASTR???',
+					f'{t_prefx} {short_monospaced_text(eta_str)}')
 		else:
 			eta_str = time_delta_to_legible_eta(time_delta=eta, full_accuracy=True)
 			next_str = next_str.replace('???ETASTR???', short_monospaced_text(eta_str))
@@ -2088,8 +2123,9 @@ def generate_next_flight_message(chat, current_index: int):
 	# perform the select; if cmd == all, just pull the next launch
 	if cmd == 'all':
 		cursor_.execute('''
-			SELECT * FROM launches WHERE net_unix >= ? OR launched = 0 AND status_state = ?''',
-			(today_unix, 'Hold'))
+			SELECT * FROM launches WHERE net_unix >= ? OR launched = 0 
+			AND status_state = ? OR status_state = ?''',
+			(today_unix, 'HOLD', 'FLYING'))
 		query_return = cursor_.fetchall()
 
 	elif cmd is None:
@@ -2184,7 +2220,17 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# generate ETA string
 	eta = abs(int(time.time()) - launch['net_unix'])
-	eta_str = time_delta_to_legible_eta(time_delta=eta, full_accuracy=True)
+
+	# if not holding/flying, use regular ETA
+	if launch['status_state'] in ('GO', 'TBD', 'TBC'):
+		t_prefx, eta_str = '⏰', time_delta_to_legible_eta(time_delta=eta, full_accuracy=True)
+	elif launch['status_state'] == 'HOLD':
+		t_prefx, eta_str = '⏸', 'Launch in hold: stand by'
+	elif launch['status_state'] == 'FLYING':
+		t_prefx, eta_str = '🚀', 'Vehicle in flight: stand by'
+	else:
+		logging.warning(f'Unknown status_state: {launch["status_state"]}')
+		t_prefx, eta_str = '⚠️', 'Internal server error'
 
 	# # pull user time zone preferences, set tz_offset from hours to seconds
 	user_tz_offset = 3600 * load_time_zone_status(DATA_DIR, chat, readable=False)
@@ -2202,19 +2248,26 @@ def generate_next_flight_message(chat, current_index: int):
 	date_str = timestamp_to_legible_date_string(launch['net_unix'] + user_tz_offset)
 
 	# verified launch date
-	if launch['tbd_date'] == 0:
+	if launch['status_state'] in ('GO', 'TBC', 'FLYING'):
 		# load UTC offset in readable format
 		readable_utc_offset = load_time_zone_status(data_dir=DATA_DIR, chat=chat, readable=True)
 
-		if launch['tbd_time'] == 0:
+		if launch['status_state'] in ('GO', 'FLYING'):
 			# verified launch date and launch time
 			time_str = f'{date_str}, {launch_time} UTC{readable_utc_offset}'
 		else:
 			# verified launch date, but unverified launch time
 			time_str = f'{date_str}, NET {launch_time} UTC{readable_utc_offset}'
 	else:
-		# unverified launch date
-		time_str = f'Not before {date_str}'
+		# unverified launch date (status_state == TBD)
+		if launch['status_state'] == 'TBD':
+			time_str = f'Not before {date_str}'
+		else:
+			if launch['status_state'] == 'HOLD':
+				# holding: time unknown
+				time_str = 'Waiting for new launch date'
+			else:
+				logging.warning(f'Unknown status state for time_str ({launch["status_state"]})')
 
 	# add mission information: type, orbit
 	mission_type = launch['mission_type'].capitalize() if launch['mission_type'] is not None else 'Unknown purpose'
@@ -2398,23 +2451,25 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# expire keys 15 seconds after next api update
 	if rd.exists('next-api-update'):
-		to_next_update = int(float(rd.get('next-api-update'))) - int(time.time()) + 15
+		to_next_update = int(float(rd.get('next-api-update'))) - int(time.time()) + 30
 	else:
 		to_next_update = 30*60
 
 	if to_next_update < 0:
 		to_next_update = 60
 
-	# cache string, NET timestamp
+	# cache string, NET timestamp, launch status
 	rd.setex(f'next-{chat}-maxindex',
 		datetime.timedelta(seconds=to_next_update), value=max_index)
 	rd.setex(f'next-{chat}-{current_index}',
 		datetime.timedelta(seconds=to_next_update), value=next_str)
 	rd.setex(f'next-{chat}-{current_index}-net',
 		datetime.timedelta(seconds=to_next_update), value=launch['net_unix'])
+	rd.setex(f'next-{chat}-{current_index}-status',
+		datetime.timedelta(seconds=to_next_update), value=launch['status_state'])
 
 	# TODO replace ETA
-	next_str = next_str.replace('???ETASTR???', short_monospaced_text(eta_str))
+	next_str = next_str.replace('⏰ ???ETASTR???', f'{t_prefx} {short_monospaced_text(eta_str)}')
 
 	# return msg + keyboard
 	return inspect.cleandoc(next_str), keyboard
@@ -2705,51 +2760,35 @@ if __name__ == '__main__':
 	global DATA_DIR, STARTUP_TIME
 
 	# current version, set DATA_DIR
-	VERSION = '1.7.2'
+	VERSION = '1.7.4'
 	DATA_DIR = 'launchbot'
 
-	# log startup time, set default start mode
+	# log startup time
 	STARTUP_TIME = time.time()
-	START = DEBUG_MODE = False
 
-	# list of args the program accepts
-	start_args = ('start')
-	debug_args = ('log', 'debug')
-	bot_token_args = ('newbottoken')
+	# setup argparse
+	parser = argparse.ArgumentParser('launchbot.py')
 
-	if len(sys.argv) == 1:
-		err_str = '''
-		⚠️ Give at least one of the following arguments:
-		  launchbot.py [-start, -newBotToken, -log]
-		
-		E.g.: python3 launchbot.py -start
-		  -start starts the bot
-		  -newBotToken changes the bot API token
-		  -log stores some logs
-		'''
+	# add args
+	parser.add_argument(
+		'-start', dest='start', help='Starts the bot', action='store_true')
+	parser.add_argument(
+		'-debug', dest='debug', help='Disabled the activity indicator', action='store_true')
+	parser.add_argument(
+		'--new-bot-token', dest='update_token', help='Set a new bot token', action='store_true')
+	parser.add_argument(
+		'--force-api-update', dest='force_api_update',
+		help='Force an API update now', action='store_true')
 
-		print(inspect.cleandoc(err_str))
-		sys.exit('Program ending...')
+	# set defaults, parse
+	parser.set_defaults(start=False, newBotToken=False, debug=False)
+	args = parser.parse_args()
 
-	else:
-		update_tokens = set()
-		for arg in [arg.replace('-', '').lower() for arg in sys.argv]:
-			if arg in start_args:
-				START = True
+	if args.update_token:
+		update_token(data_dir=DATA_DIR, new_tokens={args.update_token})
 
-			# update tokens if instructed to
-			if arg in bot_token_args:
-				update_tokens.add('bot_token')
-
-			if arg in debug_args:
-				if arg == 'debug':
-					DEBUG_MODE = True
-
-		if len(update_tokens) != 0:
-			update_token(data_dir=DATA_DIR, new_tokens=update_tokens)
-
-		if START is False:
-			sys.exit('No start command given – exiting. To start the bot, include -start in startup options.')
+	if not args.start:
+		sys.exit('No start command given, exiting. To start the bot, include -start in options.')
 
 	# load config, create bot
 	config = load_config(data_dir=DATA_DIR)
@@ -2882,8 +2921,8 @@ if __name__ == '__main__':
 	logging.getLogger('telegram.vendor').setLevel(logging.ERROR)
 	logging.getLogger('telegram.error.TelegramError').setLevel(logging.ERROR)
 
-	if not DEBUG_MODE:
-		# init console log if not in debug_mode
+	if not args.debug:
+		# init console log if not in debug mode
 		console = logging.StreamHandler()
 		console.setLevel(logging.DEBUG)
 
@@ -2894,7 +2933,7 @@ if __name__ == '__main__':
 	coloredlogs.install(level='DEBUG')
 
 	# if not in debug mode, show pretty prints
-	if not DEBUG_MODE:
+	if not args.debug:
 		print(f"🚀 LaunchBot | version {VERSION}")
 		print("Don't close this window or set the computer to sleep. Quit: ctrl + c.")
 		time.sleep(0.5)
@@ -2945,6 +2984,11 @@ if __name__ == '__main__':
 	# all up to date, start polling
 	updater.start_polling()
 
+	# check if --force-api-update flag was given
+	if args.force_api_update:
+		logging.info('--force-api-update given: updating db...')
+		api_update_on_restart()
+
 	# start API and notification scheduler
 	api_call_scheduler(
 		db_path=DATA_DIR, ignore_60=False, scheduler=scheduler, bot_username=BOT_USERNAME,
@@ -2959,7 +3003,7 @@ if __name__ == '__main__':
 			pass
 
 	# fancy prints so the user can tell that we're actually doing something
-	if not DEBUG_MODE:
+	if not args.debug:
 		# hide cursor for pretty print
 		cursor.hide()
 		try:

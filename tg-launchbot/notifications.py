@@ -1347,7 +1347,7 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int,
 	cursor = conn.cursor()
 
 	# fields to be selected
-	select_fields = 'net_unix, unique_id, tbd_time, tbd_date'
+	select_fields = 'net_unix, unique_id, status_state'
 	select_fields += ', notify_24h, notify_12h, notify_60min, notify_5min'
 
 	# set a 5 minute notify window, so we don't miss notifications
@@ -1369,12 +1369,12 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int,
 	# create a dict of notif_send_time: launch(es) tags
 	notif_send_times, time_map = {}, {0: 24*3600+30, 1: 12*3600+30, 2: 3600+30, 3: 5*60+30}
 	for launch_row in query_return:
-		# don't notify of unverified launches (tbd_date + tbd_time)
-		launch_tbd_date, launch_tbd_time = int(launch_row[2]), int(launch_row[3])
-		if (launch_tbd_date, launch_tbd_time) == (1, 1):
+		# don't notify of unverified launches (status=TBD)
+		launch_status = launch_row[2]
+		if launch_status == 'TBD':
 			continue
 
-		for enum, notif_bool in enumerate(launch_row[4::]):
+		for enum, notif_bool in enumerate(launch_row[3::]):
 			if not notif_bool:
 				# time for check: launch time - notification time (before launch time)
 				send_time = launch_row[0] - time_map[enum]
