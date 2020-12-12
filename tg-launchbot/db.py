@@ -171,6 +171,31 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 			# iterate over the notification states loaded from the database
 			for key, status in notification_states.items():
 				# reset if net_diff > the notification send period (we're outside the window again)
+				# -> if goes "past" window, reset state
+
+				# EX: 21 hours until launch: window_time_left???
+				until_launch = launch_object.net_unix - int(time.time())
+
+				# if int(status) == 1, window_end = launch time + 3600 * multiplier
+				window_end = launch_object.net_unix + 3600 * notif_pre_time_map[key]
+
+				# check if postpone puts us past this window: if it does, reset state
+				if int(status) == 1 and int(time.time()) + net_diff > window_end:
+					postpone = {
+						'time.time() + net_diff': int(time.time()) + net_diff,
+						'window_end': window_end, 'until_launch': until_launch }
+
+					logging.debug('Notification state reset!')
+					logging.debug(f'postpone: {postpone}')
+
+					notification_states[key] = 0
+					notification_state_reset = True
+				else:
+					# log skipped postpones
+					postpone = {'status': status, 'net_diff': net_diff, 'multipl.': notif_pre_time_map[key]}
+					skipped_postpones.append(postpone)
+
+				'''
 				if int(status) == 1 and net_diff >= 3600 * notif_pre_time_map[key]:
 					notification_states[key] = 0
 					notification_state_reset = True
@@ -178,6 +203,7 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 					# log skipped postpones
 					postpone = {'status': status, 'net_diff': net_diff, 'multipl.': notif_pre_time_map[key]}
 					skipped_postpones.append(postpone)
+				'''
 
 			if not notification_state_reset:
 				logging.warning('⚠️ No notification states were reset: exiting...')
