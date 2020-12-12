@@ -706,11 +706,20 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 		launch_notif_states = cursor.fetchall()[0]
 		logging.debug('notify_class==postpone: parsing...')
 		logging.debug(f'got launch_notif_states: {launch_notif_states}')
+
 		for enum, state in enumerate(launch_notif_states):
-			logging.debug(f'enum: {enum}, state: {state}')
+			enabled = bool(int(state) == 1)
+			logging.debug(f'enum: {enum}, state: {state}, enabled: {enabled}')
+
 			if int(state) == 0:
-				logging.debug(f'\tint(state) == 0 | min_enabled_state = {enum - 1}')
-				min_enabled_state = enum - 1
+				if enum == 0:
+					logging.debug('⚠️ Avoided min_enabled_state == -1')
+					logging.debug('\tint(state) == 0 | min_enabled_state = 0')
+					min_enabled_state = 0
+				else:
+					logging.debug(f'\tint(state) == 0 | min_enabled_state = {enum - 1}')
+					min_enabled_state = enum - 1
+
 				break
 
 			if enum == 3 and int(state) != 0:
@@ -736,6 +745,7 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 			logging.debug(f'\tchat_notif_prefs: {chat_notif_prefs}')
 
 			# if any notify preference ≤ min_enabled_state == 1, add to notification_list
+			chat_notified = False
 			for notif_state in range(min_enabled_state, -1, -1):
 				''' if index matches, chat has a ≥ notification state enabled and
 				 should have been previously notified -> add to notification list '''
@@ -743,7 +753,14 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 				if chat_notif_prefs[notif_state] == '1':
 					logging.debug(f'\t{chat_notif_prefs[notif_state]} == "1" | notif_state={notif_state}')
 					notification_list.add(chat_row['chat'])
+					chat_notified = True
 					break
+
+			if chat_notified:
+				logging.debug('✅ Chat will be notified')
+			else:
+				logging.debug('🔴 Chat wont be notified!')
+			logging.debug('\n===========')
 
 		return notification_list
 
