@@ -717,8 +717,8 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 					logging.debug('\tint(state) == 0 | min_enabled_state = 0')
 					min_enabled_state = 0
 				else:
-					logging.debug(f'\tint(state) == 0 | min_enabled_state = {enum - 1}')
-					min_enabled_state = enum - 1
+					logging.debug(f'\tint(state) == 0 | min_enabled_state = {enum}')
+					min_enabled_state = enum
 
 				break
 
