@@ -286,7 +286,7 @@ def clean_launch_db(last_update, db_path):
 def ll2_api_call(
 	data_dir: str, scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
 	# debug everything but the API: "true" simply loads the previous .json
-	DEBUG_API = True
+	DEBUG_API = False
 
 	# debug print
 	logging.debug('🔄 Running API call...')
