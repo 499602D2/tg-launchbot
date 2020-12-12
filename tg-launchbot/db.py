@@ -387,6 +387,9 @@ def update_stats_db(stats_update: dict, db_path: str):
 				'notifications': 0, 'api_requests': 0, 'db_updates': 0,
 				'commands': 0, 'data': 0, 'last_api_update': 0}
 
+		if stats['last_api_update'] is None:
+			stats['last_api_update'] = int(time.time())
+
 		rd.hmset('stats', stats)
 
 	# Update stats with the provided data
