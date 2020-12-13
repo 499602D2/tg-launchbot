@@ -2803,6 +2803,10 @@ if __name__ == '__main__':
 		api_url = local_api_conf['address']
 		updater = Updater(config['bot_token'], use_context=True, base_url=api_url)
 	else:
+		# register updater
+		updater = Updater(config['bot_token'], use_context=True)
+
+		# if local api is enabled but not in use (e.g. not logged out), log out
 		if local_api_conf['enabled'] is True:
 			logging.info('🚨 Attempting to log out from the cloud bot API server...')
 			if updater.bot.log_out():
@@ -2816,8 +2820,6 @@ if __name__ == '__main__':
 			else:
 				logging.warning('⚠️ Failed to log out from the bot API server!')
 				sys.exit('Exiting...')
-		else:
-			updater = Updater(config['bot_token'], use_context=True)
 
 	# get the bot: if we get a telegram.error.Unauthorized, the token is incorrect
 	try:
