@@ -2542,7 +2542,7 @@ def generate_statistics_message() -> str:
 			notifs = api_reqs = commands = data = last_db_update = 0
 
 		# insert into redis | stats: {key:val, key:val, key:val}
-		rd.hmset('stats', stats)
+		rd.hset('stats', stats)
 
 	# pull from redis
 	stats = rd.hgetall('stats')

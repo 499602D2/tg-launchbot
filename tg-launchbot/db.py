@@ -416,7 +416,7 @@ def update_stats_db(stats_update: dict, db_path: str):
 		if stats['last_api_update'] is None:
 			stats['last_api_update'] = int(time.time())
 
-		rd.hmset('stats', stats)
+		rd.hset('stats', stats)
 
 	# Update stats with the provided data
 	for stat, val in stats_update.items():
