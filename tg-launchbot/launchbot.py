@@ -35,7 +35,7 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram.ext import CallbackQueryHandler
 
 from api import api_call_scheduler
-from config import load_config, store_config
+from config import load_config, store_config, repair_config
 from db import (update_stats_db, create_chats_db)
 from utils import (
 	anonymize_id, time_delta_to_legible_eta, map_country_code_to_flag,
@@ -2792,7 +2792,32 @@ if __name__ == '__main__':
 
 	# load config, create bot
 	config = load_config(data_dir=DATA_DIR)
-	updater = Updater(config['bot_token'], use_context=True)
+
+	try:
+		local_api_conf = config['local_api_server']
+	except KeyError:
+		config = repair_config(data_dir=DATA_DIR)
+		local_api_conf = config['local_api_server']
+
+	if (local_api_conf['enabled'], local_api_conf['logged_out']) == (True, True):
+		api_url = local_api_conf['address']
+		updater = Updater(config['bot_token'], use_context=True, base_url=api_url)
+	else:
+		if local_api_conf['enabled'] is True:
+			logging.info('🚨 Attempting to log out from the cloud bot API server...')
+			if updater.bot.log_out():
+				# update config to reflect that we've logged out
+				config['local_api_server']['logged_out'] = True
+				store_config(config_json=config, data_dir=DATA_DIR)
+				logging.info('✅ Successfully logged out from bot API server: config updated!')
+
+				updater.base_url = config['local_api_server']['address']
+				logging.info(f'✅ base_url set to {config["local_api_server"]["address"]}')
+			else:
+				logging.warning('⚠️ Failed to log out from the bot API server!')
+				sys.exit('Exiting...')
+		else:
+			updater = Updater(config['bot_token'], use_context=True)
 
 	# get the bot: if we get a telegram.error.Unauthorized, the token is incorrect
 	try:
@@ -3015,6 +3040,10 @@ if __name__ == '__main__':
 					time.sleep(0.1)
 
 		except KeyboardInterrupt:
+			# stop updater
+			logging.warning('🚨 Stopping updater: please wait...')
+			updater.stop()
+
 			# on exit, show cursor as otherwise it'll stay hidden
 			cursor.show()
 			scheduler.shutdown()

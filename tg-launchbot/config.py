@@ -1,5 +1,6 @@
 import os
 import time
+import logging
 
 
 import ujson as json
@@ -74,9 +75,8 @@ def create_config(data_dir: str):
 			},
 			'local_api_server': {
 				'enabled': False,
-				'address': None,
-    			'api_id': None,
-    			'api_hash': None
+				'logged_out': False,
+				'address': None
 			}
 		}
 
@@ -109,3 +109,43 @@ def load_config(data_dir: str) -> dict:
 
 	with open(os.path.join(data_dir, 'bot-config.json'), 'r') as config_file:
 		return json.load(config_file)
+
+
+def repair_config(data_dir: str) -> dict:
+	'''
+	Repairs a config file
+	'''
+	# check if all the server config keys exist
+	config_keys = { 'bot_token', 'owner', 'redis', 'local_api_server' }
+
+	# full config
+	full_config = {
+		'bot_token': 0,
+		'owner': 0,
+		'redis': {
+			'host': 'localhost',
+			'port': 6379,
+			'db_num': 0
+		},
+		'local_api_server': {
+			'enabled': False,
+			'logged_out': False,
+			'address': None
+		}
+	}
+
+	# load config
+	config = load_config(data_dir=data_dir)
+
+	# we're just taking the difference of the two key sets here
+	set_diff = config_keys.difference(set(config.keys()))
+	if set_diff == set():
+		return
+
+	logging.info(f'Server configuration is missing keys {set_diff}: repairing...')
+	for key, val in full_config.items():
+		if key not in config:
+			config[key] = val
+			logging.info(f'\tAdded missing key-val pair: {key}')
+
+	return config
