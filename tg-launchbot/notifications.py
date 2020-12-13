@@ -969,9 +969,12 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 
 	# TODO add orbits for TMI and TLI, once these pop up for the first time
 	orbit_map = {
-		'Sub Orbital': 'Sub-orbital', 'VLEO': 'Very low-Earth orbit', 'LEO': 'Low-Earth orbit',
-		'SSO': 'Sun-synchronous orbit', 'MEO': 'Medium-Earth orbit', 'GEO': 'Geostationary (direct)',
-		'GTO': 'Geostationary (transfer)', 'GSO': 'Geosynchronous orbit', 'LO': 'Lunar orbit'
+		'Sub Orbital': 'Sub-orbital',
+		'VLEO': 'Very low-Earth orbit', 'LEO': 'Low-Earth orbit',
+		'SSO': 'Sun-synchronous orbit', 'PO': 'Polar orbit',
+		'MEO': 'Medium-Earth orbit', 'GEO': 'Geostationary (direct)',
+		'GTO': 'Geostationary (transfer)', 'GSO': 'Geosynchronous orbit',
+		'LO': 'Lunar orbit'
 	}
 
 	try:
