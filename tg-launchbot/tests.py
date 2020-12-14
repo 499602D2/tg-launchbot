@@ -33,8 +33,17 @@ class TestNotificationUtils(unittest.TestCase):
 		conn.row_factory = sqlite3.Row
 		cursor = conn.cursor()
 
-		# select all IDs in db
-		cursor.execute('SELECT unique_id from launches WHERE lsp_name = ?', ('SpaceX',))
+		# SpaceX launches only
+		# cursor.execute('SELECT unique_id from launches WHERE lsp_name = ?', ('SpaceX',))
+		
+		# test why some launches cause wrong indentation
+		# name_tup = ('StriX-α', 'XARM & SLIM', 'CSO 2')
+		#cursor.execute("""SELECT unique_id from launches WHERE name LIKE '%'||?||'%'
+		# OR name LIKE '%'||?||'%' OR name LIKE '%'||?||'%'""", name_tup)
+
+		# pull all launches
+		cursor.execute('SELECT unique_id from launches')
+
 		query_return = cursor.fetchall()
 
 		# run for all launches

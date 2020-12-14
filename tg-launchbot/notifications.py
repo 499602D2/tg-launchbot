@@ -1049,7 +1049,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 				info_str = '.'.join(launch['mission_description'].split('\n')[0].split('.')[0:3])
 			else:
 				# otherwise, just use the entire thing
-				info_str = launch['mission_description']
+				info_str = '\n\t'.join(launch['mission_description'].split('\n'))
 
 		info_text = f'ℹ️ {info_str}'
 	else:
