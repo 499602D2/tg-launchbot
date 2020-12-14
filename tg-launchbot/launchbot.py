@@ -2117,15 +2117,18 @@ def generate_next_flight_message(chat, current_index: int):
 	if len(enabled) == 0:
 		cmd = 'all'
 
-	# datetimes
+	# timestamps
+	# include flying launches if it's been at most an hour since launch
 	today_unix = int(time.time())
+	flying_net_window = int(time.time()) - 3600
 
 	# perform the select; if cmd == all, just pull the next launch
 	if cmd == 'all':
 		cursor_.execute('''
 			SELECT * FROM launches WHERE net_unix >= ? OR launched = 0 
-			AND status_state = ? OR status_state = ?''',
-			(today_unix, 'HOLD', 'FLYING'))
+			AND status_state = ? OR status_state = ? AND net_unix >= ?''',
+			(today_unix, 'HOLD', 'FLYING', flying_net_window))
+
 		query_return = cursor_.fetchall()
 
 	elif cmd is None:
