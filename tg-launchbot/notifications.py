@@ -124,6 +124,7 @@ def postpone_notification(
 	# pull info from postpone_tuple
 	launch_obj = postpone_tuple[0]
 	postpone_msg = postpone_tuple[1]
+	old_notif_states = postpone_tuple[2]
 
 	if len(launch_obj.lsp_name) > len('Virgin Orbit'):
 		lsp_db_name = launch_obj.lsp_short
@@ -133,7 +134,9 @@ def postpone_notification(
 	# load chats to notify
 	notification_list = get_notify_list(
 		db_path=db_path, lsp=lsp_db_name,
-		launch_id=launch_obj.unique_id, notify_class='postpone')
+		launch_id=launch_obj.unique_id, notify_class='postpone',
+		notif_states=old_notif_states
+	)
 
 	# load tz tuple for each chat
 	notification_list_tzs = load_bulk_tz_offset(data_dir=db_path, chat_id_set=notification_list)
@@ -662,7 +665,8 @@ def remove_previous_notification(
 	logging.info(f'🔍 {muted_count} avoided due to mute status or notification disablement.')
 
 
-def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -> set:
+def get_notify_list(
+	db_path: str, lsp: str, launch_id: str, notify_class: str, notif_states: dict) -> set:
 	'''
 	Pull all chats with matching keyword (LSP ID), matching country code notification,
 	or an "all" marker (and no exclusion for this ID/country)
@@ -676,8 +680,7 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 	make sure the lsp name isn't in disabled_notifications. '''
 	try:
 		cursor.execute("""
-			SELECT * FROM chats WHERE 
-			enabled_notifications LIKE '%'||?||'%' 
+			SELECT * FROM chats WHERE enabled_notifications LIKE '%'||?||'%' 
 			OR enabled_notifications LIKE '%'||?||'%'""", (lsp, 'All'))
 	except sqlite3.OperationalError:
 		conn.close()
@@ -699,15 +702,11 @@ def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str) -
 
 	# if a postpone, check for mutes/disabled launches only
 	if notify_class == 'postpone':
-		# only notify of postpone if chat has already been notified once
-		cursor.execute('''SELECT notify_24h, notify_12h, notify_60min, notify_5min
-			FROM launches WHERE unique_id = ?''', (launch_id,))
-
-		launch_notif_states = cursor.fetchall()[0]
 		logging.debug('notify_class==postpone: parsing...')
-		logging.debug(f'got launch_notif_states: {launch_notif_states}')
+		logging.debug(f'old notif states: {notif_states}')
 
-		for enum, state in enumerate(launch_notif_states):
+		# notif_states is a dict; use values only when parsing
+		for enum, state in enumerate(notif_states.values()):
 			enabled = bool(int(state) == 1)
 			logging.debug(f'enum: {enum}, state: {state}, enabled: {enabled}')
 
@@ -1255,7 +1254,10 @@ def notification_handler(
 
 		# get list of people to send the notification to
 		notification_list = get_notify_list(
-			db_path=db_path, lsp=lsp_db_name, launch_id=launch_id, notify_class=notify_class)
+			db_path=db_path, lsp=lsp_db_name, launch_id=launch_id,
+			notify_class=notify_class, notif_states=None
+		)
+
 		logging.info(f'✅ Got notification list (len={len(notification_list)}) {notification_list}')
 
 		# get time zone information for each chat: this is a lot faster in bulk

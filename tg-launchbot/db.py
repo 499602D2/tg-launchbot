@@ -154,9 +154,14 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 
 		# NETs don't match: calculate slip (diff), verify we haven't sent any notifications
 		net_diff = launch_object.net_unix - launch_db['net_unix']
+
+		# notification states for the launch
 		notification_states = {
 			'notify_24h': launch_db['notify_24h'], 'notify_12h': launch_db['notify_12h'],
 			'notify_60min': launch_db['notify_60min'], 'notify_5min': launch_db['notify_5min']}
+
+		# store a copy we don't change so we can properly send postpone notifications
+		old_notification_states = notification_states
 
 		# map notification "presend" time to hour multiples (i.e. 3600 * X)
 		notif_pre_time_map = {
@@ -223,7 +228,7 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 				logging.warning('⚠️ No notification states were reset: exiting...')
 				logging.warning(f'📜 notification_states: {notification_states}')
 				logging.warning(f'📜 skipped_postpones: {skipped_postpones}')
-				return (False, None)
+				return (False, ())
 
 			logging.warning('✅ A notification state was reset: continuing...')
 
@@ -276,8 +281,8 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 			logging.info(f'ℹ️ Postponed by {postpone_str}. New states: {notification_states}')
 
 			''' return bool + a tuple we can use to send the postpone notification easily
-			(launch_object, message) '''
-			postpone_tup = (launch_object, postpone_msg)
+			(launch_object, message, old_notif_statse) '''
+			postpone_tup = (launch_object, postpone_msg, old_notification_states)
 
 			return (True, postpone_tup)
 
@@ -335,7 +340,7 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 			try:
 				cursor.execute(f"UPDATE launches SET {set_str} WHERE unique_id = ?",
 					tuple(update_values) + (launch_object.unique_id,))
-				cursor.execute(f"UPDATE launches SET last_updated = ? WHERE unique_id = ?",
+				cursor.execute("UPDATE launches SET last_updated = ? WHERE unique_id = ?",
 					(api_update,) + (launch_object.unique_id,))
 			except Exception:
 				logging.exception(f'⚠️ Error updating field for unique_id={launch_object.unique_id}!')
