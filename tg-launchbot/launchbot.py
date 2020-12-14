@@ -98,7 +98,10 @@ def admin_handler(update, context):
 		os.execl(python, python, *sys.argv)
 
 	# extract chat information
-	chat = update.message.chat
+	try:
+		chat = update.message.chat
+	except AttributeError:
+		return
 
 	# return logs if command used
 	if update.message.text == '/debug export-logs':
