@@ -1709,6 +1709,23 @@ def feedback(update, context):
 	update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
 
 
+def generate_changelog():
+	changelog = f'''
+	🚀 *LaunchBot* v{VERSION} | Changelog
+
+	- added Blue Origin
+	- tuned postpone notifications
+	- support local bot API servers
+	- show hold/launched status in /next
+	- implemented caching with redis
+	- tiny improvements everywhere
+	- massive amounts of bug-fixes
+
+	*More information on Github*
+	https://github.com/499602D2/tg-launchbot
+	'''
+
+
 def generate_schedule_message(call_type: str, chat: str):
 	'''
 	Generates the schedule message and keyboard.
@@ -2766,7 +2783,7 @@ if __name__ == '__main__':
 	global DATA_DIR, STARTUP_TIME
 
 	# current version, set DATA_DIR
-	VERSION = '1.7.6'
+	VERSION = '1.7.7'
 	DATA_DIR = 'launchbot'
 
 	# log startup time
