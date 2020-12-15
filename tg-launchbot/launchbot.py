@@ -49,6 +49,10 @@ from notifications import (
 	get_user_notifications_status, toggle_notification,
 	update_notif_preference, get_notif_preference, toggle_launch_mute, clean_chats_db)
 
+# global variable definitions
+global VERSION, OWNER
+global BOT_ID, BOT_USERNAME
+global DATA_DIR, STARTUP_TIME
 
 # redis db connection
 rd = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
@@ -2144,6 +2148,8 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# perform the select; if cmd == all, just pull the next launch
 	if cmd == 'all':
+		# select all launches that have a net_unix ≥ today, or haven't launched and are holding,
+		# or are flying and were launched at most an hour ago
 		cursor_.execute('''
 			SELECT * FROM launches WHERE net_unix >= ? OR launched = 0 
 			AND status_state = ? OR status_state = ? AND net_unix >= ?''',
@@ -2160,10 +2166,13 @@ def generate_next_flight_message(chat, current_index: int):
 					if enum < len(disabled) - 1:
 						disabled_str += ','
 
+				# select all that haven't been disabled
 				query_str = f'''SELECT * FROM launches WHERE net_unix >= ? AND lsp_name NOT IN ({disabled_str})
+				AND lsp_short NOT IN ({disabled_str}) 
+				OR launched = 0 AND status_state = ? AND lsp_name NOT IN ({disabled_str}) 
 				AND lsp_short NOT IN ({disabled_str})'''
 
-				cursor_.execute(query_str, (today_unix,))
+				cursor_.execute(query_str, (today_unix,'HOLD'))
 				query_return = cursor_.fetchall()
 
 			else:
@@ -2177,10 +2186,13 @@ def generate_next_flight_message(chat, current_index: int):
 				if enum < len(enabled) - 1:
 					enabled_str += ','
 
+			# select all that are enabled and have yet to launch or are holding
 			query_str = f'''SELECT * FROM launches WHERE net_unix >= ? AND lsp_name IN ({enabled_str})
-			OR net_unix >= ? AND lsp_short IN ({enabled_str})'''
+			OR net_unix >= ? AND lsp_short IN ({enabled_str}) OR launched = 0 AND status_state = ? AND
+			lsp_name IN ({enabled_str}) OR launched = 0 AND status_state = ? AND lsp_short IN ({enabled_str})
+			'''
 
-			cursor_.execute(query_str, (today_unix,today_unix))
+			cursor_.execute(query_str, (today_unix, today_unix, 'HOLD', 'HOLD'))
 			query_return = cursor_.fetchall()
 
 	# close connection
@@ -2777,11 +2789,6 @@ def apscheduler_event_listener(event):
 
 
 if __name__ == '__main__':
-	# some global vars for use in other functions
-	global VERSION, OWNER
-	global BOT_ID, BOT_USERNAME
-	global DATA_DIR, STARTUP_TIME
-
 	# current version, set DATA_DIR
 	VERSION = '1.7.7'
 	DATA_DIR = 'launchbot'
@@ -3083,4 +3090,10 @@ if __name__ == '__main__':
 
 	else:
 		while True:
-			time.sleep(10)
+			try:
+				time.sleep(10)
+			except KeyboardInterrupt:
+				# stop updater
+				logging.warning('🚨 Stopping updater: please wait...')
+				updater.stop()
+				scheduler.shutdown()
