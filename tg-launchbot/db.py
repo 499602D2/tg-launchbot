@@ -161,7 +161,7 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 			'notify_60min': launch_db['notify_60min'], 'notify_5min': launch_db['notify_5min']}
 
 		# store a copy we don't change so we can properly send postpone notifications
-		old_notification_states = notification_states
+		old_notification_states = tuple(notification_states.values())
 
 		# map notification "presend" time to hour multiples (i.e. 3600 * X)
 		notif_pre_time_map = {
@@ -189,7 +189,9 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 				# check if postpone puts us past this window: if it does, reset state
 				if int(status) == 1 and int(time.time()) - net_diff < window_end:
 					postpone = {
-						'time.time() + net_diff': int(time.time()) + net_diff,
+						'old net': launch_db['net_unix'],
+						'launch_obj.net_unix': launch_object.net_unix,
+						'time.time() - net_diff': int(time.time()) - net_diff,
 						'window_end': window_end,
 						'until_launch': until_launch,
 						'window_diff': window_diff

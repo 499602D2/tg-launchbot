@@ -124,6 +124,8 @@ def postpone_notification(
 	# pull info from postpone_tuple
 	launch_obj = postpone_tuple[0]
 	postpone_msg = postpone_tuple[1]
+
+	# tuple of (24h_state_val, 12h_state_val, ...)
 	old_notif_states = postpone_tuple[2]
 
 	if len(launch_obj.lsp_name) > len('Virgin Orbit'):
@@ -666,7 +668,7 @@ def remove_previous_notification(
 
 
 def get_notify_list(
-	db_path: str, lsp: str, launch_id: str, notify_class: str, notif_states: dict) -> set:
+	db_path: str, lsp: str, launch_id: str, notify_class: str, notif_states: tuple) -> set:
 	'''
 	Pull all chats with matching keyword (LSP ID), matching country code notification,
 	or an "all" marker (and no exclusion for this ID/country)
@@ -706,7 +708,7 @@ def get_notify_list(
 		logging.debug(f'old notif states: {notif_states}')
 
 		# notif_states is a dict; use values only when parsing
-		for enum, state in enumerate(notif_states.values()):
+		for enum, state in enumerate(notif_states):
 			enabled = bool(int(state) == 1)
 			logging.debug(f'enum: {enum}, state: {state}, enabled: {enabled}')
 
