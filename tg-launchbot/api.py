@@ -81,15 +81,31 @@ class LaunchLibrary2Launch:
 		self.webcast_url_list = None # preset to None
 
 		# url_list is a list of dictionaries
-		if self.unique_id == 'fdfc71c4-37a7-4d36-a27c-90b132f0e4aa':
-			self.webcast_url_list = 'https://www.youtube.com/watch?v=ap-BkkrRg-o'
-		else:
-			if len(launch_json['vidURLs']) >= 1:
-				urls = []
-				for url_dict in launch_json['vidURLs']:
-					urls.append(url_dict['url'])
+		if len(launch_json['vidURLs']) >= 1:
+			# parse by priority
+			priority_map = {}
+			for url_dict in launch_json['vidURLs']:
+				priority = url_dict['priority']
+				url = url_dict['url']
 
-				self.webcast_url_list = ','.join(urls)
+				if priority in priority_map.keys():
+					priority_map[priority] = priority_map[priority] + ',' + url
+				else:
+					priority_map[priority] = url
+
+			# pick highest priority string
+			try:
+				highest_prior = min(priority_map.keys())
+			except ValueError:
+				highest_prior = None
+
+			if highest_prior is not None:
+				self.webcast_url_list = priority_map[highest_prior]
+			else:
+				logging.warning(f'highest_prior is None but vidURLs ≥ 1. ID: {self.unique_id}')
+				self.webcast_url_list = None
+		else:
+			self.webcast_url_list = None
 
 		# rocket information
 		self.rocket_name = launch_json['rocket']['configuration']['name']
