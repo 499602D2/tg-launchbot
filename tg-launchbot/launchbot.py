@@ -2790,7 +2790,7 @@ def apscheduler_event_listener(event):
 
 if __name__ == '__main__':
 	# current version, set DATA_DIR
-	VERSION = '1.7.7'
+	VERSION = '1.7.8'
 	DATA_DIR = 'launchbot'
 
 	# log startup time
