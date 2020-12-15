@@ -576,17 +576,17 @@ def api_call_scheduler(
 		# if more than 24 hours until next notif, check once every 4 hours
 		upd_period_mult = 16
 	elif until_next_notif >= 3600 * 12:
-		# if 12 - 24 hours until next notif, check every 90 minutes
-		upd_period_mult = 6
+		# if 12 - 24 hours until next notif, check every 2 hours
+		upd_period_mult = 8
 	elif until_next_notif >= 3600:
 		# if 1 - 12, check once an hour
 		upd_period_mult = 4
 	else:
-		# if less than an hour, check every 10.5 minutes
-		upd_period_mult = 0.7
+		# if less than an hour, check every 20 minutes
+		upd_period_mult = 1.35
 
 	# add next auto-update to notif_times
-	to_next_update = UPDATE_PERIOD * upd_period_mult * 60 - update_delta
+	to_next_update = int(UPDATE_PERIOD * upd_period_mult) * 60 - update_delta
 	next_auto_update = int(time.time()) + to_next_update
 	notif_times.add(next_auto_update)
 
