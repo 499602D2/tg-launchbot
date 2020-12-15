@@ -149,6 +149,10 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 		- the largest bottleneck is usually Telegram's API
 
 	- improve json-parsing performance by using multiprocessing
+
+	- write stats to redis only, schedule disk writes to SQLite every ≈30 misn
+
+		- easy to do e.g. every API update
 	
 	- 🚧 use in-memory caching, like redis or memcached, to handle all responses
 
