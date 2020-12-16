@@ -2168,11 +2168,9 @@ def generate_next_flight_message(chat, current_index: int):
 
 				# select all that haven't been disabled
 				query_str = f'''SELECT * FROM launches WHERE net_unix >= ? AND lsp_name NOT IN ({disabled_str})
-				AND lsp_short NOT IN ({disabled_str}) 
-				OR launched = 0 AND status_state = ? AND lsp_name NOT IN ({disabled_str}) 
 				AND lsp_short NOT IN ({disabled_str})'''
 
-				cursor_.execute(query_str, (today_unix,'HOLD'))
+				cursor_.execute(query_str, (today_unix,))
 				query_return = cursor_.fetchall()
 
 			else:
@@ -2188,11 +2186,9 @@ def generate_next_flight_message(chat, current_index: int):
 
 			# select all that are enabled and have yet to launch or are holding
 			query_str = f'''SELECT * FROM launches WHERE net_unix >= ? AND lsp_name IN ({enabled_str})
-			OR net_unix >= ? AND lsp_short IN ({enabled_str}) OR launched = 0 AND status_state = ? AND
-			lsp_name IN ({enabled_str}) OR launched = 0 AND status_state = ? AND lsp_short IN ({enabled_str})
-			'''
+			OR net_unix >= ? AND lsp_short IN ({enabled_str})'''
 
-			cursor_.execute(query_str, (today_unix, today_unix, 'HOLD', 'HOLD'))
+			cursor_.execute(query_str, (today_unix, today_unix))
 			query_return = cursor_.fetchall()
 
 	# close connection
@@ -3059,41 +3055,36 @@ if __name__ == '__main__':
 		except telegram.error.Unauthorized:
 			pass
 
-	# fancy prints so the user can tell that we're actually doing something
-	if not args.debug:
-		# hide cursor for pretty print
-		cursor.hide()
-		try:
+	try:
+		# pretty prints if not debugging
+		if not args.debug:
+			# hide cursor for printing
+			cursor.hide()
+
 			while True:
 				for char in ('⠷', '⠯', '⠟', '⠻', '⠽', '⠾'):
 					sys.stdout.write('%s\r' % '  Connected to Telegram! To quit: ctrl + c.')
 					sys.stdout.write('\033[92m%s\r\033[0m' % char)
 					sys.stdout.flush()
 					time.sleep(0.1)
-
-		except KeyboardInterrupt:
-			# stop updater
-			logging.warning('🚨 Stopping updater: please wait...')
-			updater.stop()
-
-			# on exit, show cursor as otherwise it'll stay hidden
-			cursor.show()
-			scheduler.shutdown()
-			run_time = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME), True)
-			run_time_str = f'\n🔶 Program ending... Runtime: {run_time}.'
-			logging.warning(run_time_str)
-
-			sys.exit('Press ctrl+c again to quit!')
-
-		except Exception as error:
-			updater.bot.send_message(OWNER, f'⚠️ Shutting down! exception: {error}')
-
-	else:
-		while True:
-			try:
+		else:
+			# no prints if we're debugging: just logs
+			while True:
 				time.sleep(10)
-			except KeyboardInterrupt:
-				# stop updater
-				logging.warning('🚨 Stopping updater: please wait...')
-				updater.stop()
-				scheduler.shutdown()
+
+	except KeyboardInterrupt:
+		# stop updater
+		logging.warning('🚨 Stopping updater: please wait...')
+		updater.stop()
+
+		# on exit, show cursor as otherwise it'll stay hidden
+		cursor.show()
+		scheduler.shutdown()
+		run_time = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME), True)
+		run_time_str = f'\n🔶 Program ending... Runtime: {run_time}.'
+		logging.warning(run_time_str)
+
+		sys.exit('Press ctrl+c again to quit!')
+
+	except Exception as error:
+		updater.bot.send_message(OWNER, f'⚠️ Shutting down! exception: {error}')
