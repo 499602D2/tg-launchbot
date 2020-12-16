@@ -356,6 +356,17 @@ def toggle_notification(
 		else:
 			old_disabled_states = []
 
+	try:
+		old_enabled_states.remove('')
+	except ValueError:
+		pass
+
+	try:
+		old_disabled_states.remove('')
+	except ValueError:
+		pass
+
+
 	# merge enabled and disabled states into one dict of kw:bool
 	old_states = {}
 	if data_exists:
