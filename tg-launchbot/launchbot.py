@@ -2932,7 +2932,7 @@ if __name__ == '__main__':
 		1002:['Interstellar Tech.', '🇯🇵'], 88: ['CASC', '🇨🇳'], 190: ['Antrix Corporation', '🇮🇳'],
 		122: ['Sea Launch', '🇷🇺'], 118: ['ILS', '🇺🇸🇷🇺'], 193: ['Eurockot', '🇪🇺🇷🇺'],
 		119: ['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'], 123: ['Starsem', '🇪🇺🇷🇺'], 194: ['ExPace', '🇨🇳'],
-		63: ['Roscosmos', '🇷🇺']
+		63: ['ROSCOSMOS', '🇷🇺']
 	}
 
 	# start command timers, store in memory instead of storage to reduce disk writes
