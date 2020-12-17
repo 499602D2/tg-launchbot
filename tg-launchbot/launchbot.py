@@ -1548,11 +1548,13 @@ def start(update, context):
 	- You have to be an admin in a group to send commands.
 
 	LaunchBot version *{VERSION}* ✨
+	https://github.com/499602D2/tg-launchbot
 	'''
 
 	# pull chat id, send message
 	chat_id = update.message.chat.id
-	context.bot.send_message(chat_id, inspect.cleandoc(reply_msg), parse_mode='Markdown')
+	context.bot.send_message(
+		chat_id, inspect.cleandoc(reply_msg), parse_mode='Markdown', disable_web_page_preview=True)
 
 	# /start, send also the inline keyboard
 	try:
