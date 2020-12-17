@@ -2786,7 +2786,7 @@ def apscheduler_event_listener(event):
 
 if __name__ == '__main__':
 	# current version, set DATA_DIR
-	VERSION = '1.7.8'
+	VERSION = '1.7.9'
 	DATA_DIR = 'launchbot'
 
 	# log startup time
@@ -2918,7 +2918,9 @@ if __name__ == '__main__':
 	'''
 	LSP ID -> name, flag dictionary
 
-	Used to shorten the names, so we don't end up with super long messages
+	Used to shorten the names, so we don't end up with super long messages.
+
+	E.g. LSP_ID -> [this dict] -> shorter name than the "real" name
 
 	This dictionary also maps custom shortened names (Northrop Grumman, Starsem)
 	to their real ID. Also used in cases where a weird name is used by LL, like

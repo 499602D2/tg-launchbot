@@ -723,20 +723,29 @@ def get_notify_list(
 			enabled = bool(int(state) == 1)
 			logging.debug(f'enum: {enum}, state: {state}, enabled: {enabled}')
 
+			''' min_recvd_notif_idx should be the last notification state index that
+			a notification has been sent for: as a notification state has been reset previously,
+			we can set min_recvd_notif_idx to enum-1.
+
+			The most simple case would be either [1,0,0,0] or [1,1,1,1]:
+			in the first one, we pass i=0 as the state==1, and min_recvd_notif_idx
+			becomes 0. For the last one, we pass all and the min_recvd_notif_idx is 3. '''
 			if int(state) == 0:
 				if enum == 0:
-					logging.debug('⚠️ Avoided min_enabled_state == -1')
-					logging.debug('\tint(state) == 0 | min_enabled_state = 0')
-					min_enabled_state = 0
+					# should never happen
+					logging.debug('⚠️ Avoided min_recvd_notif_idx == -1 (???)')
+					logging.debug('\tint(state) == 0 | min_recvd_notif_idx = 0')
+					min_recvd_notif_idx = 0
 				else:
-					logging.debug(f'\tint(state) == 0 | min_enabled_state = {enum}')
-					min_enabled_state = enum
+					logging.debug(f'\tint(state) == 0 | min_recvd_notif_idx = {enum}')
+					min_recvd_notif_idx = enum - 1
 
 				break
 
 			if enum == 3 and int(state) != 0:
+				# all states enabled: set min_recvd_notif_idx to 3
 				logging.info('⚠️ All notif states enabled: avoided ValueError...')
-				min_enabled_state = 3
+				min_recvd_notif_idx = 3
 
 		for chat_row in query_return:
 			# if muted, pass
@@ -756,9 +765,9 @@ def get_notify_list(
 			logging.debug(f'{chat_row["chat"]}')
 			logging.debug(f'\tchat_notif_prefs: {chat_notif_prefs}')
 
-			# if any notify preference ≤ min_enabled_state == 1, add to notification_list
+			# if any notify preference ≤ min_recvd_notif_idx == 1, add to notification_list
 			chat_notified = False
-			for notif_state in range(min_enabled_state, -1, -1):
+			for notif_state in range(min_recvd_notif_idx, -1, -1):
 				''' if index matches, chat has a ≥ notification state enabled and
 				 should have been previously notified -> add to notification list '''
 				logging.debug(f'\tnotif_state: {notif_state}')
