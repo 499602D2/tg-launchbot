@@ -2771,7 +2771,10 @@ def sigterm_handler(signal, frame):
 	'''
 	Logs program run time when we get sigterm.
 	'''
-	logging.info(f'✅ Got SIGTERM. Runtime: {datetime.datetime.now() - STARTUP_TIME}.')
+	running_sec = int(time.time() - STARTUP_TIME)
+	time_running = time_delta_to_legible_eta(time_delta=running_sec, full_accuracy=True)
+
+	logging.info(f'✅ Got SIGTERM. Runtime: {time_running}.')
 	logging.info(f'Signal: {signal}, frame: {frame}.')
 	sys.exit(0)
 
