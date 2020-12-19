@@ -3091,4 +3091,5 @@ if __name__ == '__main__':
 		sys.exit('Press ctrl+c again to quit!')
 
 	except Exception as error:
+		logging.exception('Ran into an exception!')
 		updater.bot.send_message(OWNER, f'⚠️ Shutting down! exception: {error}')
