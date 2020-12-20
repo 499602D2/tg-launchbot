@@ -282,7 +282,7 @@ def clean_launch_db(last_update, db_path):
 		deleted_launches.add(launch_row[0])
 
 	if len(deleted_launches) == 0:
-		logging.info('✨ Database already clean: nothing to do!')
+		logging.debug('✨ Database already clean: nothing to do!')
 		return
 
 	logging.info(f'✨ Deleting {len(deleted_launches)} launches that have slipped out of range...')
@@ -465,7 +465,7 @@ def api_call_scheduler(
 			ll2_api_call, 'date', run_date=next_update_dt,
 			args=[db_path, scheduler, bot_username, bot], id=f'api-{unix_timestamp}')
 
-		logging.info('🔄 Next API update in %s (%s)',
+		logging.debug('🔄 Next API update in %s (%s)',
 			time_delta_to_legible_eta(time_delta=until_update, full_accuracy=False), next_update_dt)
 
 		return unix_timestamp
@@ -475,7 +475,7 @@ def api_call_scheduler(
 		Load previous time on startup to figure out if we need to update right now
 		'''
 		try:
-			cursor.execute(f'SELECT last_api_update FROM stats')
+			cursor.execute('SELECT last_api_update FROM stats')
 		except sqlite3.OperationalError:
 			return (True, None)
 
@@ -500,14 +500,14 @@ def api_call_scheduler(
 	update_immediately, last_update = db_status[0], db_status[1]
 
 	if update_immediately:
-		logging.info('⚠️ DB outdated: scheduling next API update 5 seconds from now...')
+		logging.debug('⚠️ DB outdated: scheduling next API update 5 seconds from now...')
 		return schedule_call(int(time.time()) + 5)
 
 	# if we didn't return above, no need to update immediately
 	update_delta = int(time.time()) - last_update
 	last_updated_str = time_delta_to_legible_eta(update_delta, full_accuracy=False)
 
-	logging.info(f'🔀 DB up-to-date! Last updated {last_updated_str} ago.')
+	logging.debug(f'🔀 DB up-to-date! Last updated {last_updated_str} ago.')
 
 	# pull all launches with a net greater than or equal to notification window start
 	select_fields = 'net_unix, launched, status_state'
@@ -601,12 +601,12 @@ def api_call_scheduler(
 
 	# if next update is same as auto-update, log as information
 	if next_api_update == next_auto_update:
-		logging.info('📭 Auto-updating: no notifications coming up before next API update.')
+		logging.debug('📭 Auto-updating: no notifications coming up before next API update.')
 	else:
-		logging.info('📬 Notification coming up before next API update: not auto-updating!')
+		logging.debug('📬 Notification coming up before next API update: not auto-updating!')
 
 	# log time next notification is sent
-	logging.info(f'📮 Next notification in {next_notif_send_time} ({next_notif})')
+	logging.debug(f'📮 Next notification in {next_notif_send_time} ({next_notif})')
 
 	# schedule the call
 	return schedule_call(next_api_update)

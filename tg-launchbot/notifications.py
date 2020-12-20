@@ -1495,7 +1495,7 @@ def notification_send_scheduler(db_path: str, next_api_update_time: int,
 	if len(missed_notifications) != 0:
 		clear_missed_notifications(db_path, missed_notifications)
 
-	logging.info(f'Notification scheduling done! Queued {scheduled_notifications} notifications.')
+	logging.debug(f'⏲ Notification scheduling done! Queued {scheduled_notifications} notifications.')
 
 	# close db connection at exit
 	conn.close()

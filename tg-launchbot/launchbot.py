@@ -3091,8 +3091,6 @@ if __name__ == '__main__':
 		run_time_str = f'\n🔶 Program ending... Runtime: {run_time}.'
 		logging.warning(run_time_str)
 
-		sys.exit('Press ctrl+c again to quit!')
-
 	except Exception as error:
 		logging.exception('Ran into an exception!')
 		updater.bot.send_message(OWNER, f'⚠️ Shutting down! exception: {error}')
