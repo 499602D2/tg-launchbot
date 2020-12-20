@@ -140,7 +140,7 @@ def repair_config(data_dir: str) -> dict:
 	# we're just taking the difference of the two key sets here
 	set_diff = config_keys.difference(set(config.keys()))
 	if set_diff == set():
-		return
+		return config
 
 	logging.info(f'Server configuration is missing keys {set_diff}: repairing...')
 	for key, val in full_config.items():

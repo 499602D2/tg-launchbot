@@ -368,7 +368,7 @@ def command_pre_handler(update, context, skip_timer_handle):
 						if context.bot.deleteMessage(chat.id, update.message.message_id):
 							logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): successfully deleted message! ✅')
 						else:
-							logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): unable to delete message (success != True. Type:{type(success)}, val:{success}) ⚠️')
+							logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): unable to delete message ⚠️')
 					except telegram.error.RetryAfter as error:
 						# sleep for a while
 						logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
@@ -595,7 +595,7 @@ def callback_handler(update, context):
 		if not all_admins:
 			try:
 				sender = context.bot.get_chat_member(chat, from_id)
-			except telegram.error.Unauthorized:
+			except telegram.error.Unauthorized as error:
 				if 'bot was kicked' in error.message:
 					logging.info('🗃 Bot was kicked: cleaning chats database...')
 					clean_chats_db(DATA_DIR, chat.id)
