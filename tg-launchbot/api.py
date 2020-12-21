@@ -483,7 +483,7 @@ def api_call_scheduler(
 		if last_update in ('', None):
 			return (True, None)
 
-		return (True, None) if time.time() > last_update + UPDATE_PERIOD * 60 else (False, last_update)
+		return (True, None) if time.time() > last_update + UPDATE_PERIOD * 60 * 2 else (False, last_update)
 
 	# debug print
 	logging.debug('⏲ Starting api_call_scheduler...')
@@ -539,6 +539,7 @@ def api_call_scheduler(
 	- 60 seconds after the launch is supposed to occur
 	'''
 	notif_times, time_map = set(), {0: 24*3600, 1: 12*3600, 2: 3600, 3: 5*60}
+	notif_time_map = dict()
 	for launch_row in query_return:
 		# don't use unverified launches for scheduling (status_state == TBD)
 		launch_status = launch_row[2]
@@ -549,7 +550,14 @@ def api_call_scheduler(
 		if not launch_row[1] and time.time() - launch_row[0] < 60:
 			notif_times.add(launch_row[0] + 60)
 
+			check_time = launch_row[0] + 60
+			if check_time not in notif_time_map.keys():
+				notif_time_map[check_time] = {-1}
+			else:
+				notif_time_map[check_time].add(-1)
+
 		for enum, notif_bool in enumerate(launch_row[3::]):
+			# 0: 24h, 1: 12h, 2: 60m, 3: 5m
 			if not notif_bool:
 				# time for check: launch time - notification time - 60 (60s before)
 				check_time = launch_row[0] - time_map[enum] - 60
@@ -562,28 +570,59 @@ def api_call_scheduler(
 				else:
 					notif_times.add(check_time)
 
+					if check_time not in notif_time_map.keys():
+						notif_time_map[check_time] = {enum}
+					else:
+						notif_time_map[check_time].add(enum)
+
 	# get time when next notification will be sent
 	next_notif = min(notif_times)
+
+	# 0: '24h', 1: '12h', 2: '60m', 3: '5m'
+	next_notif_earliest_type = max(notif_time_map[next_notif])
+	next_notif_type = {0: '24h', 1: '12h', 2: '60m', 3: '5m', -1: 'LCHECK'}[next_notif_earliest_type]
+
+	# time until next notif + send time
 	until_next_notif = next_notif - int(time.time())
 	next_notif_send_time = time_delta_to_legible_eta(time_delta=until_next_notif, full_accuracy=False)
+
+	# debugging TODO remove
+	logging.debug(f'next_notif_type: {next_notif_type} | until_next_notif: {until_next_notif}')
+	logging.debug(f'notif_time_map[next_notif]: {notif_time_map[next_notif]}')
 
 	# convert to a datetime object for scheduling
 	next_notif = datetime.datetime.fromtimestamp(next_notif)
 
-	# schedule next update more loosely if next notif is far away
-	# times are 15 min * upd_period_mult, e.g. 4 == 1 hour
-	if until_next_notif >= 3600 * 24:
-		# if more than 24 hours until next notif, check once every 4 hours
-		upd_period_mult = 16
-	elif until_next_notif >= 3600 * 12:
-		# if 12 - 24 hours until next notif, check every 2 hours
-		upd_period_mult = 8
-	elif until_next_notif >= 3600:
-		# if 1 - 12, check once an hour
-		upd_period_mult = 4
-	else:
-		# if less than an hour, check every 20 minutes
+	# do scheduling with next_notif_type and until_next_notif
+	if next_notif_type == '24h':
+		if until_next_notif >= 6 * 3600:
+			# every 6 hours, if more than 6 hours until launch
+			upd_period_mult = 16
+		else:
+			# every 3 hours, if less than 6 hours until launch
+			upd_period_mult = 12
+	elif next_notif_type == '12h':
+		# 12 hour window (24h ... 12h): update every every 3 hours
+		upd_period_mult = 12
+	elif next_notif_type == '60m':
+		# somewhere between 60m and 12h until launch
+		if until_next_notif >= 4 * 3600:
+			# if more than 4 hours until notification, every 2 hours
+			upd_period_mult = 8
+		else:
+			# if less than 4 hours, update once an hour
+			upd_period_mult = 4
+	elif next_notif_type == '5m':
+		# ≤ 55 minutes until next notification: update every 20 minutes
 		upd_period_mult = 1.35
+	elif next_notif_type == 'LCHECK':
+		logging.debug('LCHECK found')
+		logging.warning(f'next_notif_type: {next_notif_type} | until_next_notif: {until_next_notif}')
+		upd_period_mult = 1.35
+	else:
+		logging.warning('⚠️ Unknown scheduling type! (using upd_period_mult=4)')
+		logging.warning(f'next_notif_type: {next_notif_type} | until_next_notif: {until_next_notif}')
+		upd_period_mult = 4
 
 	# add next auto-update to notif_times
 	to_next_update = int(UPDATE_PERIOD * upd_period_mult) * 60 - update_delta
