@@ -598,7 +598,7 @@ def callback_handler(update, context):
 			except telegram.error.Unauthorized as error:
 				if 'bot was kicked' in error.message:
 					logging.info('🗃 Bot was kicked: cleaning chats database...')
-					clean_chats_db(DATA_DIR, chat.id)
+					clean_chats_db(DATA_DIR, chat)
 				else:
 					logging.exception('Unknown Unauthorized error')
 					return
@@ -2204,6 +2204,7 @@ def generate_next_flight_message(chat, current_index: int):
 			launch = dict(query_return[current_index])
 		except Exception as error:
 			logging.exception(f'⚠️ Exception setting launch via current_index: {error}')
+			logging.debug(f'current_index: {current_index} | query_return: {query_return}')
 			launch = dict(query_return[0])
 	else:
 		msg_text = '🔄 No launches found! Try enabling notifications for other providers, or searching for all flights.'
