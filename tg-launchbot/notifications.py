@@ -659,13 +659,21 @@ def remove_previous_notification(
 				# sleep for a while
 				retry_time = error.retry_after
 				logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
+
+				if retry_time > 10:
+					retry_time = 10
+
 				time.sleep(retry_time + 0.25)
 
 				# try deleting again
-				if bot.delete_message(chat_id, msg_id):
-					logging.info(f'✅ Successfully deleted message after sleeping!')
-				else:
-					logging.info(f'⚠️ Failed to remove notification after sleeping!')
+				try:
+					if bot.delete_message(chat_id, msg_id):
+						logging.info(f'✅ Successfully deleted message after sleeping!')
+					else:
+						logging.info(f'⚠️ Failed to remove notification after sleeping!')
+				except Exception as e:
+					logging.exception(f'[{e}] Got another error when attempting to delete message: ignoring.')
+					pass
 
 			except Exception as error:
 				logging.exception(f'⚠️ Unable to delete previous notification. msg_id: {message_identifier}')
