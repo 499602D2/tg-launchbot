@@ -2858,6 +2858,20 @@ if __name__ == '__main__':
 		bot_specs = updater.bot.getMe()
 	except telegram.error.Unauthorized:
 		sys.exit('⚠️ Error: unable to init bot! Double-check your API token in bot-config.json!')
+	except telegram.error.NetworkError:
+		fail_count = 1
+		while True:
+			try:
+				bot_specs = updater.bot.getMe()
+				logging.info(f'✅ Recovered after {fail_count} failed connection attempts ({30*fail_count} sec)')
+				break
+			except telegram.error.NetworkError:
+				logging.warning(f'[{fail_count}] ⚠️ Telegram NetworkError: trying again in 30 seconds...')
+			except Exception as e:
+				logging.warning(f'[{fail_count}] ⚠️ Exception: {e}: trying again in 30 seconds...')
+
+			time.sleep(30)
+			fail_count += 1
 
 	# get the bot's username and id
 	BOT_USERNAME = bot_specs.username
@@ -2865,7 +2879,6 @@ if __name__ == '__main__':
 	OWNER = config['owner']
 
 	# valid commands we monitor for
-	global VALID_COMMANDS
 	VALID_COMMANDS = {
 		'/start', '/help', '/next', '/notify',
 		'/statistics', '/schedule', '/feedback'}
