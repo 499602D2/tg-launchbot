@@ -2747,20 +2747,18 @@ def statistics(update, context):
 		statistics(update, context)
 
 
-def update_token(data_dir: str, new_tokens: set):
+def update_token(data_dir: str):
 	'''
 	Used to update the bot token.
 	'''
 	# create /data and /chats
 	config_ = load_config(data_dir)
+	token_input = str(input('Enter the bot token for LaunchBot: '))
+	while ':' not in token_input:
+		print('Please try again – bot-tokens look like "123456789:ABHMeJViB0RHL..."')
+		token_input = str(input('Enter the bot token for launchbot: '))
 
-	if 'bot_token' in new_tokens:
-		token_input = str(input('Enter the bot token for LaunchBot: '))
-		while ':' not in token_input:
-			print('Please try again – bot-tokens look like "123456789:ABHMeJViB0RHL..."')
-			token_input = str(input('Enter the bot token for launchbot: '))
-
-		config_['bot_token'] = token_input
+	config_['bot_token'] = token_input
 
 	store_config(config_, data_dir)
 
@@ -2817,7 +2815,7 @@ if __name__ == '__main__':
 	args = parser.parse_args()
 
 	if args.update_token:
-		update_token(data_dir=DATA_DIR, new_tokens={args.update_token})
+		update_token(data_dir=DATA_DIR)
 
 	if not args.start:
 		sys.exit('No start command given, exiting. To start the bot, include -start in options.')
