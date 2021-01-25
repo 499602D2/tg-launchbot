@@ -1,12 +1,11 @@
 # LaunchBot – a rocket launch information and notifications bot for Telegram 🚀
 LaunchBot keeps you up to date with what's going up, around the clock, since 2019. Reachable as [@rocketrybot](https://t.me/rocketrybot) on Telegram.
 
-![preview](lb-logo.png)
+## Features
+LaunchBot uses the LaunchLibrary2 API to fetch launch information on scheduled intervals. The bot provides multiple forms of information: launch notifications, information about upcoming flights, and a simple flight schedule showing  upcoming flights at a glance. 
 
-LaunchBot uses the LaunchLibrary2 API to fetch launch information on intelligently scheduled intervals. The bot provides multiple forms of information: launch notifications, information about upcoming flights, and a simple flight schedule showing upcoming flights at a glance. 
-
-✨ **Other features include...**
-- user-configurable notifications on...
+Other features include...
+- user-configurable notifications on
 	- per-provider basis
 	- per-country basis
 - user-choosable notification times from 4 different options
@@ -22,9 +21,8 @@ LaunchBot uses the LaunchLibrary2 API to fetch launch information on intelligent
 
 and tons of other things!
 
-**📃 Basic instructions**
-
-Install the Python3 dependencies with pip, using the requirements.txt file found in the repository: `python3 -m pip install -R requirements.txt`.
+## Basic instructions
+Clone the repository and install the Python3 dependencies with pip, using the requirements.txt file found in the repository: `python3 -m pip install -R requirements.txt`.
 
 LaunchBot also requires a running redis server instance. Redis is used to reduce disk accesses, as redis is an in-memory (caching) database, compared to the sqlite database sitting on the disk. This should help the longevity of cheap flash storage media, like SD-cards, while also improving latency.
 
@@ -34,19 +32,18 @@ LaunchBot expects a running redis instance to be found at `127.0.0.1:6379`, whic
 
 After the dependencies are installed and you have a redis-server instance running, you can run the bot with `python3 launchbot.py -start`. Once you have set up the bot, you can run the bot in the background with `nohup` – in this case, it's advisable to add the `-debug` flag to prevent the flooding of the `nohup.out` file: `nohup python3 launchbot.py -start -debug &`.
 
-**🖥 Data structures**
-
+## Data
 The bot creates the following supporting files under `../launchbot/`:
 
-SQLite: `launchbot-data.db`: houses all data the bot needs to operate, including launch information, statistics, etc.
+SQLite: `launchbot-data.db`: houses all data the bot needs to operate, including launch information, statistics, chat information, etc.
 
-Redis: redis is an in-memory database used to cache various responses: this speeds up various operations and reduces disk IO operations.
+Redis: used to cache various responses and statistics.
 
 JSON: `bot-settings.json`: used to configure the bot by setting the Telegram bot API key, alongside with some other configuration information.
 
 You can specify your personal account's Telegram user ID in bot_settings.json in the form `owner: "your_user_id"`. This disabled the logging of commands sent by you, and sends a notification for new feedback.
 
-**🔒 Privacy**
+## Privacy
 
 The bot stores every interaction (i.e. command) sent to it if logging is enabled, alongside with a truncated, unsalted SHA-1 hash of the user ID. No text messages are stored, aside from text sent as a reply to a feedback request message. The bot's privacy settings forbid the bot from reading regular text, as in text messages which have not tagged the bot (@botusername) or are not a reply to a message sent by the bot (these are not logged, unless they're a reply to a feedback message.)
 
@@ -54,7 +51,7 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 
 Please note, that the above only applies on a per-bot basis. The creator of the bot chooses whether to configure the bot to be able to read all text messages, not just ones directed at the bot. Telegram bots are, by nature, extremely privacy invasive: don't add unknown bots to group chats, unless it's hosted by you or someone you trust.
 
-## **Bot roadmap**
+## Roadmap
 
 ### 1.0 / first implementation (November 2019)
 
