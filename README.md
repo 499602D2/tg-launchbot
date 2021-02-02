@@ -105,6 +105,8 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 	
 	- ✅ upgrade to the LL2 API (LL1 closes at the end of October)
 	
+	- ✅ update from telepot Telegram API wrapper to python-telegram-bot
+	
 	- ✅ perform API requests intelligently, as the monthly request quota is enough for only one request every 8 minutes
 	
 		- ✅ don't update API on startup, unless it has been sufficiently long since last check: store requests in memory + storage
@@ -139,7 +141,12 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 	
 ### 1.7 / performance optimizations
 
-	- ✅ update from telepot Telegram API wrapper to python-telegram-bot
+	
+	- send notifications for launches entering into the middle of notification windows
+	
+		- e.g. if a launch suddenly pops up with T-9 hours until launch, currently the 12 hour notification is skipped (as expected)
+		
+		- this could cause launches to be missed, however: so, in this case, a notification with "launching in 9 hours" would be sent
 
 	- identify bottlenecks in processing by benchmarking and timing functions
 
