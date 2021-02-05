@@ -832,7 +832,7 @@ def callback_handler(update, context):
 				f'⚠️ User attempted to mute/unmute a launch, but no reply could be provided (sending message...): {exception}')
 
 			try:
-				query.send_message(chat, callback_text, parse_mode='Markdown')
+				context.bot.send_message(chat, callback_text, parse_mode='Markdown')
 			except Exception as exception:
 				logging.exception(f'🛑 Ran into an error sending the mute/unmute message to chat={chat}! {exception}')
 
@@ -2790,7 +2790,7 @@ def apscheduler_event_listener(event):
 
 if __name__ == '__main__':
 	# current version, set DATA_DIR
-	VERSION = '1.7.9'
+	VERSION = '1.7.10'
 	DATA_DIR = 'launchbot'
 
 	# log startup time
@@ -2901,7 +2901,7 @@ if __name__ == '__main__':
 			'Arianespace', 'Eurockot', 'Starsem SA'},
 
 		'CHN': {
-			'CASC', 'ExPace', 'Galactic Energy'},
+			'CASC', 'ExPace', 'iSpace', 'Galactic Energy'},
 
 		'RUS': {
 			'KhSC', 'ISC Kosmotras', 'Russian Space Forces', 'Eurockot', 'Sea Launch',

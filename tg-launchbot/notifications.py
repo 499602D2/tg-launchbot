@@ -668,12 +668,19 @@ def remove_previous_notification(
 				# try deleting again
 				try:
 					if bot.delete_message(chat_id, msg_id):
-						logging.info(f'✅ Successfully deleted message after sleeping!')
+						logging.info('✅ Successfully deleted message after sleeping!')
 					else:
-						logging.info(f'⚠️ Failed to remove notification after sleeping!')
+						logging.info('⚠️ Failed to remove notification after sleeping!')
 				except Exception as e:
 					logging.exception(f'[{e}] Got another error when attempting to delete message: ignoring.')
-					pass
+
+			except telegram.error.Unauthorized as error:
+				logging.warning(f'Unauthorized to delete message ({error})')
+				if 'bot was kicked from the supergroup chat' in error.message:
+					clean_chats_db(db_path, chat_id)
+				else:
+					logging.exception('⚠️ (caught as unauthorized) Unable to delete previous notification')
+					logging.warning(f'Error: {error} | vars: {vars(error)}')
 
 			except Exception as error:
 				logging.exception(f'⚠️ Unable to delete previous notification. msg_id: {message_identifier}')
