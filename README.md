@@ -1,5 +1,7 @@
 # LaunchBot – a rocket launch information and notifications bot for Telegram 🚀
-LaunchBot keeps you up to date with what's going up, around the clock, since 2019. Reachable as [@rocketrybot](https://t.me/rocketrybot) on Telegram.
+LaunchBot keeps you up to date with what's going up, around the clock, since 2019.
+
+Reachable as [@rocketrybot](https://t.me/rocketrybot) on Telegram.
 
 ## Features
 LaunchBot uses the LaunchLibrary2 API to fetch launch information on scheduled intervals. The bot provides multiple forms of information: launch notifications, information about upcoming flights, and a simple flight schedule showing  upcoming flights at a glance. 
@@ -51,21 +53,26 @@ Only information stored by the bot is the chat ID, which can also be the user ID
 
 Please note, that the above only applies on a per-bot basis. The creator of the bot chooses whether to configure the bot to be able to read all text messages, not just ones directed at the bot. Telegram bots are, by nature, extremely privacy invasive: don't add unknown bots to group chats, unless it's hosted by you or someone you trust.
 
-## Roadmap
+## Roadmap and historical changelog
 
-### 1.0 / first implementation (November 2019)
+<details>
+  <summary>View changelog/roadmap</summary>
+  	
+	## 1.0 / first implementation (November 2019)
 
 	- ✅ implemented uncached API requests
 	
 	- ✅ implemented the request of next launch via a direct API call
 
-### 1.2 / basic features (December 2019)
+	
+	## 1.2 / basic features (December 2019)
 
 	- ✅ implement /next using DB calls
 	
 	- ✅ implement support for SpaceX core information
 
-### 1.3 / user-facing features (January 2020)
+	
+	## 1.3 / user-facing features (January 2020)
 	
 	- ✅ add "next" and "previous" button(s) to /next command
 	
@@ -79,7 +86,8 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 	
 	- ✅ change launch database index from tminus to net
 
-### 1.4 / basic improvements (February 2020 ->)
+	
+	## 1.4 / basic improvements (February 2020 ->)
 
 	- ✅ Notify users of a launch being postponed if a notification has already been sent
 	
@@ -89,7 +97,8 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 	
 	- ✅ add location (i.e. state/country) below pad information (Florida, USA etc.)
 
-### 1.5 / user-facing features
+	
+	## 1.5 / user-facing features
 	
 	- ✅ delete older notification messages when a new one is sent
 	
@@ -101,7 +110,8 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 	
 	- ✅ allow users to set their own timezone
 	
-### 1.6 / major back-end changes (October 2020)
+	
+	## 1.6 / major back-end changes (October 2020)
 	
 	- ✅ upgrade to the LL2 API (LL1 closes at the end of October)
 	
@@ -139,8 +149,8 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 
 	- ✅ open-source LaunchBot ✨
 	
-### 1.7 / performance optimizations
-
+	
+	## 1.7 / performance optimizations
 	
 	- send notifications for launches entering into the middle of notification windows
 	
@@ -169,3 +179,4 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 	- enable the disabling of postpone notifications
 
 		- globally or on a per-launch basis
+</details>
