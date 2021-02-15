@@ -9,3 +9,4 @@ coloredlogs
 psutil
 redis
 hiredis
+gitpython
