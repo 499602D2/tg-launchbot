@@ -2197,7 +2197,7 @@ def generate_next_flight_message(chat, current_index: int):
 	conn.close()
 
 	# sort ascending by NET, pick smallest
-	max_index = len(query_return) - 1
+	max_index = len(query_return)
 	if max_index > 0:
 		query_return.sort(key=lambda tup: tup[3])
 		try:
@@ -2338,8 +2338,23 @@ def generate_next_flight_message(chat, current_index: int):
 	else:
 		spacecraft_info = None
 
-	# if there's a landing attempt, generate the string for the booster
-	if launch['launcher_landing_attempt']:
+	# check if there are multiple boosters (e.g. a Falcon Heavy)
+	if isinstance(launch['launcher_landing_attempt'], str):
+		multiple_boosters = bool(';;' in launch['launcher_landing_attempt'])
+	else:
+		multiple_boosters = False
+
+	print(f'{launch["name"]}: multiple_boosters={multiple_boosters}')
+
+	# add location to common landing objects
+	landing_loc_map = {
+		'OCISLY': 'Atlantic Ocean', 'JRTI': 'Atlantic Ocean', 'ASLOG': 'Pacific Ocean',
+		'LZ-1': 'CCAFS RTLS', 'LZ-2': 'CCAFS RTLS', 'LZ-4': 'VAFB RTLS',
+		'ATL': 'Expend 💥', 'PAC': 'Expend 💥'
+	}
+
+	# if there's a landing attempt, generate the string for the booster (not a FH)
+	if launch['launcher_landing_attempt'] and not multiple_boosters:
 		core_str = launch['launcher_serial_number']
 		core_str = 'Unknown' if core_str is None else core_str
 
@@ -2357,10 +2372,6 @@ def generate_next_flight_message(chat, current_index: int):
 				core_str += '.1'
 
 			reuse_str = f'{core_str} (first flight ✨)'
-
-		landing_loc_map = {
-			'OCISLY': 'Atlantic Ocean', 'JRTI': 'Atlantic Ocean', 'ASLOG': 'Pacific Ocean',
-			'LZ-1': 'CCAFS RTLS', 'LZ-2': 'CCAFS RTLS', 'LZ-4': 'VAFB RTLS'}
 
 		if launch['launcher_landing_location'] in landing_loc_map.keys():
 			landing_type = landing_loc_map[launch['launcher_landing_location']]
@@ -2382,6 +2393,71 @@ def generate_next_flight_message(chat, current_index: int):
 			*Core* {short_monospaced_text(reuse_str)}
 			*Landing* {short_monospaced_text(landing_str)}
 			'''
+
+	elif multiple_boosters:
+		# find indices for core + boosters from str split
+		booster_indices = {'core': None, 'boosters': []}
+		for enum, stage_type in enumerate(launch['launcher_stage_type'].split(';;')):
+			if stage_type.lower() == 'core':
+				booster_indices['core'] = enum
+			elif stage_type.lower() == 'strap-on booster':
+				booster_indices['boosters'].append(enum)
+			else:
+				logging.warning(
+					f'Unknown booster type when parsin indices!\
+					enum: {enum} | type: {stage_type} | launch_id: {launch["unique_id"]}')
+
+
+		# construct strings
+		recovery_str = '''\n*Vehicle configuration* 🚀'''
+
+		# loop over all indices, constructing the strings as we go
+		indices = [booster_indices['core']] + booster_indices['boosters']
+		for enum, idx in enumerate(indices):
+			is_core = bool(enum == 0)
+
+			core_str = launch['launcher_serial_number'].split(';;')[idx]
+			core_str = 'Unknown' if core_str is None else core_str
+
+			if launch['launcher_is_flight_proven'].split(';;')[idx]:
+				reuse_count = launch['launcher_stage_flight_number'].split(';;')[idx]
+
+				# append .x to F9 core names
+				if lsp_name == 'SpaceX' and core_str[0:2] == 'B1':
+					core_str += f'.{int(reuse_count)}'
+
+				reuse_str = f'{core_str} ({suffixed_readable_int(int(reuse_count))} flight ♻️)'
+			else:
+				# append .x to F9 core names
+				if lsp_name == 'SpaceX' and core_str[0:2] == 'B1':
+					core_str += '.1'
+
+				reuse_str = f'{core_str} (first flight ✨)'
+
+			landing_loc = launch['launcher_landing_location'].split(';;')[idx]
+			if landing_loc in landing_loc_map.keys():
+				landing_type = landing_loc_map[landing_loc]
+				if landing_loc in ('ATL', 'PAC'):
+					landing_loc = 'Ocean'
+
+				landing_str = f"{landing_loc} ({landing_type})"
+			else:
+				landing_type = launch['landing_type'].split(';;')[idx]
+				landing_str = f"{landing_loc} ({landing_type})"
+
+			if is_core:
+				booster_str = f'''
+				*Core* {short_monospaced_text(reuse_str)}
+				*↪* {short_monospaced_text(landing_str)}'''
+			else:
+				booster_str = f'''
+				*Booster* {short_monospaced_text(reuse_str)}
+				*↪* {short_monospaced_text(landing_str)}'''
+
+			recovery_str += booster_str
+
+		recovery_str += '\n'
+
 	else:
 		recovery_str = None
 
@@ -2790,8 +2866,12 @@ def apscheduler_event_listener(event):
 
 if __name__ == '__main__':
 	# current version, set DATA_DIR
-	VERSION = '1.7.10'
-	DATA_DIR = 'launchbot'
+	VERSION = '1.7.11'
+	DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+	OLD_DATA_DIR = os.path.join(os.path.dirname(__file__), 'launchbot')
+
+	if not os.path.isdir(DATA_DIR) and os.path.isdir(OLD_DATA_DIR):
+		os.rename(OLD_DATA_DIR, DATA_DIR)
 
 	# log startup time
 	STARTUP_TIME = time.time()
@@ -2803,12 +2883,12 @@ if __name__ == '__main__':
 	parser.add_argument(
 		'-start', dest='start', help='Starts the bot', action='store_true')
 	parser.add_argument(
-		'-debug', dest='debug', help='Disabled the activity indicator', action='store_true')
+		'-debug', dest='debug', help='Disables the activity indicator', action='store_true')
 	parser.add_argument(
 		'--new-bot-token', dest='update_token', help='Set a new bot token', action='store_true')
 	parser.add_argument(
 		'--force-api-update', dest='force_api_update',
-		help='Force an API update now', action='store_true')
+		help='Force an API update on startup', action='store_true')
 
 	# set defaults, parse
 	parser.set_defaults(start=False, newBotToken=False, debug=False)

@@ -115,10 +115,58 @@ class LaunchLibrary2Launch:
 
 		# launcher stage information
 		if launch_json['rocket']['launcher_stage'] not in (None, []):
-			if len(launch_json['rocket']['launcher_stage']) > 1:
-				print('⚠️⚠️⚠️ more than one launcher_stage')
-				print(launch_json['rocket']['launcher_stage'])
+			stage_count = len(launch_json['rocket']['launcher_stage'])
+		else:
+			stage_count = 0
 
+		if stage_count > 1:
+			print('⚠️⚠️⚠️ more than one launcher_stage')
+			print(launch_json['rocket']['launcher_stage'])
+
+			stages = launch_json['rocket']['launcher_stage']
+
+			# attempt to parse multiple stages: do simple comma separated values
+			self.launcher_stage_id = ';;'.join([str(stage['id']) for stage in stages])
+			self.launcher_stage_type = ';;'.join([str(stage['type']) for stage in stages])
+			self.launcher_stage_is_reused = ';;'.join([str(stage['reused']) for stage in stages])
+			self.launcher_stage_flight_number = ';;'.join([str(stage['launcher_flight_number']) for stage in stages])
+			self.launcher_stage_turn_around = ';;'.join([str(stage['turn_around_time_days']) for stage in stages])
+
+			self.launcher_is_flight_proven = ';;'.join([str(stage['launcher']['flight_proven']) for stage in stages])
+			self.launcher_serial_number = ';;'.join([str(stage['launcher']['serial_number']) for stage in stages])
+
+			maiden_flights, last_flights = [], []
+			landing_attempts, landing_locs, landing_types, landing_loc_nths = [], [], [], []
+			for stage in stages:
+				try:
+					maiden_flight = timestamp_to_unix(stage['launcher']['first_launch_date'])
+					last_flight = timestamp_to_unix(stage['launcher']['last_launch_date'])
+				except:
+					maiden_flight = None
+					last_flight = None
+
+				maiden_flights.append(str(maiden_flight))
+				last_flights.append(str(last_flight))
+
+				if stage['landing'] is not None:
+					landing_json = stage['landing']
+					landing_attempts.append(str(landing_json['attempt']))
+					landing_locs.append(landing_json['location']['abbrev'])
+					landing_types.append(landing_json['type']['abbrev'])
+					landing_loc_nths.append(str(landing_json['location']['successful_landings']))
+				else:
+					landing_attempts.append(None)
+					landing_locs.append(None)
+					landing_types.append(None)
+					landing_loc_nths.append(None)
+
+			self.launcher_maiden_flight = ';;'.join(maiden_flights)
+			self.launcher_last_flight = ';;'.join(last_flights)
+			self.launcher_landing_attempt = ';;'.join(landing_attempts)
+			self.launcher_landing_location = ';;'.join(landing_locs)
+			self.landing_type = ';;'.join(landing_types)
+			self.launcher_landing_location_nth_landing = ';;'.join(landing_loc_nths)
+		elif stage_count == 1:
 			launcher_json = launch_json['rocket']['launcher_stage'][0]
 
 			# id, type, reuse status, flight number
@@ -632,7 +680,7 @@ def api_call_scheduler(
 	# pick minimum of all possible API updates
 	next_api_update = min(notif_times)
 
-	# push to redis so we can expire a bunch of keys just after next update
+	# flush redis db, push so we can expire a bunch of keys just after next update
 	rd = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 	rd.flushdb()
 	logging.debug('📕 Redis db flushed!')
@@ -658,7 +706,7 @@ if __name__ == '__main__':
 	been defined/initialized.
 	'''
 	BOT_USERNAME = 'debug-tg-launchbot'
-	DATA_DIR = 'launchbot'
+	DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 
 	# verify data_dir exists
 	if not os.path.isdir(DATA_DIR):

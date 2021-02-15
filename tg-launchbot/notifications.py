@@ -1042,35 +1042,125 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	else:
 		spacecraft_info = None
 
-	# if there's a landing attempt, generate the string for the booster
-	if launch['launcher_landing_attempt']:
+	# check if there are multiple boosters (e.g. a Falcon Heavy)
+	if isinstance(launch['launcher_landing_attempt'], str):
+		multiple_boosters = bool(';;' in launch['launcher_landing_attempt'])
+	else:
+		multiple_boosters = False
+
+	print(f'{launch["name"]}: multiple_boosters={multiple_boosters}')
+
+	# add location to common landing objects
+	landing_loc_map = {
+		'OCISLY': 'Atlantic Ocean', 'JRTI': 'Atlantic Ocean', 'ASLOG': 'Pacific Ocean',
+		'LZ-1': 'CCAFS RTLS', 'LZ-2': 'CCAFS RTLS', 'LZ-4': 'VAFB RTLS',
+		'ATL': 'Expend 💥', 'PAC': 'Expend 💥'
+	}
+
+	# if there's a landing attempt, generate the string for the booster (not a FH)
+	if launch['launcher_landing_attempt'] and not multiple_boosters:
 		core_str = launch['launcher_serial_number']
 		core_str = 'Unknown' if core_str is None else core_str
 
 		if launch['launcher_is_flight_proven']:
 			reuse_count = launch['launcher_stage_flight_number']
+
+			# append .x to F9 core names
 			if lsp_name == 'SpaceX' and core_str[0:2] == 'B1':
 				core_str += f'.{int(reuse_count)}'
 
 			reuse_str = f'{core_str} ({suffixed_readable_int(reuse_count)} flight ♻️)'
 		else:
+			# append .x to F9 core names
 			if lsp_name == 'SpaceX' and core_str[0:2] == 'B1':
 				core_str += '.1'
 
 			reuse_str = f'{core_str} (first flight ✨)'
 
-		landing_loc_map = {
-			'OCISLY': 'Atlantic Ocean', 'JRTI': 'Atlantic Ocean', 'ASLOG': 'Pacific Ocean',
-			'LZ-1': 'CCAFS RTLS', 'LZ-2': 'CCAFS RTLS', 'LZ-4': 'VAFB RTLS'}
-
 		if launch['launcher_landing_location'] in landing_loc_map.keys():
 			landing_type = landing_loc_map[launch['launcher_landing_location']]
+			if launch['launcher_landing_location'] in ('ATL', 'PAC'):
+				launch['launcher_landing_location'] = 'Ocean'
+
 			landing_str = f"{launch['launcher_landing_location']} ({landing_type})"
 		else:
 			landing_type = launch['landing_type']
+			if launch['launcher_landing_location'] in ('ATL', 'PAC'):
+				launch['launcher_landing_location'] = 'Ocean'
+
 			landing_str = f"{launch['launcher_landing_location']} ({landing_type})"
 
-		recovery_str = True
+		if lsp_name == 'SpaceX' and 'Starship' in launch["rocket_name"]:
+			location = f'SpaceX South Texas Launch Site, Boca Chica {location_flag}'
+
+			recovery_str = '*Vehicle information* 🚀'
+			recovery_str += f'\n\t*Starship* {short_monospaced_text(reuse_str)}'
+			recovery_str += f'\n\t*Landing* {short_monospaced_text(landing_str)}'
+
+		else:
+			recovery_str = '*Vehicle information* 🚀'
+			recovery_str += f'\n\t*Core* {short_monospaced_text(reuse_str)}'
+			recovery_str += f'\n\t*Landing* {short_monospaced_text(landing_str)}'
+
+	elif multiple_boosters:
+		# find indices for core + boosters from str split
+		booster_indices = {'core': None, 'boosters': []}
+		for enum, stage_type in enumerate(launch['launcher_stage_type'].split(';;')):
+			if stage_type.lower() == 'core':
+				booster_indices['core'] = enum
+			elif stage_type.lower() == 'strap-on booster':
+				booster_indices['boosters'].append(enum)
+			else:
+				logging.warning(
+					f'Unknown booster type when parsin indices!\
+					enum: {enum} | type: {stage_type} | launch_id: {launch["unique_id"]}')
+
+		# construct strings
+		recovery_str = '''*Vehicle configuration* 🚀'''
+
+		# loop over all indices, constructing the string as we go
+		indices = [booster_indices['core']] + booster_indices['boosters']
+		for enum, idx in enumerate(indices):
+			is_core = bool(enum == 0)
+
+			core_str = launch['launcher_serial_number'].split(';;')[idx]
+			core_str = 'Unknown' if core_str is None else core_str
+
+			if launch['launcher_is_flight_proven'].split(';;')[idx]:
+				reuse_count = launch['launcher_stage_flight_number'].split(';;')[idx]
+
+				# append .x to F9 core names
+				if lsp_name == 'SpaceX' and core_str[0:2] == 'B1':
+					core_str += f'.{int(reuse_count)}'
+
+				reuse_str = f'{core_str} ({suffixed_readable_int(int(reuse_count))} flight ♻️)'
+			else:
+				# append .x to F9 core names
+				if lsp_name == 'SpaceX' and core_str[0:2] == 'B1':
+					core_str += '.1'
+
+				reuse_str = f'{core_str} (first flight ✨)'
+
+			landing_loc = launch['launcher_landing_location'].split(';;')[idx]
+			if landing_loc in landing_loc_map.keys():
+				landing_type = landing_loc_map[landing_loc]
+				if landing_loc in ('ATL', 'PAC'):
+					landing_loc = 'Ocean'
+
+				landing_str = f"{landing_loc} ({landing_type})"
+			else:
+				landing_type = launch['landing_type'].split(';;')[idx]
+				landing_str = f"{landing_loc} ({landing_type})"
+
+			if is_core:
+				booster_str = f'\n\t*Core* {short_monospaced_text(reuse_str)}'
+				booster_str += f'\n\t*↪* {short_monospaced_text(landing_str)}'
+			else:
+				booster_str = f'*\n\tBooster* {short_monospaced_text(reuse_str)}'
+				booster_str += f'\n\t*↪* {short_monospaced_text(landing_str)}'
+
+			recovery_str += booster_str
+
 	else:
 		recovery_str = None
 
@@ -1100,7 +1190,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 			urls = set()
 
 		if len(urls) == 0:
-			link_text = '🔇 *No live video* available.'
+			link_text = '🔇 *No live video available.*'
 		else:
 			for url in urls:
 				if 'youtube' in url:
@@ -1140,6 +1230,8 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 
 	if recovery_str is not None:
 		base_message += '\n\t'
+		base_message += recovery_str
+		'''
 		base_message += '*Vehicle information* 🚀\n\t'
 
 		if 'Starship' in launch['rocket_name']:
@@ -1148,6 +1240,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 			base_message += f'*Core* {short_monospaced_text(reuse_str)}\n\t'
 
 		base_message += f'*Landing* {short_monospaced_text(landing_str)}'
+		'''
 		base_message += '\n\t'
 
 	if info_text is not None:
@@ -1160,7 +1253,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 		base_message += link_text
 
 	footer = f'''
-	🕓 *The launch is scheduled* for LAUNCHTIMEHERE
+	🕓 *Time of lift-off* is LAUNCHTIMEHERE
 	🔕 *To disable* use /notify@{bot_username}'''
 	base_message += footer
 

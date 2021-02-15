@@ -121,7 +121,8 @@ def map_country_code_to_flag(country_code: str) -> str:
 	flag_map = {
 		'FRA': '🇪🇺', 'FR': '🇪🇺', 'USA': '🇺🇸', 'EU': '🇪🇺',
 		'RUS': '🇷🇺', 'CHN': '🇨🇳', 'IND': '🇮🇳', 'JPN': '🇯🇵',
-		'IRN': '🇮🇷', 'NZL': '🇳🇿', 'GUF': '🇬🇫', 'UNK': '🏳'
+		'IRN': '🇮🇷', 'NZL': '🇳🇿', 'GUF': '🇬🇫', 'KAZ': '🇰🇿',
+		'UNK': '🏳'
 	}
 
 	return flag_map[country_code] if country_code in flag_map.keys() else '🏳'

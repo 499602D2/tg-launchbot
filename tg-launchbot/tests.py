@@ -26,7 +26,7 @@ class TestNotificationUtils(unittest.TestCase):
 		print('Testing notification message creation...')
 
 		# db path
-		db_path = 'launchbot'
+		db_path = os.path.join(os.path.dirname(__file__), 'data')
 
 		# Establish connection
 		conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
@@ -36,8 +36,8 @@ class TestNotificationUtils(unittest.TestCase):
 		# SpaceX launches only
 		# cursor.execute('SELECT unique_id from launches WHERE lsp_name = ?', ('SpaceX',))
 
-		# test why some launches cause wrong indentation
-		# name_tup = ('StriX-α', 'XARM & SLIM', 'CSO 2')
+		# test for specific launches only
+		#name_tup = ('USSF-44', 'Starlink 17', 'USSF-52')
 		#cursor.execute("""SELECT unique_id from launches WHERE name LIKE '%'||?||'%'
 		# OR name LIKE '%'||?||'%' OR name LIKE '%'||?||'%'""", name_tup)
 
