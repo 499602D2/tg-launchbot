@@ -396,12 +396,12 @@ def ll2_api_call(
 		except Exception as json_parse_error:
 			logging.exception(f'⚠️ Error parsing json: {json_parse_error}')
 
-			# dump json for inspection / debugging use
-			with open(os.path.join(data_dir, f'error-json-{int(time.time())}.json'), 'w') as jsonf:
-				json.dump(api_json, jsonf, indent=4)
+			# dump api response for inspection / debugging use
+			with open(os.path.join(data_dir, f'error-json-{int(time.time())}.txt'), 'w') as ejson:
+				ejson.write(API_RESPONSE.text)
 
-			logging.warning('⚠️ Trying again after 10 seconds...')
-			time.sleep(10)
+			logging.warning('⚠️ Trying again after 60 seconds...')
+			time.sleep(60)
 
 			return ll2_api_call(
 				data_dir=data_dir, scheduler=scheduler,
