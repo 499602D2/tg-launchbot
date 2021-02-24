@@ -6,6 +6,8 @@ import difflib
 import datetime
 import sqlite3
 
+from multiprocessing import Pool
+
 import redis
 import requests
 import coloredlogs
@@ -410,10 +412,11 @@ def ll2_api_call(
 	# store update time
 	api_updated = int(time.time())
 
-	# parse the result json into a set of launch objects
-	launch_obj_set = set()
-	for launch_json in api_json['results']:
-		launch_obj_set.add(LaunchLibrary2Launch(launch_json))
+	# init pool
+	pool = Pool(os.cpu_count())
+
+	launch_obj_set = set(pool.map(LaunchLibrary2Launch, api_json['results']))
+	pool.terminate()
 
 	# success?
 	logging.debug(f'✅ Parsed {len(launch_obj_set)} launches into launch_obj_set.')
