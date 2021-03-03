@@ -2279,7 +2279,10 @@ def generate_next_flight_message(chat, current_index: int):
 	launch_time = f'{launch_datetime.hour}:{min_time}'
 
 	# generate date string
-	date_str = timestamp_to_legible_date_string(launch['net_unix'] + user_tz_offset)
+	date_str = timestamp_to_legible_date_string(
+		timestamp=launch['net_unix'] + user_tz_offset,
+		use_utc=True
+	)
 
 	# verified launch date
 	if launch['status_state'] in ('GO', 'TBC', 'FLYING'):

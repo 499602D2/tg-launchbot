@@ -171,7 +171,7 @@ def timestamp_to_unix(timestamp: str) -> int:
 	return int((utc_dt - datetime.datetime(1970, 1, 1)).total_seconds())
 
 
-def timestamp_to_legible_date_string(timestamp: int) -> str:
+def timestamp_to_legible_date_string(timestamp: int, use_utc: bool) -> str:
 	'''
 	Converts a unix timestamp to a pretty date string, in the form
 	of MM dd+suffix, ex. "February 13th".
@@ -183,7 +183,10 @@ def timestamp_to_legible_date_string(timestamp: int) -> str:
 		date_str (str): a pretty date string
 	'''
 	# convert unix timestamp to a datetime object
-	date_object = datetime.datetime.fromtimestamp(timestamp)
+	if use_utc:
+		date_object = datetime.datetime.utcfromtimestamp(timestamp)
+	else:
+		date_object = datetime.datetime.fromtimestamp(timestamp)
 
 	# map months to month names
 	month_map = {
