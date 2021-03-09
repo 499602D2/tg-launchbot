@@ -161,7 +161,12 @@ def postpone_notification(
 		message = postpone_msg.replace('LAUNCHTIMEHERE', time_string)
 
 		# set date for chat
-		date_string = timestamp_to_legible_date_string(launch_obj.net_unix + utc_offset)
+		date_string = timestamp_to_legible_date_string(
+			timestamp=launch_obj.net_unix + utc_offset,
+			use_utc=True
+		)
+
+		# replace placeholder date with date string
 		message = message.replace('DATEHERE', date_string)
 
 		success, msg_id = send_postpone_notification(

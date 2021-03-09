@@ -1731,6 +1731,8 @@ def generate_changelog():
 	https://github.com/499602D2/tg-launchbot
 	'''
 
+	return changelog
+
 
 def generate_schedule_message(call_type: str, chat: str):
 	'''
@@ -2279,7 +2281,10 @@ def generate_next_flight_message(chat, current_index: int):
 	launch_time = f'{launch_datetime.hour}:{min_time}'
 
 	# generate date string
-	date_str = timestamp_to_legible_date_string(launch['net_unix'] + user_tz_offset)
+	date_str = timestamp_to_legible_date_string(
+		timestamp=launch['net_unix'] + user_tz_offset,
+		use_utc=True
+	)
 
 	# verified launch date
 	if launch['status_state'] in ('GO', 'TBC', 'FLYING'):
@@ -2752,7 +2757,7 @@ def generate_statistics_message() -> str:
 	stats_str = f'''
 	📊 *LaunchBot global statistics*
 	Notifications delivered: {int(stats['notifications']):,}
-	Notification recipients: {notification_recipients}
+	Notification recipients: {int(notification_recipients):,}
 	Commands parsed: {int(stats['commands']):,}
 
 	🛰 *Network statistics*
@@ -2766,7 +2771,7 @@ def generate_statistics_message() -> str:
 	🎛 *Server information*
 	Uptime {time_delta_to_legible_eta(time_delta=uptime(), full_accuracy=False)}
 	Load {load_avg_str}
-	LaunchBot *{VERSION}* [({head_hash})]({parsed_github_link}) 🚀
+	LaunchBot {VERSION} [({head_hash})]({parsed_github_link}) 🚀
 	'''
 
 	return inspect.cleandoc(stats_str)
@@ -2866,7 +2871,7 @@ def apscheduler_event_listener(event):
 
 if __name__ == '__main__':
 	# current version, set DATA_DIR
-	VERSION = '1.7.11'
+	VERSION = '1.7.12'
 	DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 	OLD_DATA_DIR = os.path.join(os.path.dirname(__file__), 'launchbot')
 
