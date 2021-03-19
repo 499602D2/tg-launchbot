@@ -12,10 +12,9 @@ import logging
 import inspect
 import telegram
 
-
 from apscheduler.schedulers.background import BackgroundScheduler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
+from nltk import tokenize
 
 from db import create_chats_db, update_stats_db
 from timezone import load_bulk_tz_offset
@@ -1175,12 +1174,22 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 		if launch['mission_description'] is None:
 			info_str = 'No launch information available.'
 		else:
-			if len(launch['mission_description'].split('.')) > 3:
-				# if longer than 3 sentences, use the first 3
-				info_str = '.'.join(launch['mission_description'].split('\n')[0].split('.')[0:3])
-			else:
-				# otherwise, just use the entire thing
-				info_str = '\n\t'.join(launch['mission_description'].split('\n'))
+			sentences = tokenize.sent_tokenize(launch['mission_description'])
+			info_str = ''
+			max_idx = len(sentences) - 1
+
+			for enum, sentence in enumerate(sentences):
+				if len(info_str) + len(sentence) > 350:
+					if enum == 0:
+						info_str = sentence
+
+					break
+
+				info_str += sentence
+
+				if enum != max_idx:
+					if not len(info_str) + len(sentences[enum+1]) > 350:
+						info_str += ' '
 
 		info_text = f'ℹ️ {info_str}'
 	else:

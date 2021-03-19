@@ -3,6 +3,7 @@ launchbot.py is the main module used by launchbot. The module handles
 all command and callback query requests, and is responsible for starting
 API and notification scheduling.
 '''
+
 import os
 import sys
 import time
@@ -33,6 +34,7 @@ from telegram import ReplyKeyboardRemove, ForceReply
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram.ext import CallbackQueryHandler
+from nltk import tokenize
 
 from api import api_call_scheduler
 from config import load_config, store_config, repair_config
@@ -2471,7 +2473,23 @@ def generate_next_flight_message(chat, current_index: int):
 	if info_str is None:
 		info_str = 'No launch information available.'
 	else:
-		info_str = '.'.join(info_str.split('\n')[0].split('.')[0:3])
+		# parse to sentences, shorten the text if it's too long
+		sentences = tokenize.sent_tokenize(info_str)
+		info_str = ''
+		max_idx = len(sentences) - 1
+
+		for enum, sentence in enumerate(sentences):
+			if len(info_str) + len(sentence) > 350:
+				if enum == 0:
+					info_str = sentence
+
+				break
+
+			info_str += sentence
+
+			if enum != max_idx:
+				if not len(info_str) + len(sentences[enum+1]) > 350:
+					info_str += ' '
 
 	# inform the user whether they'll be notified or not
 	if user_notif_enabled:
@@ -2871,7 +2889,7 @@ def apscheduler_event_listener(event):
 
 if __name__ == '__main__':
 	# current version, set DATA_DIR
-	VERSION = '1.7.12'
+	VERSION = '1.7.13'
 	DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 	OLD_DATA_DIR = os.path.join(os.path.dirname(__file__), 'launchbot')
 
