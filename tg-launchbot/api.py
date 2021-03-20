@@ -14,6 +14,7 @@ import coloredlogs
 import ujson as json
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from nltk import tokenize
 
 # local imports
 from utils import timestamp_to_unix, time_delta_to_legible_eta
@@ -249,7 +250,34 @@ class LaunchLibrary2Launch:
 		if launch_json['mission'] is not None:
 			self.mission_name = launch_json['mission']['name']
 			self.mission_type = launch_json['mission']['type']
+
+			# parse description; shorten if it's too long
 			self.mission_description = launch_json['mission']['description']
+			
+			if self.mission_description not in (None, ''):
+				try:
+					sentences = tokenize.sent_tokenize(self.mission_description)
+				except LookupError:
+					logging.exception('Error: ntlk resource not found!')
+
+				parsed_description = ''
+				max_idx = len(sentences) - 1
+
+				for enum, sentence in enumerate(sentences):
+					if len(parsed_description) + len(sentence) > 350:
+						if enum == 0:
+							parsed_description = sentence
+
+						break
+
+					parsed_description += sentence
+
+					if enum != max_idx:
+						if not len(parsed_description) + len(sentences[enum+1]) > 350:
+							parsed_description += ' '
+
+				self.mission_description = parsed_description
+
 			if launch_json['mission']['orbit'] is not None:
 				self.mission_orbit = launch_json['mission']['orbit']['name']
 				self.mission_orbit_abbrev = launch_json['mission']['orbit']['abbrev']
@@ -269,6 +297,7 @@ class LaunchLibrary2Launch:
 		if 'Rocket Lab' in self.pad_name:
 			# avoid super long pad name for "Rocket Lab Launch Complex"
 			self.pad_name = self.pad_name.replace('Rocket Lab', 'RL')
+
 		self.location_name = launch_json['pad']['location']['name']
 		self.location_country_code = launch_json['pad']['location']['country_code']
 

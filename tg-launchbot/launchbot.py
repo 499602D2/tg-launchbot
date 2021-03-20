@@ -34,7 +34,6 @@ from telegram import ReplyKeyboardRemove, ForceReply
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram.ext import CallbackQueryHandler
-from nltk import tokenize
 
 from api import api_call_scheduler
 from config import load_config, store_config, repair_config
@@ -2470,26 +2469,8 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# pull launch info
 	info_str = launch['mission_description']
-	if info_str is None:
+	if info_str in (None, ''):
 		info_str = 'No launch information available.'
-	else:
-		# parse to sentences, shorten the text if it's too long
-		sentences = tokenize.sent_tokenize(info_str)
-		info_str = ''
-		max_idx = len(sentences) - 1
-
-		for enum, sentence in enumerate(sentences):
-			if len(info_str) + len(sentence) > 350:
-				if enum == 0:
-					info_str = sentence
-
-				break
-
-			info_str += sentence
-
-			if enum != max_idx:
-				if not len(info_str) + len(sentences[enum+1]) > 350:
-					info_str += ' '
 
 	# inform the user whether they'll be notified or not
 	if user_notif_enabled:
@@ -2672,7 +2653,8 @@ def generate_statistics_message() -> str:
 			data = stats['data']
 			last_db_update = stats['last_api_update']
 		except sqlite3.OperationalError:
-			notifs = api_reqs = commands = data = last_db_update = 0
+			data = last_db_update = 0
+			stats = {'notifications': 0, 'commands': 0, 'api_requests': 0}
 
 		# insert into redis | stats: {key:val, key:val, key:val}
 		rd.hmset('stats', stats)

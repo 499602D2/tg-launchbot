@@ -14,7 +14,6 @@ import telegram
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from nltk import tokenize
 
 from db import create_chats_db, update_stats_db
 from timezone import load_bulk_tz_offset
@@ -1174,22 +1173,7 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 		if launch['mission_description'] is None:
 			info_str = 'No launch information available.'
 		else:
-			sentences = tokenize.sent_tokenize(launch['mission_description'])
-			info_str = ''
-			max_idx = len(sentences) - 1
-
-			for enum, sentence in enumerate(sentences):
-				if len(info_str) + len(sentence) > 350:
-					if enum == 0:
-						info_str = sentence
-
-					break
-
-				info_str += sentence
-
-				if enum != max_idx:
-					if not len(info_str) + len(sentences[enum+1]) > 350:
-						info_str += ' '
+			info_str = launch['mission_description']
 
 		info_text = f'ℹ️ {info_str}'
 	else:
