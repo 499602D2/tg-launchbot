@@ -780,26 +780,14 @@ def get_notify_list(
 			# not muted, and not explicitly disabled: verify chat wants this type of notif
 			# should result in e.g. a ['1','1','1','1'] (note: strings)
 			chat_notif_prefs = chat_row['notify_time_pref'].split(',')
-			logging.debug(f'{chat_row["chat"]}')
-			logging.debug(f'\tchat_notif_prefs: {chat_notif_prefs}')
 
 			# if any notify preference ≤ min_recvd_notif_idx == 1, add to notification_list
-			chat_notified = False
 			for notif_state in range(min_recvd_notif_idx, -1, -1):
 				''' if index matches, chat has a ≥ notification state enabled and
 				 should have been previously notified -> add to notification list '''
-				logging.debug(f'\tnotif_state: {notif_state}')
 				if chat_notif_prefs[notif_state] == '1':
-					logging.debug(f'\t{chat_notif_prefs[notif_state]} == "1" | notif_state={notif_state}')
 					notification_list.add(chat_row['chat'])
-					chat_notified = True
 					break
-
-			if chat_notified:
-				logging.debug('✅ Chat will be notified')
-			else:
-				logging.debug('🔴 Chat wont be notified!')
-			logging.debug('\n===========')
 
 		return notification_list
 
@@ -812,12 +800,10 @@ def get_notify_list(
 	for chat_row in query_return:
 		if chat_row['chat'] in muted_by:
 			# if chat has marked this launch as muted, don't notify
-			logging.info(f'🔇 Launch muted by {chat_row["chat"]}: not notifying')
 			continue
 
 		if lsp in chat_row['disabled_notifications']:
 			# if lsp is in disabled_notification, pretty simple: don't notify
-			logging.info(f'{lsp} in disabled_notifications for chat {chat_row["chat"]}')
 			continue
 
 		# not muted, and not explicitly disabled: verify chat wants this type of notif
@@ -826,8 +812,6 @@ def get_notify_list(
 		# if notify preference == 1, add no notification_list
 		if chat_notif_prefs[notify_index] == '1':
 			notification_list.add(chat_row['chat'])
-		else:
-			logging.info(f'Chat {chat_row["chat"]} has disabled notify_class={notify_class}')
 
 	conn.close()
 	return notification_list
@@ -863,7 +847,6 @@ def send_notification(
 				text='🔇 Mute this launch', callback_data=f'mute/{launch_id}/1')]])
 
 		# catch the sent message object so we can store its id
-		logging.info(f'Sending to {chat}...')
 		sent_msg = bot.sendMessage(chat, message, parse_mode='MarkdownV2',
 			reply_markup=keyboard, disable_notification=silent)
 
@@ -1386,11 +1369,11 @@ def notification_handler(
 			notify_class=notify_class, notif_states=None
 		)
 
-		logging.info(f'✅ Got notification list (len={len(notification_list)}) {notification_list}')
+		logging.info(f'✅ Got notification list (len={len(notification_list)})')
 
 		# get time zone information for each chat: this is a lot faster in bulk
 		notification_list_tzs = load_bulk_tz_offset(data_dir=db_path, chat_id_set=notification_list)
-		logging.info(f'✅ Got notification tz list {notification_list_tzs}')
+		# logging.info(f'✅ Got notification tz list {notification_list_tzs}')
 
 		# log send mode (silent or with sound)
 		without_sound = bool(notify_class not in ('notify_60min', 'notify_5min'))
