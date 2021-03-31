@@ -3160,8 +3160,11 @@ if __name__ == '__main__':
 	try:
 		# pretty prints if not debugging
 		if not args.debug:
-			# hide cursor for printing
-			cursor.hide()
+			try:
+				# hide cursor for printing
+				cursor.hide()
+			except AttributeError:
+				pass
 
 			while True:
 				for char in ('⠷', '⠯', '⠟', '⠻', '⠽', '⠾'):
@@ -3179,8 +3182,12 @@ if __name__ == '__main__':
 		logging.warning('🚨 Stopping updater: please wait...')
 		updater.stop()
 
-		# on exit, show cursor as otherwise it'll stay hidden
-		cursor.show()
+		try:
+			# on exit, show cursor as otherwise it'll stay hidden
+			cursor.show()
+		except AttributeError:
+			pass
+
 		scheduler.shutdown()
 		run_time = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME), True)
 		run_time_str = f'\n🔶 Program ending... Runtime: {run_time}.'
