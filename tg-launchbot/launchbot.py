@@ -2350,8 +2350,6 @@ def generate_next_flight_message(chat, current_index: int):
 	else:
 		multiple_boosters = False
 
-	print(f'{launch["name"]}: multiple_boosters={multiple_boosters}')
-
 	# add location to common landing objects
 	landing_loc_map = {
 		'OCISLY': 'Atlantic Ocean', 'JRTI': 'Atlantic Ocean', 'ASLOG': 'Pacific Ocean',
