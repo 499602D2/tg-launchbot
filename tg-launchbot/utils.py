@@ -59,7 +59,7 @@ def reconstruct_link_for_markdown(link: str) -> str:
 	Returns:
 		link_reconstruct (str): the reconstructed link
 	'''
-	link_reconstruct, char_set = '', {')', '\\'}
+	link_reconstruct, char_set = '', (')', '\\')
 	for char in link:
 		if char in char_set:
 			link_reconstruct += f'\\{char}'
@@ -81,7 +81,7 @@ def reconstruct_message_for_markdown(message: str) -> str:
 		message_reconstruct (str): the escaped message
 	'''
 	message_reconstruct = ''
-	char_set = {'[', ']', '(', ')', '~', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'}
+	char_set = ('[', ']', '(', ')', '~', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!')
 	for char in message:
 		if char in char_set:
 			message_reconstruct += f'\\{char}'
@@ -195,7 +195,7 @@ def timestamp_to_legible_date_string(timestamp: int, use_utc: bool) -> str:
 		9: 'September',	10: 'October', 	11: 'November', 12: 'December'}
 
 	try:
-		if int(date_object.day) in {11, 12, 13}:
+		if int(date_object.day) in (11, 12, 13):
 			suffix = 'th'
 		else:
 			suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(date_object.day)[-1])]
