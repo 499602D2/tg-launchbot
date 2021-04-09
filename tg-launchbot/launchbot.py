@@ -600,6 +600,7 @@ def callback_handler(update, context):
 				if 'bot was kicked' in error.message:
 					logging.info('🗃 Bot was kicked: cleaning chats database...')
 					clean_chats_db(DATA_DIR, chat)
+					return
 				else:
 					logging.exception('Unknown Unauthorized error')
 					return
@@ -2791,7 +2792,7 @@ def statistics(update, context):
 	chat_id = update.message.chat.id
 
 	# update stats
-	update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
+	update_stats_db(stats_update={'commands': 1}, db_path=DATA_DIR)
 
 	# generate message
 	stats_str = generate_statistics_message()
