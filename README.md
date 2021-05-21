@@ -1,10 +1,12 @@
 # LaunchBot – a rocket launch information and notifications bot for Telegram 🚀
-LaunchBot keeps you up to date with what's going up, around the clock, since 2019.
+LaunchBot keeps you up to date with what's going up, around the clock, since 2019. Over 350,000 notifications delivered to thousands of chats and groups!
 
 Reachable as [@rocketrybot](https://t.me/rocketrybot) on Telegram.
 
+![preview](notification.png)
+
 ## Features
-LaunchBot uses the LaunchLibrary2 API to fetch launch information on scheduled intervals. The bot provides multiple forms of information: launch notifications, information about upcoming flights, and a simple flight schedule showing  upcoming flights at a glance. 
+LaunchBot uses the LaunchLibrary2 API to fetch launch information on scheduled intervals. The bot provides multiple forms of information: launch notifications, information about upcoming flights, and a simple flight schedule showing  upcoming flights at a glance.
 
 Other features include...
 - user-configurable notifications on
@@ -13,15 +15,9 @@ Other features include...
 - user-choosable notification times from 4 different options
 - mutable launches
 - notifications of launches being postponed
-- a quick, easily digestible message format
 - direct links to launch webcasts
 - automatically cleared notification messages
-- neat statistics about the bot
-- direct feedback to the developer via the bot
-- spam management
-- simple information refresh with Telegram's message buttons,
-
-and tons of other things!
+- simple information refresh with Telegram's message buttons
 
 ## Basic instructions
 Clone the repository and install the Python3 dependencies with pip, using the requirements.txt file found in the repository: `python3 -m pip install -R requirements.txt`.
