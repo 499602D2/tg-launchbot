@@ -6,12 +6,10 @@ Reachable as [@rocketrybot](https://t.me/rocketrybot) on Telegram.
 ![preview](notification.png)
 
 ## Features
-LaunchBot uses the LaunchLibrary2 API to fetch launch information on scheduled intervals. The bot provides multiple forms of information: launch notifications, information about upcoming flights, and a simple flight schedule showing  upcoming flights at a glance.
+LaunchBot uses the LaunchLibrary2 API to fetch launch information on scheduled intervals. The bot provides multiple forms of information: launch notifications, information about upcoming flights, and a simple flight schedule displaying upcoming flights at a glance.
 
 Other features include...
-- user-configurable notifications on
-	- per-provider basis
-	- per-country basis
+- user-configurable notifications on a per-provider and per-country basis
 - user-choosable notification times from 4 different options
 - mutable launches
 - notifications of launches being postponed
@@ -22,24 +20,24 @@ Other features include...
 ## Basic instructions
 Clone the repository and install the Python3 dependencies with pip, using the requirements.txt file found in the repository: `python3 -m pip install -R requirements.txt`.
 
-LaunchBot also requires a running redis server instance. Redis is used to reduce disk accesses, as redis is an in-memory (caching) database, compared to the sqlite database sitting on the disk. This should help the longevity of cheap flash storage media, like SD-cards, while also improving latency.
+LaunchBot also requires a running redis server instance. Redis is used to reduce disk accesses: redis is an in-memory (caching) database, compared to the sqlite database sitting on the disk. This should help the longevity of cheap flash storage media, like SD-cards, while also improving latency.
 
-To install redis, follow the instructions at [redis.io](https://redis.io/download). On Linux-based systems, `redis-server` can be installed through most package managers like `apt`. On macOS, `redis-server` can be found in the Homebrew package repository, and can be installed via `brew install redis-server`.
+To install redis, follow the instructions at [redis.io](https://redis.io/download). On Linux-based systems, `redis-server` can be installed through most package managers. On macOS, `redis-server` can be found in the Homebrew package repository.
 
 LaunchBot expects a running redis instance to be found at `127.0.0.1:6379`, which is also the default location. You should be fine running `redis-server` with the default configuration. However you might want to add the `--daemonize` flag to run the instance in the background: `redis-server --daemonize`.
 
 After the dependencies are installed and you have a redis-server instance running, you can run the bot with `python3 launchbot.py -start`. Once you have set up the bot, you can run the bot in the background with `nohup` – in this case, it's advisable to add the `-debug` flag to prevent the flooding of the `nohup.out` file: `nohup python3 launchbot.py -start -debug &`.
 
 ## Data
-The bot creates the following supporting files under `../launchbot/`:
+The bot creates the following supporting files under `../data`:
 
-SQLite: `launchbot-data.db`: houses all data the bot needs to operate, including launch information, statistics, chat information, etc.
+SQLite: `launchbot-data.db`: houses all data the bot needs to operate, including launch information, statistics, chat preferences, and notification lists.
 
 Redis: used to cache various responses and statistics.
 
-JSON: `bot-settings.json`: used to configure the bot by setting the Telegram bot API key, alongside with some other configuration information.
+json: `bot-config.json`: used to configure the bot by setting the Telegram bot API key, alongside with some other configuration information, such as the redis server and telegram bot API server settings.
 
-You can specify your personal account's Telegram user ID in bot_settings.json in the form `owner: "your_user_id"`. This disabled the logging of commands sent by you, and sends a notification for new feedback.
+You can specify your personal account's Telegram user ID in `bot-config.json` in the form `owner: "your_user_id"`. This disables the logging of commands sent by you.
 
 ## Privacy
 
@@ -158,7 +156,7 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 
 		- the largest bottleneck is usually Telegram's API
 
-	- improve json-parsing performance by using multiprocessing
+	- 🚧 improve json-parsing performance by using multiprocessing
 
 	- write stats to redis only, schedule disk writes to SQLite every ≈30 misn
 
