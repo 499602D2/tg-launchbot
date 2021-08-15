@@ -1484,7 +1484,7 @@ def timer_handle(update, context, command, chat, user):
 						context.bot.send_message(
 							chat,
 							'⚠️ *Please do not spam the bot.* Your user ID has been blocked and all commands by you will be ignored for an indefinite amount of time.',
-							parse_mode='Markdown')
+							parse_mode='Markdown', reply_to_message_id=update.message.message_id)
 					else:
 						run_time_ = int(time.time()) - STARTUP_TIME
 						logging.info(f'''
@@ -1652,16 +1652,16 @@ def notify(update, context):
 				[InlineKeyboardButton(text='✅ Save and exit', callback_data='notify/done')]])
 
 	try:
-		context.bot.send_message(
-			chat, inspect.cleandoc(message_text), parse_mode='Markdown', reply_markup=keyboard)
+		context.bot.send_message(chat, inspect.cleandoc(message_text),
+			parse_mode='Markdown', reply_markup=keyboard)
 	except telegram.error.RetryAfter as error:
 		logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
 		retry_after(error.retry_after)
-		context.bot.send_message(
-			chat, inspect.cleandoc(message_text), parse_mode='Markdown', reply_markup=keyboard)
+		context.bot.send_message(chat, inspect.cleandoc(message_text),
+			parse_mode='Markdown', reply_markup=keyboard)
 
 	# update stats
-	update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
+	update_stats_db(stats_update={'commands': 1}, db_path=DATA_DIR)
 
 
 def feedback(update, context):
@@ -1719,17 +1719,13 @@ def feedback(update, context):
 
 def generate_changelog():
 	changelog = f'''
-	🚀 *LaunchBot* v{VERSION} | Changelog
+	🚀 *LaunchBot* {VERSION} | Changelog
 
-	- added Blue Origin
-	- tuned postpone notifications
-	- support local bot API servers
-	- show hold/launched status in /next
-	- implemented caching with redis
-	- tiny improvements everywhere
-	- massive amounts of bug-fixes
+	- Handle scenario where database connection failed to close due to redis error
 
-	*More information on Github*
+	- Added changelogs to statistics
+
+	More information on Github
 	https://github.com/499602D2/tg-launchbot
 	'''
 
@@ -2870,7 +2866,7 @@ def apscheduler_event_listener(event):
 
 if __name__ == '__main__':
 	# current version, set DATA_DIR
-	VERSION = '1.7.13'
+	VERSION = '2.1.15'
 	DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 	OLD_DATA_DIR = os.path.join(os.path.dirname(__file__), 'launchbot')
 

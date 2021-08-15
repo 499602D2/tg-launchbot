@@ -1,5 +1,5 @@
 # LaunchBot – a rocket launch information and notifications bot for Telegram 🚀
-LaunchBot keeps you up to date with what's going up, around the clock, since 2019. Over 350,000 notifications delivered to thousands of chats and groups!
+LaunchBot keeps you up to date with what's going up, around the clock, since 2019. Over 450,000 notifications delivered to thousands of chats and groups!
 
 Reachable as [@rocketrybot](https://t.me/rocketrybot) on Telegram.
 
@@ -105,7 +105,7 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 	- ✅ allow users to set their own timezone
 	
 	
-	## 1.6 / major back-end changes (October 2020)
+	## 2.0 / major back-end changes (October 2020)
 	
 	- ✅ upgrade to the LL2 API (LL1 closes at the end of October)
 	
@@ -137,14 +137,10 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 
 	- ✅ re-add statistics to all needed places
 
-	- add "show changelog" button under /statistics or /help
-
-		- load from a changelog.txt file?
-
 	- ✅ open-source LaunchBot ✨
 	
 	
-	## 1.7 / performance optimizations
+	## 2.1 / performance optimizations
 	
 	- send notifications for launches entering into the middle of notification windows
 	
@@ -173,4 +169,8 @@ Please note, that the above only applies on a per-bot basis. The creator of the 
 	- enable the disabling of postpone notifications
 
 		- globally or on a per-launch basis
+
+	- add "show changelog" button under /statistics or /help
+
+		- load from a changelog.txt file?
 </details>

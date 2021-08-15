@@ -446,7 +446,14 @@ def update_stats_db(stats_update: dict, db_path: str):
 			rd.hset('stats', stat, val)
 		else:
 			stats_cursor.execute(f"UPDATE stats SET {stat} = {stat} + {val}")
-			rd.hset('stats', stat, int(rd.hget('stats', stat)) + int(val))
+			try:
+				rd.hset('stats', stat, int(rd.hget('stats', stat)) + int(val))
+			except TypeError:
+				logging.exception(f'⚠️ Error updating stat for {stat} with ++{val}! stats_update: {stats_update}')
+				logging.warning('⚠️ Not commiting database change: closing connection and exiting...')
+				
+				stats_conn.close()
+				return
 
 	# commit changes
 	stats_conn.commit()
