@@ -449,6 +449,9 @@ def callback_handler(update, context):
 				[InlineKeyboardButton(text='🇮🇳 India', callback_data=f'notify/list/IND'),
 				InlineKeyboardButton(text='🇯🇵 Japan', callback_data=f'notify/list/JPN')],
 
+				[InlineKeyboardButton(text='🇹🇼 Taiwan', callback_data=f'notify/list/TWN'),
+				InlineKeyboardButton(text='🏳 Placeholder', callback_data='notify/main_menu')],
+
 				[InlineKeyboardButton(text='⚙️ Edit your preferences', callback_data=f'prefs/main_menu')],
 
 				[InlineKeyboardButton(text='✅ Save and exit', callback_data=f'notify/done')]
@@ -486,20 +489,17 @@ def callback_handler(update, context):
 		'''
 		Updates the country_code list view in the notify message.
 		'''
-		# get the user's current notification settings for all the providers so we can add the bell emojis
-		notification_statuses = get_user_notifications_status(
-			DATA_DIR, chat, provider_list, provider_by_cc)
-
 		# get status for the "enable all" toggle for the country code
-		providers = []
+		providers = set()
 		for provider in provider_by_cc[country_code]:
 			if provider in provider_name_map.keys():
-				providers.append(provider_name_map[provider])
+				providers.add(provider_name_map[provider])
 			else:
-				providers.append(provider)
+				providers.add(provider)
 
 		notification_statuses = get_user_notifications_status(DATA_DIR, chat, providers, provider_by_cc)
 		disabled_count = 0
+
 		for key, val in notification_statuses.items():
 			if val == 0 and key != 'All':
 				disabled_count += 1
@@ -562,8 +562,8 @@ def callback_handler(update, context):
 		except telegram.error.BadRequest:
 			pass
 
-		if chat != OWNER:
-			logging.info(f'🔀 {map_country_code_to_flag(country_code)}-view loaded for {anonymize_id(chat)}')
+		#if chat != OWNER:
+		#	logging.info(f'🔀 {map_country_code_to_flag(country_code)}-view loaded for {anonymize_id(chat)}')
 
 	try:
 		query = update.callback_query
@@ -661,8 +661,8 @@ def callback_handler(update, context):
 			except Exception as error:
 				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-			if chat != OWNER:
-				logging.info(f'⏮ {anonymize_id(chat)} (main-view update) | {(1000*(timer() - start)):.0f} ms')
+			#if chat != OWNER:
+			#	logging.info(f'⏮ {anonymize_id(chat)} (main-view update) | {(1000*(timer() - start)):.0f} ms')
 
 		# user requested to toggle a notification
 		elif input_data[1] == 'toggle':
@@ -733,8 +733,8 @@ def callback_handler(update, context):
 			except Exception as error:
 				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-			if chat != OWNER:
-				logging.info(f'{anonymize_id(chat)} {reply_text} | {(1000*(timer() - start)):.0f} ms')
+			#if chat != OWNER:
+			#	logging.info(f'{anonymize_id(chat)} {reply_text} | {(1000*(timer() - start)):.0f} ms')
 
 			# update list view if an lsp button was pressed
 			if input_data[2] != 'all':
@@ -747,6 +747,9 @@ def callback_handler(update, context):
 
 				# update keyboard list view
 				update_list_view(msg, chat, provider_list)
+			else:
+				# update main view if "enable all" button was pressed, as in this case we're in the main view
+				update_main_view(chat, msg, False)
 
 			# clear /next cache for user
 			if rd.exists(f'next-{chat}-maxindex'):
@@ -759,10 +762,6 @@ def callback_handler(update, context):
 				for i in range(0, int(max_index)):
 					rd.expire(f'next-{chat}-{i}', datetime.timedelta(seconds=0.1))
 					rd.expire(f'next-{chat}-{i}-net', datetime.timedelta(seconds=0.1))
-
-			# update main view if "enable all" button was pressed, as in this case we're in the main view
-			else:
-				update_main_view(chat, msg, False)
 
 		# user is done; remove the keyboard
 		elif input_data[1] == 'done':
@@ -791,8 +790,8 @@ def callback_handler(update, context):
 			except Exception as error:
 				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-			if chat != OWNER:
-				logging.info(f'💫 {anonymize_id(chat)} finished setting notifications with the "Done" button! | {(1000*(timer() - start)):.0f} ms')
+			#if chat != OWNER:
+			#	logging.info(f'💫 {anonymize_id(chat)} finished setting notifications with the "Done" button! | {(1000*(timer() - start)):.0f} ms')
 
 	elif input_data[0] == 'mute':
 		# user wants to mute a launch from notification inline keyboard
@@ -823,11 +822,11 @@ def callback_handler(update, context):
 			except Exception as error:
 				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-			if chat != OWNER:
-				if new_toggle_state == 0:
-					logging.info(f'🔇 {anonymize_id(chat)} muted a launch for launch_id={input_data[1]} | {(1000*(timer() - start)):.0f} ms')
-				else:
-					logging.info(f'🔊 {anonymize_id(chat)} unmuted a launch for launch_id={input_data[1]} | {(1000*(timer() - start)):.0f} ms')
+			#if chat != OWNER:
+			#	if new_toggle_state == 0:
+			#		logging.info(f'🔇 {anonymize_id(chat)} muted a launch for launch_id={input_data[1]} | {(1000*(timer() - start)):.0f} ms')
+			#	else:
+			#		logging.info(f'🔊 {anonymize_id(chat)} unmuted a launch for launch_id={input_data[1]} | {(1000*(timer() - start)):.0f} ms')
 
 		except Exception as exception:
 			logging.exception(
@@ -892,8 +891,8 @@ def callback_handler(update, context):
 		except Exception as error:
 			logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
 
-		if chat != OWNER:
-			logging.info(f'{anonymize_id(chat)} pressed "{query_reply_text}" button in /next | {(1000*(timer() - start)):.0f} ms')
+		#if chat != OWNER:
+		#	logging.info(f'{anonymize_id(chat)} pressed "{query_reply_text}" button in /next | {(1000*(timer() - start)):.0f} ms')
 
 	elif input_data[0] == 'schedule':
 		#schedule/refresh
@@ -1208,7 +1207,7 @@ def callback_handler(update, context):
 			elif input_data[2] == 'auto_setup':
 				# send message with ForceReply()
 				query.answer('🌎 Automatic time zone setup loaded')
-				text = '''🌎 Automatic time zone setup
+				text = '''🌎 *LaunchBot* | Automatic time zone setup
 
 				⚠️ Your exact location is *NOT* stored or logged anywhere. You can remove your time zone at any time.
 
@@ -1260,8 +1259,8 @@ def callback_handler(update, context):
 
 	elif input_data[0] == 'stats':
 		if input_data[1] == 'refresh':
-			if chat != OWNER:
-				logging.info(f'🔄 {anonymize_id(chat)} refreshed statistics')
+			#if chat != OWNER:
+			#	logging.info(f'🔄 {anonymize_id(chat)} refreshed statistics')
 
 			new_text = generate_statistics_message()
 			if msg.text == new_text.replace('*',''):
@@ -1302,7 +1301,8 @@ def feedback_handler(update, context):
 		if update.edited_message is not None:
 			return
 
-		logging.warning(f'Error parsing chat in feedback_handler!!\n{update}')
+		logging.warning(
+			f'Error parsing chat in feedback_handler! update:{update}, context:{context}')
 		return
 
 	chat = update.message.chat
@@ -1326,17 +1326,17 @@ def feedback_handler(update, context):
 					logging.exception(f'''Unable to remove sent feedback message with params
 						chat={chat.id}, message_id={update.message.reply_to_message.message_id}''')
 
-				#if OWNER != 0:
-				#	# parse the message so it's suitable for markdown
-				#	update.message.text = reconstruct_message_for_markdown(update.message.text)
-				#
-				#	# if owner is defined, notify of a new feedback message
-				#	feedback_notify_msg = f'''
-				#		✍️ *Received feedback* from `{anonymize_id(update.message.from_user.id)}`\n
-				#		{update.message.text}'''
-				#
-				#	context.bot.send_message(
-				#		OWNER, inspect.cleandoc(feedback_notify_msg),parse_mode='MarkdownV2')
+				if OWNER != 0:
+					# parse the message so it's suitable for markdown
+					update.message.text = reconstruct_message_for_markdown(update.message.text)
+				
+					# if owner is defined, notify of a new feedback message
+					feedback_notify_msg = f'''
+						✍️ *Received feedback* from `{anonymize_id(update.message.from_user.id)}`\n
+						{update.message.text}'''
+				
+					context.bot.send_message(
+						OWNER, inspect.cleandoc(feedback_notify_msg), parse_mode='MarkdownV2')
 
 
 def location_handler(update, context):
@@ -1382,8 +1382,7 @@ def location_handler(update, context):
 
 			new_text = f'''🌍 *LaunchBot* | Time zone settings
 
-			✅ Time zone successfully set!
-			Your time zone is *UTC{utc_offset_str} ({timezone_str})*
+			✅ Time zone successfully set! Your time zone is *UTC{utc_offset_str} ({timezone_str})*
 
 			You can now return to other settings.'''
 
@@ -1522,8 +1521,8 @@ def start(update, context):
 		command_ = '/start'
 
 	# log command
-	if update.message.chat.id != OWNER:
-		logging.info(f'⌨️ {command_} called by {update.message.from_user.id} in {update.message.chat.id}')
+	#if update.message.chat.id != OWNER:
+	#	logging.info(f'⌨️ {command_} called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	# construct message
 	reply_msg = f'''🚀 *Hi there!* I'm *LaunchBot*, a launch information and notifications bot!
@@ -1599,8 +1598,8 @@ def notify(update, context):
 	if not command_pre_handler(update, context, False):
 		return
 
-	if update.message.chat.id != OWNER:
-		logging.info(f'⌨️ /notify called by {update.message.from_user.id} in {update.message.chat.id}')
+	#if update.message.chat.id != OWNER:
+	#	logging.info(f'⌨️ /notify called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	message_text = '''
 	🚀 *LaunchBot* | Notification settings
@@ -1647,6 +1646,9 @@ def notify(update, context):
 				[InlineKeyboardButton(text='🇮🇳 India', callback_data='notify/list/IND'),
 				InlineKeyboardButton(text='🇯🇵 Japan', callback_data='notify/list/JPN')],
 
+				[InlineKeyboardButton(text='🇹🇼 Taiwan', callback_data=f'notify/list/TWN'),
+				InlineKeyboardButton(text='🏳 Placeholder', callback_data='notify/main_menu')],
+
 				[InlineKeyboardButton(text='⚙️ Edit your preferences', callback_data='prefs/main_menu')],
 
 				[InlineKeyboardButton(text='✅ Save and exit', callback_data='notify/done')]])
@@ -1672,8 +1674,8 @@ def feedback(update, context):
 	if not command_pre_handler(update, context, False):
 		return
 
-	if update.message.chat.id != OWNER:
-		logging.info(f'⌨️ /feedback called by {update.message.from_user.id} in {update.message.chat.id}')
+	#if update.message.chat.id != OWNER:
+	#	logging.info(f'⌨️ /feedback called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	chat_id = update.message.chat.id
 
@@ -1760,14 +1762,27 @@ def generate_schedule_message(call_type: str, chat: str):
 		5: 'May', 6: 'June', 7: 'July', 8: 'August',
 		9: 'September', 10: 'October', 11: 'November', 12: 'December' }
 
-	# if a shortened name makes no sense, use this
-	providers_short = {
-		'RL': 'Rocket Lab',
-		'RFSA': 'Roscosmos',
-		'VO': 'Virgin Orbit'}
+	''' Sometimes, the default name is quite long. In these cases, we can use a more common,
+	short name for the provider instead of the abbreviation used by LL2.
 
+	The best example is Firefly, which is in LL2 as "Firefly Aerospace": instead of "FA",
+	we can simply use "Firefly" to display the provider name. 
+	'''
+	providers_short = {
+		"RL": 			"Rocket Lab",
+		"RFSA": 		"Roscosmos",
+		"VO": 			"Virgin Orbit",
+		"Astra Space": 	"Astra",
+		"FA":			"Firefly",
+		"MOD_RUS": 		"Russian MoD",
+		"NGIS":			"Northrop Gr."
+	}
+
+	''' Like with provider names above, the vehicle names are sometimes too long (or weird) as well. '''
 	vehicle_map = {
-		'Falcon 9 Block 5': 'Falcon 9 B5'}
+		"Falcon 9 Block 5": "Falcon 9",
+		"Firefly Alpha": "Alpha"
+	}
 
 	# pull user time zone preferences, set tz_offset from hours to seconds
 	# TODO cache in redis under chat ID, update on tz update
@@ -1826,6 +1841,10 @@ def generate_schedule_message(call_type: str, chat: str):
 			flt_str += '🟡'
 		elif go_status == 'TBD':
 			flt_str += '🔴'
+		elif go_status == 'HOLD':
+			flt_str += '⏸'
+		elif go_status == 'FLYING':
+			flt_str += '🚀'
 
 		if call_type == 'vehicle':
 			flt_str += f' {provider} {vehicle}'
@@ -1939,8 +1958,8 @@ def flight_schedule(update, context):
 	if not command_pre_handler(update, context, False):
 		return
 
-	if update.message.chat.id != OWNER:
-		logging.info(f'⌨️ /schedule called by {update.message.from_user.id} in {update.message.chat.id}')
+	# if update.message.chat.id != OWNER:
+	#	logging.info(f'⌨️ /schedule called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	chat_id = update.message.chat.id
 
@@ -2071,8 +2090,8 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# check if a cached response exists
 	if rd.exists(f'next-{chat}-{current_index}'):
-		if chat != OWNER:
-			logging.debug(f'🐇 cache-hit for next/{chat}/{current_index}')
+		#if chat != OWNER:
+		#	logging.debug(f'🐇 cache-hit for next/{chat}/{current_index}')
 		return cached_response()
 
 	# start db connection
@@ -2593,8 +2612,8 @@ def next_flight(update, context):
 	if not command_pre_handler(update, context, False):
 		return
 
-	if update.message.chat.id != OWNER:
-		logging.info(f'⌨️ /next called by {update.message.from_user.id} in {update.message.chat.id}')
+	#if update.message.chat.id != OWNER:
+	#	logging.info(f'⌨️ /next called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	# chat ID
 	chat_id = update.message.chat.id
@@ -2781,8 +2800,8 @@ def statistics(update, context):
 	if not command_pre_handler(update, context, False):
 		return
 
-	if update.message.chat.id != OWNER:
-		logging.info(f'⌨️ /statistics called by {update.message.from_user.id} in {update.message.chat.id}')
+	#if update.message.chat.id != OWNER:
+	#	logging.info(f'⌨️ /statistics called by {update.message.from_user.id} in {update.message.chat.id}')
 
 	# chat ID
 	chat_id = update.message.chat.id
@@ -2866,7 +2885,7 @@ def apscheduler_event_listener(event):
 
 if __name__ == '__main__':
 	# current version, set DATA_DIR
-	VERSION = '2.1.15'
+	VERSION = '2.1.16'
 	DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 	OLD_DATA_DIR = os.path.join(os.path.dirname(__file__), 'launchbot')
 
@@ -2889,6 +2908,9 @@ if __name__ == '__main__':
 	parser.add_argument(
 		'--force-api-update', dest='force_api_update',
 		help='Force an API update on startup', action='store_true')
+	parser.add_argument(
+		'--disable-api-updates', dest='no_api_updates',
+		help='Disables API update scheduler', action='store_true')
 
 	# set defaults, parse
 	parser.set_defaults(start=False, newBotToken=False, debug=False)
@@ -2991,16 +3013,12 @@ if __name__ == '__main__':
 			'ISRO', 'Antrix Corporation'},
 
 		'JPN': {
-			'JAXA', 'Mitsubishi Heavy Industries', 'Interstellar Technologies'}
-	}
+			'JAXA', 'Mitsubishi Heavy Industries', 'Interstellar Technologies'},
 
-	''' This is effectively a reverse-map, mapping the short names used in the notify-command's
-	buttons into the proper LSP names, as found in the database. '''
-	global provider_name_map
-	provider_name_map = {
-		'Rocket Lab': 'Rocket Lab Ltd',
-		'Northrop Grumman': 'Northrop Grumman Innovation Systems',
-		'ROSCOSMOS': 'Russian Federal Space Agency (ROSCOSMOS)'}
+		'TWN': {
+			'TiSPACE'
+		}
+	}
 
 	'''
 	Keep track of chats doing time zone setup, so we don't update
@@ -3031,8 +3049,17 @@ if __name__ == '__main__':
 		1002:['Interstellar Tech.', '🇯🇵'], 88: ['CASC', '🇨🇳'], 190: ['Antrix Corporation', '🇮🇳'],
 		122: ['Sea Launch', '🇷🇺'], 118: ['ILS', '🇺🇸🇷🇺'], 193: ['Eurockot', '🇪🇺🇷🇺'],
 		119: ['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'], 123: ['Starsem', '🇪🇺🇷🇺'], 194: ['ExPace', '🇨🇳'],
-		63: ['ROSCOSMOS', '🇷🇺']
+		63: ['ROSCOSMOS', '🇷🇺'], 175: ['Ministry of Defence', '🇷🇺']
 	}
+
+	''' This is effectively a reverse-map, mapping the short names used in the notify-command's
+	buttons into the proper LSP names, as found in the database. '''
+	global provider_name_map
+	provider_name_map = {
+		'Rocket Lab': 'Rocket Lab Ltd',
+		'Northrop Grumman': 'Northrop Grumman Innovation Systems',
+		'ROSCOSMOS': 'Russian Federal Space Agency (ROSCOSMOS)',
+		'Ministry of Defence': 'Ministry of Defence of the Russian Federation'}
 
 	# start command timers, store in memory instead of storage to reduce disk writes
 	# TODO use redis or memcached
@@ -3141,10 +3168,14 @@ if __name__ == '__main__':
 		logging.info('--force-api-update given: updating db...')
 		api_update_on_restart()
 
-	# start API and notification scheduler
-	api_call_scheduler(
-		db_path=DATA_DIR, ignore_60=False, scheduler=scheduler, bot_username=BOT_USERNAME,
-		bot=updater.bot)
+	# start API and notification scheduler, unless configured to not update for e.g. debug reasons
+	if not args.no_api_updates:
+		api_call_scheduler(
+			db_path=DATA_DIR, ignore_60=False, scheduler=scheduler, bot_username=BOT_USERNAME,
+			bot=updater.bot
+		)
+	else:
+		logging.warning("⚠️ Not starting API scheduler!")
 
 	# send startup message
 	if OWNER != 0:

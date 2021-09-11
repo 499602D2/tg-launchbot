@@ -254,14 +254,18 @@ def get_user_notifications_status(
 	# iterate over enabled lsp notifications
 	for enabled_lsp in enabled_notifs:
 		if enabled_lsp != '':
-			notification_statuses[enabled_lsp] = 1
+			if enabled_lsp in provider_set:
+				notification_statuses[enabled_lsp] = 1
+
 			if enabled_lsp == 'All':
 				all_flag = True
 
 	# iterate over disabled lsp notifications
 	for disabled_lsp in disabled_notifs:
 		if disabled_lsp != '':
-			notification_statuses[disabled_lsp] = 0
+			if disabled_lsp in provider_set:
+				notification_statuses[disabled_lsp] = 0
+
 			if disabled_lsp == 'All':
 				all_flag = False
 

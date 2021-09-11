@@ -23,6 +23,10 @@ Misc variables:
 
 import datetime
 import time
+import logging
+
+import flag
+import iso3166
 
 from hashlib import sha1
 
@@ -108,9 +112,8 @@ def short_monospaced_text(text: str) -> str:
 def map_country_code_to_flag(country_code: str) -> str:
 	'''
 	Maps a country code to a corresponding emoji flag: truly modern.
-	The functions returns a blank, white flag if the country code
-	doesn't exist in the flag_map dictionary. UNK is the country code
-	used by LL2 for unknown country codes.
+	The function returns a blank, white flag if the country code
+	doesn't exist in the iso3166 database.
 
 	Keyword arguments:
 		country_code (str): country code to return the flag for
@@ -118,14 +121,23 @@ def map_country_code_to_flag(country_code: str) -> str:
 	Returns:
 		emoji_flag (str): the flag for the country code
 	'''
-	flag_map = {
-		'FRA': '🇪🇺', 'FR': '🇪🇺', 'USA': '🇺🇸', 'EU': '🇪🇺',
-		'RUS': '🇷🇺', 'CHN': '🇨🇳', 'IND': '🇮🇳', 'JPN': '🇯🇵',
-		'IRN': '🇮🇷', 'NZL': '🇳🇿', 'GUF': '🇬🇫', 'KAZ': '🇰🇿',
-		'UNK': '🏳'
-	}
 
-	return flag_map[country_code] if country_code in flag_map.keys() else '🏳'
+	try:
+		# try converting alpha-3 to alpha-2
+		alpha2 = iso3166.countries_by_alpha3[country_code].alpha2
+	except KeyError:
+		# if no hit, return a blank flag
+		return "🏳"
+
+	# emoji flag corresponding to alpha-2 code
+	emoji_flag = flag.flag(alpha2)
+
+	# avoid sending some non-existent dynamically constructed garbage
+	if len(emoji_flag) == 2:
+		return emoji_flag
+
+	logging.warning(f"Got non-existent country flag: alpha3={country_code} alpha2={alpha2}")
+	return "🏳"
 
 
 def suffixed_readable_int(number: int) -> str:

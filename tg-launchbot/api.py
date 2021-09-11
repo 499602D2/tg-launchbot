@@ -613,7 +613,7 @@ def api_call_scheduler(
 	'''
 	Create a list of notification send times, but also during launch to check for a postpone.
 	- notification times, if not sent (60 seconds before)
-	- 60 seconds after the launch is supposed to occur
+	- 60*5 seconds after the launch is supposed to occur
 	'''
 	notif_times, time_map = set(), {0: 24*3600, 1: 12*3600, 2: 3600, 3: 5*60}
 	notif_time_map = dict()
@@ -627,7 +627,7 @@ def api_call_scheduler(
 		if not launch_row[1] and time.time() - launch_row[0] < 60:
 			notif_times.add(launch_row[0] + 60)
 
-			check_time = launch_row[0] + 60
+			check_time = launch_row[0] + 60*5
 			if check_time not in notif_time_map.keys():
 				notif_time_map[check_time] = {-1}
 			else:
