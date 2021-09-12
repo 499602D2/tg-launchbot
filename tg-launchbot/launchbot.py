@@ -2909,7 +2909,7 @@ if __name__ == '__main__':
 		'--force-api-update', dest='force_api_update',
 		help='Force an API update on startup', action='store_true')
 	parser.add_argument(
-		'--disable-api-updates', dest='no_api_updates',
+		'--disable-api-updates', dest='api_updates_disabled',
 		help='Disables API update scheduler', action='store_true')
 
 	# set defaults, parse
@@ -3169,7 +3169,7 @@ if __name__ == '__main__':
 		api_update_on_restart()
 
 	# start API and notification scheduler, unless configured to not update for e.g. debug reasons
-	if not args.no_api_updates:
+	if not args.api_updates_disabled:
 		api_call_scheduler(
 			db_path=DATA_DIR, ignore_60=False, scheduler=scheduler, bot_username=BOT_USERNAME,
 			bot=updater.bot

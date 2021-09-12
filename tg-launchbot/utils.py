@@ -122,12 +122,15 @@ def map_country_code_to_flag(country_code: str) -> str:
 		emoji_flag (str): the flag for the country code
 	'''
 
-	try:
-		# try converting alpha-3 to alpha-2
-		alpha2 = iso3166.countries_by_alpha3[country_code].alpha2
-	except KeyError:
-		# if no hit, return a blank flag
-		return "🏳"
+	if len(country_code) == 3:
+		try:
+			# try converting alpha-3 to alpha-2
+			alpha2 = iso3166.countries_by_alpha3[country_code].alpha2
+		except KeyError:
+			return "🏳"
+	else:
+		# some codes may already be in alpha2
+		alpha2 = country_code
 
 	# emoji flag corresponding to alpha-2 code
 	emoji_flag = flag.flag(alpha2)
