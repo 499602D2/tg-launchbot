@@ -218,6 +218,7 @@ def get_user_notifications_status(
 
 	# dict for storing the status of notifications, init with "All".
 	notification_statuses = {'All': 0}
+	mapped_provider_set = set()
 
 	# iterate over all providers supported by LaunchBot
 	for provider in provider_set:
@@ -228,6 +229,12 @@ def get_user_notifications_status(
 
 		# set default notification_status to 0
 		notification_statuses[provider] = 0
+
+		# construct mapped_providers
+		mapped_provider_set.add(provider)
+
+	# re-assign
+	provider_set = mapped_provider_set
 
 	# if chat doesn't exist or return is 0, return the zeroed dict
 	if len(query_return) == 0:
@@ -269,9 +276,7 @@ def get_user_notifications_status(
 			if disabled_lsp == 'All':
 				all_flag = False
 
-	if 'All' not in notification_statuses:
-		notification_statuses['All'] = all_flag
-
+	notification_statuses['All'] = {True: 1, False: 0}[all_flag]
 	return notification_statuses
 
 
@@ -316,6 +321,7 @@ def toggle_notification(
 	if toggle_type == 'country_code':
 		provider_list = set(provider_by_cc[keyword])
 		provider_list_mod = set()
+
 		for key in provider_list:
 			if key in provider_name_map.keys():
 				provider_list_mod.add(provider_name_map[key])
@@ -333,8 +339,9 @@ def toggle_notification(
 	elif toggle_type == 'all':
 		provider_list = {'All'}
 		provider_list_mod = {'All'}
-		for val in provider_by_cc.values():
-			for provider in val:
+
+		for cc_list in provider_by_cc.values():
+			for provider in cc_list:
 				if provider in provider_name_map.keys():
 					provider_list_mod.add(provider_name_map[provider])
 				else:
@@ -1037,8 +1044,6 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 		multiple_boosters = bool(';;' in launch['launcher_landing_attempt'])
 	else:
 		multiple_boosters = False
-
-	print(f'{launch["name"]}: multiple_boosters={multiple_boosters}')
 
 	# add location to common landing objects
 	landing_loc_map = {

@@ -655,6 +655,11 @@ def api_call_scheduler(
 	# get time when next notification will be sent
 	next_notif = min(notif_times)
 
+	# logging for weird errors
+	logging.debug(f"notif_times: {notif_times}")
+	logging.debug(f"next_notif: {next_notif}")
+	logging.debug(f"notif_time_map: {notif_time_map}")
+
 	# 0: '24h', 1: '12h', 2: '60m', 3: '5m'
 	next_notif_earliest_type = max(notif_time_map[next_notif])
 	next_notif_type = {0: '24h', 1: '12h', 2: '60m', 3: '5m', -1: 'LCHECK'}[next_notif_earliest_type]

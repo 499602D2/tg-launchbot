@@ -683,6 +683,7 @@ def callback_handler(update, context):
 
 				notification_statuses = get_user_notifications_status(DATA_DIR, chat, providers, provider_name_map)
 				disabled_count = 0
+
 				for key, val in notification_statuses.items():
 					if toggle_type == 'country_code' and key != 'All':
 						if val == 0:
@@ -698,10 +699,8 @@ def callback_handler(update, context):
 
 			if input_data[2] not in ('country_code', 'lsp', 'all'):
 				return
-
 			if input_data[2] == 'all':
 				all_toggle_new_status = get_new_notify_group_toggle_state('all', None, chat)
-
 			else:
 				country_code = input_data[3]
 				if input_data[2] == 'country_code':
@@ -2882,10 +2881,23 @@ def apscheduler_event_listener(event):
 		logging.critical('Exception traceback follows:')
 		logging.critical(event.traceback)
 
+		if not os.path.isdir("error-logs"):
+			os.mkdir("error-logs")
+
+		# log exceptions to timestamped files
+		efname = os.path.join("error-logs", f"error-{int(time.time())}.log")
+		with open(efname, "w") as ef:
+			ef.write(f"ERROR EXPERIENCED AT {datetime.datetime.now().ctime()}")
+			ef.write(f"EXCEPTION: {event.exception}")
+			ef.write("TRACEBACK FOLLOWS:")
+			ef.write(event.traceback)
+
+			ef.write(f"EXCEPTION VARS: {vars(event)}")
+
 
 if __name__ == '__main__':
 	# current version, set DATA_DIR
-	VERSION = '2.1.16'
+	VERSION = '2.1.17'
 	DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 	OLD_DATA_DIR = os.path.join(os.path.dirname(__file__), 'launchbot')
 
