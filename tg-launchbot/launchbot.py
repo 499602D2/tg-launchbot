@@ -2670,7 +2670,11 @@ def generate_statistics_message() -> str:
 			stats = {'notifications': 0, 'commands': 0, 'api_requests': 0}
 
 		# insert into redis | stats: {key:val, key:val, key:val}
-		rd.hmset('stats', stats)
+		try:
+			rd.hmset('stats', stats)
+		except redis.exceptions.DataError:
+			time.sleep(1)
+			return generate_statistics_message()
 
 	# pull from redis
 	stats = rd.hgetall('stats')
@@ -3101,7 +3105,7 @@ if __name__ == '__main__':
 		filename=log, level=logging.DEBUG, format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
 
 	# disable logging for urllib and requests because jesus fuck they make a lot of spam
-	logging.getLogger('requests').setLevel(logging.CRITICAL)
+	logging.getLogger('requests').setLevel(logging.DEBUG)
 	logging.getLogger('urllib3').setLevel(logging.CRITICAL)
 	logging.getLogger('chardet.charsetprober').setLevel(logging.CRITICAL)
 	logging.getLogger('apscheduler').setLevel(logging.WARNING)
