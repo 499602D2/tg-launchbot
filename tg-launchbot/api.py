@@ -388,7 +388,7 @@ def ll2_api_call(
 	API_URL = 'https://ll.thespacedevs.com'
 	API_VERSION = '2.1.0'
 	API_REQUEST = 'launch/upcoming'
-	PARAMS = {'mode': 'detailed', 'limit': 50}
+	PARAMS = {'mode': 'detailed', 'limit': 30}
 
 	# construct the call URL
 	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{construct_params(PARAMS)}' #&{fields}
@@ -406,8 +406,14 @@ def ll2_api_call(
 		time.sleep(1.5)
 	else:
 		try:
+			logging.debug("⏳ Running API request now")
+			t0 = time.time()
+
 			API_RESPONSE = requests.get(API_CALL, headers=headers)
 			rec_data = len(API_RESPONSE.content)
+
+			tdelta = time.time() - t0
+			logging.debug(f"✅ Received {rec_data/(1024*1000):.3f} MiB of data! Request took {tdelta:.3f} seconds")
 		except Exception as error:
 			logging.warning(f'🛑 Error in LL API request: {error}')
 			logging.warning('⚠️ Trying again after 3 seconds...')
@@ -441,8 +447,16 @@ def ll2_api_call(
 
 	# parse launches
 	launch_obj_set = set()
+
+	logging.debug("⏳ Parsing API data...")
+	t0 = time.time()
+
 	for launch in api_json['results']:
 		launch_obj_set.add(LaunchLibrary2Launch(launch))
+
+	tdelta = time.time() - t0
+	logging.debug(f"✅ Parsed received data! Processing took {tdelta:.3f} seconds")
+
 
 	# success?
 	logging.debug(f'✅ Parsed {len(launch_obj_set)} launches into launch_obj_set.')
