@@ -11,6 +11,7 @@ import requests
 import coloredlogs
 import ujson as json
 
+from requests.adapters import HTTPAdapter
 from apscheduler.schedulers.background import BackgroundScheduler
 from nltk import tokenize
 
@@ -121,9 +122,6 @@ class LaunchLibrary2Launch:
 			stage_count = 0
 
 		if stage_count > 1:
-			print('⚠️⚠️⚠️ more than one launcher_stage')
-			print(launch_json['rocket']['launcher_stage'])
-
 			stages = launch_json['rocket']['launcher_stage']
 
 			# attempt to parse multiple stages: do simple comma separated values
@@ -391,7 +389,7 @@ def ll2_api_call(
 	PARAMS = {'mode': 'detailed', 'limit': 30}
 
 	# construct the call URL
-	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{construct_params(PARAMS)}' #&{fields}
+	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{construct_params(PARAMS)}'
 
 	# set headers
 	headers = {'user-agent': f'telegram-{bot_username}'}
@@ -406,10 +404,13 @@ def ll2_api_call(
 		time.sleep(1.5)
 	else:
 		try:
-			logging.debug("⏳ Running API request now")
-			t0 = time.time()
+			# create requests session
+			session = requests.Session()
+			session.headers = headers
+			session.mount("https://", HTTPAdapter(pool_connections=1, pool_maxsize=2))
 
-			API_RESPONSE = requests.get(API_CALL, headers=headers)
+			t0 = time.time()
+			API_RESPONSE = session.get(API_CALL, timeout=600)
 			rec_data = len(API_RESPONSE.content)
 
 			tdelta = time.time() - t0

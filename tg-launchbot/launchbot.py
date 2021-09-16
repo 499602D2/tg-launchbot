@@ -3117,10 +3117,8 @@ if __name__ == '__main__':
 	logging.getLogger('telegram.vendor').setLevel(logging.ERROR)
 	logging.getLogger('telegram.error.TelegramError').setLevel(logging.ERROR)
 
-	# additional requests logging
+	# additional request logging
 	logging.getLogger('urllib3').setLevel(logging.DEBUG)
-
-	# print statements from `http.client.HTTPConnection` to console/stdout
 	logging.getLogger('http.client.HTTPConnection').setLevel(logging.DEBUG)
 
 	if not args.debug:
