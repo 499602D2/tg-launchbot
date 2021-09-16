@@ -410,7 +410,7 @@ def ll2_api_call(
 			session.mount("https://", HTTPAdapter(pool_connections=1, pool_maxsize=2))
 
 			t0 = time.time()
-			API_RESPONSE = session.get(API_CALL, timeout=600)
+			API_RESPONSE = session.get(API_CALL, timeout=5)
 			rec_data = len(API_RESPONSE.content)
 
 			tdelta = time.time() - t0

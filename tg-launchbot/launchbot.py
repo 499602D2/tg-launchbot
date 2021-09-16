@@ -3119,6 +3119,7 @@ if __name__ == '__main__':
 
 	# additional request logging
 	logging.getLogger('urllib3').setLevel(logging.DEBUG)
+	logging.getLogger('urllib3').propagate = True
 	logging.getLogger('http.client.HTTPConnection').setLevel(logging.DEBUG)
 
 	if not args.debug:
