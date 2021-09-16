@@ -389,7 +389,7 @@ def ll2_api_call(
 	PARAMS = {'mode': 'detailed', 'limit': 30}
 
 	# construct the call URL
-	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}{construct_params(PARAMS)}'
+	API_CALL = f'{API_URL}/{API_VERSION}/{API_REQUEST}/{construct_params(PARAMS)}'
 
 	# set headers
 	headers = {'user-agent': f'telegram-{bot_username}'}
