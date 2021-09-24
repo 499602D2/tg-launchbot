@@ -2902,7 +2902,7 @@ def apscheduler_event_listener(event):
 
 if __name__ == '__main__':
 	# current version, set DATA_DIR
-	VERSION = '2.1.17'
+	VERSION = '2.1.18'
 	DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 	OLD_DATA_DIR = os.path.join(os.path.dirname(__file__), 'launchbot')
 
@@ -3106,8 +3106,8 @@ if __name__ == '__main__':
 		filename=log, level=logging.DEBUG, format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
 
 	# disable logging for urllib and requests because jesus fuck they make a lot of spam
-	logging.getLogger('requests').setLevel(logging.DEBUG)
-	logging.getLogger('urllib3').setLevel(logging.CRITICAL)
+	logging.getLogger('requests').setLevel(logging.WARNING)
+	logging.getLogger('urllib3').setLevel(logging.WARNING)
 	logging.getLogger('chardet.charsetprober').setLevel(logging.CRITICAL)
 	logging.getLogger('apscheduler').setLevel(logging.WARNING)
 	logging.getLogger('git').setLevel(logging.WARNING)
@@ -3116,11 +3116,6 @@ if __name__ == '__main__':
 	logging.getLogger('telegram.ext.updater').setLevel(logging.ERROR)
 	logging.getLogger('telegram.vendor').setLevel(logging.ERROR)
 	logging.getLogger('telegram.error.TelegramError').setLevel(logging.ERROR)
-
-	# additional request logging
-	logging.getLogger('urllib3').setLevel(logging.DEBUG)
-	logging.getLogger('urllib3').propagate = True
-	logging.getLogger('http.client.HTTPConnection').setLevel(logging.DEBUG)
 
 	if not args.debug:
 		# init console log if not in debug mode
