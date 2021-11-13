@@ -32,8 +32,11 @@ from hashlib import sha1
 
 
 def retry_after(retry_after_secs):
-	if retry_after_secs > 15:
-		time.sleep(15)
+	"""
+	Sleep at most 5 seconds during Telegram rate-limits
+	"""
+	if retry_after_secs > 5:
+		time.sleep(5)
 	else:
 		time.sleep(retry_after_secs + 0.15)
 
@@ -49,7 +52,8 @@ def anonymize_id(chat: str) -> str:
 	Returns:
 		chat (str): the anonymized chat ID
 	'''
-	return sha1(str(chat).encode('utf-8')).hexdigest()[0:6]
+	return chat
+	#return sha1(str(chat).encode('utf-8')).hexdigest()[0:6]
 
 
 def reconstruct_link_for_markdown(link: str) -> str:

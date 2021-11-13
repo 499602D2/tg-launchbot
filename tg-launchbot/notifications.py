@@ -20,7 +20,7 @@ from timezone import load_bulk_tz_offset
 from utils import (
 	short_monospaced_text, map_country_code_to_flag, reconstruct_link_for_markdown,
 	reconstruct_message_for_markdown, anonymize_id, suffixed_readable_int,
-	timestamp_to_legible_date_string)
+	timestamp_to_legible_date_string, retry_after, time_delta_to_legible_eta)
 
 
 def postpone_notification(
@@ -51,13 +51,13 @@ def postpone_notification(
 			https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this '''
 			retry_time = error.retry_after
 			logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
-			time.sleep(retry_time + 0.25)
+			retry_after(retry_time)
 
 			return False, None
 
 		except telegram.error.TimedOut as error:
 			logging.exception('🚧 Got a telegram.error.TimedOut: sleeping for 1 second.')
-			time.sleep(1)
+			retry_after(1)
 
 			return False, None
 
@@ -677,7 +677,7 @@ def remove_previous_notification(
 				if retry_time > 10:
 					retry_time = 10
 
-				time.sleep(retry_time + 0.25)
+				retry_after(retry_time)
 
 				# try deleting again
 				try:
@@ -828,11 +828,10 @@ def get_notify_list(
 	return notification_list
 
 
-def send_notification(
-	chat: str, message: str, launch_id: str, notif_class: str,
-	bot: 'telegram.bot.Bot', tz_tuple: tuple, net_unix: int, db_path: str):
+def send_notification(chat: str, message: str, launch_id: str, notif_class: str,
+bot: 'telegram.bot.Bot', tz_tuple: tuple, net_unix: int, db_path: str):
 	'''
-	Functions sends a launch notification to chat.
+	Functions sends a launch notification to a chat.
 	'''
 	# send early notifications silently
 	silent = bool(notif_class not in ('notify_60min', 'notify_5min'))
@@ -870,13 +869,13 @@ def send_notification(
 		https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this '''
 		retry_time = error.retry_after
 		logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
-		time.sleep(retry_time + 0.25)
+		retry_after(retry_time)
 
 		return False, None
 
 	except telegram.error.TimedOut as error:
 		logging.exception('🚧 Got a telegram.error.TimedOut: sleeping for 1 second.')
-		time.sleep(1)
+		retry_after(1)
 
 		return False, None
 
@@ -1388,6 +1387,15 @@ def notification_handler(
 		without_sound = bool(notify_class not in ('notify_60min', 'notify_5min'))
 		logging.info(f'🔈 Sending notification {"silenty" if without_sound else "with sound"}...')
 
+		# Enforce API send limits
+		API_SEND_LIMIT_PER_SECOND = 30
+		messages_sent = 0
+		send_start_time = int(time.time())
+
+		approx_send_time = 1/API_SEND_LIMIT_PER_SECOND * len(notification_list_tzs)
+		send_delta = time_delta_to_legible_eta(int(approx_send_time), True)
+		logging.info(f"⏳ Expecting send to take {send_delta} with API limits")
+
 		# iterate over chat_id and chat's UTC-offset -> send notification
 		sent_notification_ids = set()
 		for chat_id, tz_tuple in notification_list_tzs.items():
@@ -1401,8 +1409,12 @@ def notification_handler(
 				continue
 
 			if success and msg_id is not None:
-				''' send counts as success even if we fail due to the bot being blocked etc.:
-				if we succeeded, but got a message id (actually sent something), store it '''
+				'''
+				Send counts as success even if we fail due to the bot being blocked etc.:
+				if we succeeded, but got a message id (actually sent something), store it
+				'''
+
+				# TODO add reached_people back (slow; sensible?)
 				sent_notification_ids.add(msg_id)
 			elif not success:
 				logging.info(f'⚠️ Failed to send notification to chat={chat_id}!')
@@ -1415,12 +1427,25 @@ def notification_handler(
 						notif_class=notify_class, bot=bot, tz_tuple=tz_tuple, net_unix=launch_dict['net_unix'],
 						db_path=db_path)
 
+					time.sleep(1/API_SEND_LIMIT_PER_SECOND)
+
 				# if we got success and a msg_id, store the identifiers
 				if success and msg_id is not None:
 					logging.info(f'✅ Success after {fail_count} tries!')
 					sent_notification_ids.add(msg_id)
 
-			# TODO add reached_people back (slow; sensible?)
+			# After each send (successful or not), enforce the API limit by sleeping
+			# 30 messages/second limit -> sleep for 33 milliseconds
+			time.sleep(1/API_SEND_LIMIT_PER_SECOND)
+
+			# Every 30 messages, sleep an additional 50 milliseconds
+			messages_sent += 1
+			if messages_sent % 30 == 0:
+				time.sleep(0.05)
+
+		send_end_time = int(time.time())
+		eta_string = time_delta_to_legible_eta(send_end_time-send_start_time, True)
+		logging.info(f"⏱ Sent {len(notification_list_tzs)} notifications in {eta_string}")
 
 		# remove previous notification
 		remove_previous_notification(
