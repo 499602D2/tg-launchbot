@@ -23,8 +23,7 @@ from utils import (
 	timestamp_to_legible_date_string, retry_after, time_delta_to_legible_eta)
 
 
-def postpone_notification(
-	db_path: str, postpone_tuple: tuple, bot: 'telegram.bot.Bot'):
+def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bot.Bot'):
 	'''
 	Handles the final stages of the flow associated with sending a postpone notification.
 	'''
@@ -133,13 +132,20 @@ def postpone_notification(
 
 	# load chats to notify
 	notification_list = get_notify_list(
-		db_path=db_path, lsp=lsp_db_name,
-		launch_id=launch_obj.unique_id, notify_class='postpone',
+		db_path=db_path,
+		lsp=lsp_db_name,
+		launch_id=launch_obj.unique_id,
+		notify_class='postpone',
 		notif_states=old_notif_states
 	)
 
 	# load tz tuple for each chat
 	notification_list_tzs = load_bulk_tz_offset(data_dir=db_path, chat_id_set=notification_list)
+
+	# Enforce API limits
+	API_SEND_LIMIT_PER_SECOND = 30
+	messages_sent = 0
+	send_start_time = int(time.time())
 
 	sent_notification_ids = set()
 	for chat, tz_tuple in notification_list_tzs.items():
@@ -167,6 +173,7 @@ def postpone_notification(
 		# replace placeholder date with date string
 		message = message.replace('DATEHERE', date_string)
 
+		# send message
 		success, msg_id = send_postpone_notification(
 			chat_id=chat, launch_id=launch_obj.unique_id)
 
@@ -181,18 +188,35 @@ def postpone_notification(
 			while not success or fail_count < 5:
 				fail_count += 1
 				success, msg_id = send_postpone_notification(
-					chat_id=chat, launch_id=launch_obj.unique_id)
+					chat_id=chat, launch_id=launch_obj.unique_id
+				)
+
+				# Enforce rate-limits while trying to re-send
+				time.sleep(1/API_SEND_LIMIT_PER_SECOND)
 
 			# if we got success and a msg_id, store the identifiers
 			if success and msg_id is not None:
 				logging.info(f'✅ Success after {fail_count} tries!')
 				sent_notification_ids.add(msg_id)
 
+		# After each send (successful or not), enforce the API limit by sleeping
+		# 30 messages/second limit -> sleep for 33 milliseconds
+		time.sleep(1/API_SEND_LIMIT_PER_SECOND)
+
+		# Every 30 messages, sleep an additional 50 milliseconds
+		messages_sent += 1
+		if messages_sent % 30 == 0:
+			time.sleep(1/API_SEND_LIMIT_PER_SECOND)
+
+	send_end_time = int(time.time())
+	eta_string = time_delta_to_legible_eta(send_end_time-send_start_time, True)
+	logging.info(f"⏱ Sent {len(notification_list_tzs)} postpone notifications in {eta_string}")
+
 	return notification_list, sent_notification_ids
 
 
-def get_user_notifications_status(
-	db_dir: str, chat: str, provider_set: set, provider_name_map: dict) -> dict:
+def get_user_notifications_status(db_dir: str, chat: str, provider_set: set,
+provider_name_map: dict) -> dict:
 	'''
 	The function takes a list of provider strings as input, and returns a dict containing
 	the notification status for all providers.
@@ -301,9 +325,8 @@ def store_notification_identifiers(db_path: str, launch_id: str, identifiers: st
 	conn.close()
 
 
-def toggle_notification(
-	data_dir: str, chat: str, toggle_type: str, keyword: str,
-	toggle_to_state: int, provider_by_cc: dict, provider_name_map: dict):
+def toggle_notification(data_dir: str, chat: str, toggle_type: str, keyword: str,
+toggle_to_state: int, provider_by_cc: dict, provider_name_map: dict):
 	'''
 	Toggle a notification to the toggle_to_state state (if keyword is all or a cc),
 	otherwise determine the new toggle state ourselves.
@@ -707,8 +730,8 @@ def remove_previous_notification(
 	logging.info(f'🔍 {muted_count} avoided due to mute status or notification disablement.')
 
 
-def get_notify_list(
-	db_path: str, lsp: str, launch_id: str, notify_class: str, notif_states: tuple) -> set:
+def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str,
+notif_states: tuple) -> set:
 	'''
 	Pull all chats with matching keyword (LSP ID), matching country code notification,
 	or an "all" marker (and no exclusion for this ID/country)
@@ -1259,8 +1282,8 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	return inspect.cleandoc(base_message)
 
 
-def notification_handler(
-	db_path: str, notification_dict: dict, bot_username: str, bot: 'telegram.bot.Bot'):
+def notification_handler(db_path: str, notification_dict: dict, bot_username: str,
+bot: 'telegram.bot.Bot'):
 	''' Summary
 	Handles the flow associated with sending a notification.
 
@@ -1441,7 +1464,7 @@ def notification_handler(
 			# Every 30 messages, sleep an additional 50 milliseconds
 			messages_sent += 1
 			if messages_sent % 30 == 0:
-				time.sleep(0.05)
+				time.sleep(1/API_SEND_LIMIT_PER_SECOND)
 
 		send_end_time = int(time.time())
 		eta_string = time_delta_to_legible_eta(send_end_time-send_start_time, True)
@@ -1470,8 +1493,8 @@ def clear_missed_notifications(db_path: str, launch_id_dict_list: list):
 	[Enter module description]
 
 	Args:
-	    db_path (str): Description
-	    launch_id_dict_list (list): Description
+		db_path (str): Description
+		launch_id_dict_list (list): Description
 	'''
 	# open db connection
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
@@ -1498,7 +1521,7 @@ def clear_missed_notifications(db_path: str, launch_id_dict_list: list):
 
 
 def notification_send_scheduler(db_path: str, next_api_update_time: int,
-	scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
+scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
 	'''Summary
 	Notification checks are performed right after an API update, so they're always
 	up to date when the scheduling is performed. There should be only one of each
