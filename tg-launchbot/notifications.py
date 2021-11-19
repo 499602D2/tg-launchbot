@@ -144,7 +144,7 @@ def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bo
 
 	# Enforce API limits
 	# Postpone notifications are small in size, therefore we can do the full 30 msg/sec
-	API_SEND_LIMIT_PER_SECOND = 30
+	API_SEND_LIMIT_PER_SECOND = 10
 	messages_sent = 0
 	send_start_time = int(time.time())
 
@@ -669,7 +669,7 @@ def remove_previous_notification(
 		logging.exception(f'Unable to split identifiers! identifiers={identifiers}')
 		return
 
-	API_SEND_LIMIT_PER_SECOND = 30
+	API_SEND_LIMIT_PER_SECOND = 5
 	success_count, muted_count = 0, 0
 	for id_pair in identifiers:
 		# split into chat_id, message_id
@@ -1413,11 +1413,9 @@ bot: 'telegram.bot.Bot'):
 
 		# Enforce API send limits
 		# https://telegra.ph/So-your-bot-is-rate-limited-01-26
-		API_SEND_LIMIT_PER_SECOND = 30
-
 		# ≈6 per second for large messages (400+ bytes)
 		# Sending messages slow is still faster than being rate-limited
-		API_SEND_LIMIT_PER_SECOND = API_SEND_LIMIT_PER_SECOND/5
+		API_SEND_LIMIT_PER_SECOND = 5
 
 		messages_sent = 0
 		send_start_time = int(time.time())
