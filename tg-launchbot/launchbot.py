@@ -2974,6 +2974,9 @@ if __name__ == '__main__':
 			# local API disabled manually, but not logged out yet
 			logging.info('🚨 Attempting to log out from the local bot API server...')
 
+			if updater.bot.close():
+				logging.info('✅ Successfully closed connection to local API server!')
+
 			if updater.bot.log_out():
 				# update config to reflect that we've logged out
 				config['local_api_server']['logged_out'] = False
