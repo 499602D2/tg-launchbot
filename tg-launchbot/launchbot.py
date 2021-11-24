@@ -2902,7 +2902,7 @@ def apscheduler_event_listener(event):
 
 if __name__ == '__main__':
 	# current version, set DATA_DIR
-	VERSION = '2.1.22'
+	VERSION = '2.1.23'
 	DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 	OLD_DATA_DIR = os.path.join(os.path.dirname(__file__), 'launchbot')
 
@@ -2962,10 +2962,26 @@ if __name__ == '__main__':
 				# update config to reflect that we've logged out
 				config['local_api_server']['logged_out'] = True
 				store_config(config_json=config, data_dir=DATA_DIR)
+
 				logging.info('✅ Successfully logged out from bot API server: config updated!')
 
 				updater.base_url = config['local_api_server']['address']
 				logging.info(f'✅ base_url set to {config["local_api_server"]["address"]}')
+			else:
+				logging.warning('⚠️ Failed to log out from the bot API server!')
+				sys.exit('Exiting...')
+		elif local_api_conf['enabled'] is False and local_api_conf['logged_out'] is True:
+			# local API disabled manually, but not logged out yet
+			logging.info('🚨 Attempting to log out from the local bot API server...')
+
+			if updater.bot.log_out():
+				# update config to reflect that we've logged out
+				config['local_api_server']['logged_out'] = False
+				store_config(config_json=config, data_dir=DATA_DIR)
+
+				logging.info('✅ Successfully logged out from bot API server: config updated!')
+				updater = Updater(config['bot_token'], use_context=True)
+
 			else:
 				logging.warning('⚠️ Failed to log out from the bot API server!')
 				sys.exit('Exiting...')

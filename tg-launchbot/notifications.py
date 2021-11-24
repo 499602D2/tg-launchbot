@@ -144,7 +144,7 @@ def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bo
 
 	# Enforce API limits
 	# Postpone notifications are small in size, therefore we can do the full 30 msg/sec
-	API_SEND_LIMIT_PER_SECOND = 10
+	API_SEND_LIMIT_PER_SECOND = 4
 	messages_sent = 0
 	send_start_time = int(time.time())
 
@@ -186,14 +186,17 @@ def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bo
 			logging.info(f'⚠️ Failed to send postpone notification to chat={chat}!')
 
 			fail_count = 0
-			while not success or fail_count < 5:
+			while fail_count < 5:
 				fail_count += 1
 				success, msg_id = send_postpone_notification(
 					chat_id=chat, launch_id=launch_obj.unique_id
 				)
 
+				if success:
+					break
+
 				# Enforce rate-limits while trying to re-send
-				time.sleep(1/API_SEND_LIMIT_PER_SECOND)
+				time.sleep(1)
 
 			# if we got success and a msg_id, store the identifiers
 			if success and msg_id is not None:
@@ -669,7 +672,7 @@ def remove_previous_notification(
 		logging.exception(f'Unable to split identifiers! identifiers={identifiers}')
 		return
 
-	API_SEND_LIMIT_PER_SECOND = 5
+	API_SEND_LIMIT_PER_SECOND = 4
 	success_count, muted_count = 0, 0
 	for id_pair in identifiers:
 		# split into chat_id, message_id
@@ -1415,7 +1418,7 @@ bot: 'telegram.bot.Bot'):
 		# https://telegra.ph/So-your-bot-is-rate-limited-01-26
 		# ≈6 per second for large messages (400+ bytes)
 		# Sending messages slow is still faster than being rate-limited
-		API_SEND_LIMIT_PER_SECOND = 5
+		API_SEND_LIMIT_PER_SECOND = 4
 
 		messages_sent = 0
 		send_start_time = int(time.time())
@@ -1448,14 +1451,17 @@ bot: 'telegram.bot.Bot'):
 				logging.info(f'⚠️ Failed to send notification to chat={chat_id}!')
 
 				fail_count = 0
-				while not success or fail_count < 5:
+				while fail_count < 5:
 					fail_count += 1
 					success, msg_id = send_notification(
 						chat=chat_id, message=notification_message, launch_id=launch_id,
 						notif_class=notify_class, bot=bot, tz_tuple=tz_tuple, net_unix=launch_dict['net_unix'],
 						db_path=db_path)
 
-					time.sleep(1/API_SEND_LIMIT_PER_SECOND)
+					if success:
+						break
+
+					time.sleep(1)
 
 				# if we got success and a msg_id, store the identifiers
 				if success and msg_id is not None:

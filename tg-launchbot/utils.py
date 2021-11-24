@@ -35,8 +35,8 @@ def retry_after(retry_after_secs):
 	"""
 	Sleep at most 5 seconds during Telegram rate-limits
 	"""
-	if retry_after_secs > 5:
-		time.sleep(5)
+	if retry_after_secs > 30:
+		time.sleep(30)
 	else:
 		time.sleep(retry_after_secs + 0.15)
 
