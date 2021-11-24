@@ -2953,7 +2953,8 @@ if __name__ == '__main__':
 		updater = Updater(config['bot_token'], use_context=True, base_url=api_url)
 	else:
 		# register updater
-		updater = Updater(config['bot_token'], use_context=True)
+		cloud_API = "https://api.telegram.org"
+		updater = Updater(config['bot_token'], use_context=True, base_url=cloud_API)
 
 		# if local api is enabled but not in use (e.g. not logged out), log out
 		if local_api_conf['enabled'] is True:
