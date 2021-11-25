@@ -209,8 +209,8 @@ def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bo
 
 		# Every 30 messages, sleep an additional 50 milliseconds
 		messages_sent += 1
-		if messages_sent % 30 == 0:
-			time.sleep(1/API_SEND_LIMIT_PER_SECOND)
+		if messages_sent % 50 == 0:
+			time.sleep(3)
 
 	send_end_time = int(time.time())
 	eta_string = time_delta_to_legible_eta(send_end_time-send_start_time, True)
@@ -1472,10 +1472,10 @@ bot: 'telegram.bot.Bot'):
 			# 30 messages/second limit -> sleep for 33 milliseconds
 			time.sleep(1/API_SEND_LIMIT_PER_SECOND)
 
-			# Every 30 messages, sleep an additional 50 milliseconds
+			# Every 50 messages, take a break
 			messages_sent += 1
-			if messages_sent % 30 == 0:
-				time.sleep(1/API_SEND_LIMIT_PER_SECOND)
+			if messages_sent % 50 == 0:
+				time.sleep(3)
 
 		send_end_time = int(time.time())
 		eta_string = time_delta_to_legible_eta(send_end_time-send_start_time, True)
@@ -1569,7 +1569,7 @@ scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
 
 	# create a dict of notif_send_time: launch(es) tags
 	# add extra time to 5 min notification: sending 1000 large messages at 6 msg/sec is slow
-	notif_send_times, time_map = {}, {0: 24*3600+120, 1: 12*3600+120, 2: 3600+120, 3: 5*60+120}
+	notif_send_times, time_map = {}, {0: 24*3600+2*60, 1: 12*3600+2*60, 2: 3600+2*60, 3: 5*60+3*60}
 	for launch_row in query_return:
 		# don't notify of unverified launches (status=TBD)
 		launch_status = launch_row[2]

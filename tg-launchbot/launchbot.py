@@ -2902,7 +2902,7 @@ def apscheduler_event_listener(event):
 
 if __name__ == '__main__':
 	# current version, set DATA_DIR
-	VERSION = '2.1.23'
+	VERSION = '2.1.24'
 	DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 	OLD_DATA_DIR = os.path.join(os.path.dirname(__file__), 'launchbot')
 
@@ -2953,8 +2953,7 @@ if __name__ == '__main__':
 		updater = Updater(config['bot_token'], use_context=True, base_url=api_url)
 	else:
 		# register updater
-		cloud_API = "https://api.telegram.org/bot"
-		updater = Updater(config['bot_token'], use_context=True, base_url=cloud_API)
+		updater = Updater(config['bot_token'], use_context=True)
 
 		# if local api is enabled but not in use (e.g. not logged out), log out
 		if local_api_conf['enabled'] is True:
