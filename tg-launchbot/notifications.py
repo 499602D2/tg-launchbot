@@ -49,7 +49,7 @@ def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bo
 			''' Rate-limited by Telegram
 			https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this '''
 			retry_time = error.retry_after
-			logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
+			logging.exception(f'🚧 [postpone-send] Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
 			retry_after(retry_time)
 
 			return False, None
@@ -700,7 +700,7 @@ def remove_previous_notification(
 			except telegram.error.RetryAfter as error:
 				# sleep for a while
 				retry_time = error.retry_after
-				logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
+				logging.exception(f'🚧 [rm prev. notif] Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
 				retry_after(retry_time)
 
 				# try deleting again
@@ -895,7 +895,7 @@ bot: 'telegram.bot.Bot', tz_tuple: tuple, net_unix: int, db_path: str):
 		''' Rate-limited by Telegram
 		https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this '''
 		retry_time = error.retry_after
-		logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
+		logging.exception(f'🚧 [send notif] Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
 		retry_after(retry_time)
 
 		return False, None
@@ -1569,7 +1569,7 @@ scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
 
 	# create a dict of notif_send_time: launch(es) tags
 	# add extra time to 5 min notification: sending 1000 large messages at 6 msg/sec is slow
-	notif_send_times, time_map = {}, {0: 24*3600+2*60, 1: 12*3600+2*60, 2: 3600+2*60, 3: 5*60+3*60}
+	notif_send_times, time_map = {}, {0: 24*3600+5*60, 1: 12*3600+5*60, 2: 3600+5*60, 3: 5*60+7*60}
 	for launch_row in query_return:
 		# don't notify of unverified launches (status=TBD)
 		launch_status = launch_row[2]

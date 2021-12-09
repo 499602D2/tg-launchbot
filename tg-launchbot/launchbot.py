@@ -267,7 +267,7 @@ def command_pre_handler(update, context, skip_timer_handle):
 	except telegram.error.RetryAfter as error:
 			''' Rate-limited by Telegram
 			https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this '''
-			logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+			logging.exception(f'🚧 [270] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
 			retry_after(error.retry_after)
 
 			return False
@@ -373,7 +373,7 @@ def command_pre_handler(update, context, skip_timer_handle):
 							logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): unable to delete message ⚠️')
 					except telegram.error.RetryAfter as error:
 						# sleep for a while
-						logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+						logging.exception(f'🚧 [376] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
 						retry_after(error.retry_after)
 
 						try:
@@ -1127,7 +1127,7 @@ def callback_handler(update, context):
 						reply_markup=ReplyKeyboardRemove(remove_keyboard=True)
 					)
 				except telegram.error.RetryAfter as error:
-					logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+					logging.exception(f'🚧 [1130] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
 					retry_after(error.retry_after)
 
 					sent_message = context.bot.send_message(
@@ -1140,7 +1140,7 @@ def callback_handler(update, context):
 				try:
 					context.bot.deleteMessage(sent_message.chat.id, sent_message.message_id)
 				except telegram.error.RetryAfter as error:
-					logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+					logging.exception(f'🚧 [1143] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
 					retry_after(error.retry_after)
 
 					context.bot.deleteMessage(sent_message.chat.id, sent_message.message_id)
@@ -1158,7 +1158,7 @@ def callback_handler(update, context):
 						parse_mode='Markdown',
 						reply_markup=keyboard)
 				except telegram.error.RetryAfter as error:
-					logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+					logging.exception(f'🚧 [1161] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
 					retry_after(error.retry_after)
 
 					sent_message = context.bot.send_message(
@@ -1657,7 +1657,7 @@ def notify(update, context):
 		context.bot.send_message(chat, inspect.cleandoc(message_text),
 			parse_mode='Markdown', reply_markup=keyboard)
 	except telegram.error.RetryAfter as error:
-		logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		logging.exception(f'🚧 [1660] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
 		retry_after(error.retry_after)
 		context.bot.send_message(chat, inspect.cleandoc(message_text),
 			parse_mode='Markdown', reply_markup=keyboard)
@@ -1700,7 +1700,7 @@ def feedback(update, context):
 		logging.info(f'Unauthorized to send message! Error.message: {error.message}')
 		clean_chats_db(db_path=DATA_DIR, chat=chat_id)
 	except telegram.error.RetryAfter as error:
-		logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		logging.exception(f'🚧 [1703] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
 		retry_after(error.retry_after)
 
 		sent_msg = context.bot.send_message(
@@ -1975,7 +1975,7 @@ def flight_schedule(update, context):
 		clean_chats_db(db_path=DATA_DIR, chat=chat_id)
 
 	except telegram.error.RetryAfter as error:
-		logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		logging.exception(f'🚧 [1978] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
 		retry_after(error.retry_after)
 
 		context.bot.send_message(chat_id, schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
@@ -2631,7 +2631,7 @@ def next_flight(update, context):
 		clean_chats_db(db_path=DATA_DIR, chat=chat_id)
 
 	except telegram.error.RetryAfter as error:
-		logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		logging.exception(f'🚧 [2634] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
 		retry_after(error.retry_after)
 
 		context.bot.send_message(
@@ -2832,7 +2832,7 @@ def statistics(update, context):
 		clean_chats_db(db_path=DATA_DIR, chat=chat_id)
 
 	except telegram.error.RetryAfter as error:
-		logging.exception(f'🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		logging.exception(f'[2835] 🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
 		retry_after(error.retry_after)
 
 		context.bot.send_message(
@@ -2902,7 +2902,7 @@ def apscheduler_event_listener(event):
 
 if __name__ == '__main__':
 	# current version, set DATA_DIR
-	VERSION = '2.1.24'
+	VERSION = '2.1.25'
 	DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 	OLD_DATA_DIR = os.path.join(os.path.dirname(__file__), 'launchbot')
 
