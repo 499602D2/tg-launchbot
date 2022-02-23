@@ -39,17 +39,15 @@ from telegram.ext import CallbackQueryHandler
 from api import api_call_scheduler
 from config import load_config, store_config, repair_config
 from db import (update_stats_db, create_chats_db)
-from utils import (
-	anonymize_id, time_delta_to_legible_eta, map_country_code_to_flag,
-	timestamp_to_legible_date_string, short_monospaced_text,
-	reconstruct_message_for_markdown, reconstruct_link_for_markdown,
-	suffixed_readable_int, retry_after)
-from timezone import (
-	load_locale_string, remove_time_zone_information, update_time_zone_string,
-	update_time_zone_value, load_time_zone_status)
-from notifications import (
-	get_user_notifications_status, toggle_notification,
-	update_notif_preference, get_notif_preference, toggle_launch_mute, clean_chats_db)
+from utils import (anonymize_id, time_delta_to_legible_eta,
+	map_country_code_to_flag, timestamp_to_legible_date_string,
+	short_monospaced_text, reconstruct_message_for_markdown,
+	reconstruct_link_for_markdown, suffixed_readable_int, retry_after)
+from timezone import (load_locale_string, remove_time_zone_information,
+	update_time_zone_string, update_time_zone_value, load_time_zone_status)
+from notifications import (get_user_notifications_status, toggle_notification,
+	update_notif_preference, get_notif_preference, toggle_launch_mute,
+	clean_chats_db)
 
 # global variable definitions
 global VERSION, OWNER
@@ -63,7 +61,9 @@ try:
 	# verify redis connection so we don't run into issues later on
 	ret = rd.setex(name='foo', value='bar', time=datetime.timedelta(seconds=1))
 except redis.exceptions.ConnectionError:
-	sys.exit('🛑 Error connecting to redis instance! Verify redis-server configuration.')
+	sys.exit(
+		'🛑 Error connecting to redis instance! Verify redis-server configuration.'
+	)
 
 
 def api_update_on_restart():
@@ -75,7 +75,7 @@ def api_update_on_restart():
 	cursor_ = conn.cursor()
 
 	try:
-		cursor_.execute('UPDATE stats SET last_api_update = ?', (None,))
+		cursor_.execute('UPDATE stats SET last_api_update = ?', (None, ))
 	except sqlite3.OperationalError:
 		logging.warning('Database doesn\'t exist! Ignoring flag...')
 
@@ -88,6 +88,15 @@ def admin_handler(update, context):
 	Allow bot owner to export logs and database remotely. Can only be called
 	in private chat with owner.
 	'''
+
+	def invalid_command():
+		args_list = ("`export-logs`", "`export-db`", "`force-api-update`",
+			"`git-pull`", "`restart`", "`feedbackreply`")
+
+		context.bot.send_message(chat_id=chat.id,
+			parse_mode="Markdown",
+			text=f"ℹ️ *Invalid input!* Arguments: {', '.join(args_list)}.")
+
 	def restart_program():
 		'''
 		Restarts the current program, with file objects and descriptors
@@ -114,37 +123,41 @@ def admin_handler(update, context):
 		log_path = os.path.join(DATA_DIR, 'log-file.log')
 		log_fsz = os.path.getsize(log_path) / 10**6
 
-		context.bot.send_message(
-			chat_id=chat.id, text=f'🔄 Exporting logs (`{log_fsz:.2f} MB`)...',
+		context.bot.send_message(chat_id=chat.id,
+			text=f'🔄 Exporting logs (`{log_fsz:.2f} MB`)...',
 			parse_mode='Markdown')
 
 		logging.info('🔄 Exporting logs...')
 		with open(log_path, 'rb') as log_file:
-			context.bot.send_document(
-				chat_id=chat.id, document=log_file,
+			context.bot.send_document(chat_id=chat.id,
+				document=log_file,
 				filename=f'log-export-{int(time.time())}.log')
 
 	elif update.message.text == '/debug export-db':
-		context.bot.send_message(chat_id=chat.id, text='🔄 Exporting database...')
+		context.bot.send_message(chat_id=chat.id,
+			text='🔄 Exporting database...')
 		logging.info('🔄 Exporting database...')
 
-		with open(os.path.join(DATA_DIR, 'launchbot-data.db'), 'rb') as db_file:
-			context.bot.send_document(
-				chat_id=chat.id, document=db_file,
+		with open(os.path.join(DATA_DIR, 'launchbot-data.db'),
+			'rb') as db_file:
+			context.bot.send_document(chat_id=chat.id,
+				document=db_file,
 				filename=f'db-export-{int(time.time())}.db')
 
 	elif update.message.text == '/debug restart':
-		running = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME), True)
+		running = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME),
+			True)
 		logging.info(f'⚠️ Restarting program... Runtime: {running}.')
 
-		context.bot.send_message(
-			chat_id=chat.id, text=f'⚠️ *Restarting...* Runtime: {running}.',
+		context.bot.send_message(chat_id=chat.id,
+			text=f'⚠️ *Restarting...* Runtime: {running}.',
 			parse_mode='Markdown')
 		restart_program()
 
 	elif update.message.text == '/debug git-pull':
-		context.bot.send_message(
-				chat_id=chat.id, text='🐙 Pulling master...', parse_mode='Markdown')
+		context.bot.send_message(chat_id=chat.id,
+			text='🐙 Pulling master...',
+			parse_mode='Markdown')
 
 		repo = git.Repo('../')
 		current = repo.head.commit
@@ -152,12 +165,12 @@ def admin_handler(update, context):
 
 		if current != repo.head.commit:
 			last_commit = repo.heads[0].commit.hexsha
-			context.bot.send_message(
-				chat_id=chat.id, text=f'🐙 Git pull completed!\n\nLast commit: `{last_commit}`',
+			context.bot.send_message(chat_id=chat.id,
+				text=f'🐙 Git pull completed!\n\nLast commit: `{last_commit}`',
 				parse_mode='Markdown')
 		else:
-			context.bot.send_message(
-				chat_id=chat.id, text='🐙 Git pull completed: no changes.',
+			context.bot.send_message(chat_id=chat.id,
+				text='🐙 Git pull completed: no changes.',
 				parse_mode='Markdown')
 
 		repo.close()
@@ -165,16 +178,54 @@ def admin_handler(update, context):
 	elif update.message.text == '/debug force-api-update':
 		logging.info('⚠️ Updating stats to enable immediate API update...')
 		api_update_on_restart()
-		context.bot.send_message(chat_id=chat.id, text='⚠️ DB updated for immediate API update')
+		context.bot.send_message(chat_id=chat.id,
+			text='⚠️ DB updated for immediate API update')
+
+	elif "/debug feedbackreply" in update.message.text:
+		command = update.message.text.split(" ")
+
+		# if only two or less components, return (i.e. command + chat ID)
+		if len(command) < 4:
+			invalid_command()
+			return
+
+		# extract ID and text content
+		chatId = command[2]
+		textContent = command[3::]
+
+		# try intifying chat ID
+		if chatId != "ADMIN":
+			try:
+				chatId = int(chatId)
+			except:
+				context.bot.send_message(chat_id=chat.id,
+					parse_mode="Markdown",
+					text=
+					f"ℹ️ *Invalid input!* Chat ID `{chatId}` is not an integer."
+											)
+
+				return
+		else:
+			# only admin can call this function, so this is fine
+			chatId = chat.id
+
+		feedbackReplyMessage = f"*🚀 LaunchBot developer feedback reply* \n\n{' '.join(textContent)}"
+		feedbackReplyMessage += "\n\nℹ️ _To reply to this message, simply use /feedback again._"
+
+		# send
+		try:
+			context.bot.send_message(chat_id=chatId,
+				parse_mode='Markdown',
+				text=feedbackReplyMessage)
+		except Exception as e:
+			logging.exception(
+				"Error sending feedback reply message through /debug!")
+			context.bot.send_message(chat_id=chat.id,
+				parse_mode='Markdown',
+				text=f"Error sending message: {e}. Refer to logs.")
 
 	else:
-		args_list = (
-			'`export-logs`', '`export-db`', '`force-api-update`', '`git-pull`', '`restart`')
-
-		context.bot.send_message(
-			chat_id=chat.id,
-			parse_mode='Markdown',
-			text=f'ℹ️ *Invalid input!* Arguments: {", ".join(args_list)}.')
+		invalid_command()
 
 
 def generic_update_handler(update, context):
@@ -196,24 +247,31 @@ def generic_update_handler(update, context):
 			cursor_ = conn.cursor()
 
 			try:
-				cursor_.execute("DELETE FROM chats WHERE chat = ?", (chat.id,))
+				cursor_.execute("DELETE FROM chats WHERE chat = ?",
+					(chat.id, ))
 			except Exception as error:
-				logging.exception(f'⚠️ Error removing chat from chats db! {error}')
+				logging.exception(
+					f'⚠️ Error removing chat from chats db! {error}')
 
 			conn.commit()
 			conn.close()
 
 			logging.info(
-				f'⚠️ Bot removed from chat {anonymize_id(chat.id)} – notifications database cleaned [2]')
+				f'⚠️ Bot removed from chat {anonymize_id(chat.id)} – notifications database cleaned [2]'
+			)
 
 	elif update.message.group_chat_created not in (None, False):
 		# a new group chat created, with the bot in it
-		logging.info('✨ Group chat created! (update.message.group_chat_created is not None)')
+		logging.info(
+			'✨ Group chat created! (update.message.group_chat_created is not None)'
+		)
 		start(update, context)
 
 	elif update.message.migrate_from_chat_id not in (None, False):
 		# chat migrated from id in the migrate obj. to chat.id
-		logging.info(f'✅ Chat migrated from {update.message.migrate_from_chat_id} to {chat.id}')
+		logging.info(
+			f'✅ Chat migrated from {update.message.migrate_from_chat_id} to {chat.id}'
+		)
 		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 		cursor_ = conn.cursor()
 
@@ -221,7 +279,9 @@ def generic_update_handler(update, context):
 			cursor_.execute('UPDATE chats SET chat = ? WHERE chat = ?',
 				(chat.id, update.message.migrate_from_chat_id))
 		except Exception:
-			logging.exception(f'Unable to migrate {update.message.migrate_from_chat_id} to {chat.id}!')
+			logging.exception(
+				f'Unable to migrate {update.message.migrate_from_chat_id} to {chat.id}!'
+			)
 
 		conn.commit()
 		conn.close()
@@ -229,7 +289,9 @@ def generic_update_handler(update, context):
 	elif update.message.new_chat_members not in (None, False):
 		if BOT_ID in [user.id for user in update.message.new_chat_members]:
 			# bot added to the chat
-			logging.info('✨ Bot added to group! (update.message.new_chat_member.id == BOT_ID)')
+			logging.info(
+				'✨ Bot added to group! (update.message.new_chat_member.id == BOT_ID)'
+			)
 			start(update, context)
 
 
@@ -243,7 +305,8 @@ def command_pre_handler(update, context, skip_timer_handle):
 	try:
 		chat = update.message.chat
 	except AttributeError:
-		logging.warning(f'Unable to set chat: update.message has not property! {update}')
+		logging.warning(
+			f'Unable to set chat: update.message has not property! {update}')
 		return False
 
 	# verify that the user who sent this is not in spammers
@@ -253,9 +316,9 @@ def command_pre_handler(update, context, skip_timer_handle):
 
 	# all users don't have a user ID, so check for the regular username as well
 	if update.message.author_signature in ignored_users:
-		logging.info('😎 Message from spamming user (no UID) ignored successfully')
+		logging.info(
+			'😎 Message from spamming user (no UID) ignored successfully')
 		return False
-
 	''' for admin/private chat checks; also might throw an error when kicked out of a group,
 	so handle that here as well '''
 	try:
@@ -265,26 +328,31 @@ def command_pre_handler(update, context, skip_timer_handle):
 			chat_type = context.bot.getChat(chat).type
 
 	except telegram.error.RetryAfter as error:
-			''' Rate-limited by Telegram
+		''' Rate-limited by Telegram
 			https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this '''
-			logging.exception(f'🚧 [270] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
-			retry_after(error.retry_after)
+		logging.exception(
+			f'🚧 [270] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.'
+		)
+		retry_after(error.retry_after)
 
-			return False
+		return False
 
 	except telegram.error.TimedOut as error:
 		logging.exception('🚧 Got a telegram.error.TimedOut!.')
 		return False
 
 	except telegram.error.ChatMigrated as error:
-		logging.info(f'⚠️ Group {anonymize_id(chat.id)} migrated to {anonymize_id(error.new_chat_id)}')
+		logging.info(
+			f'⚠️ Group {anonymize_id(chat.id)} migrated to {anonymize_id(error.new_chat_id)}'
+		)
 
 		# establish connection
 		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 		cursor_ = conn.cursor()
 
 		# replace old ids with new ids
-		cursor_.execute("UPDATE chats SET chat = ? WHERE chat = ?", (error.new_chat_id, chat.id))
+		cursor_.execute("UPDATE chats SET chat = ? WHERE chat = ?",
+			(error.new_chat_id, chat.id))
 		conn.commit()
 		conn.close()
 
@@ -313,13 +381,16 @@ def command_pre_handler(update, context, skip_timer_handle):
 			logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat.id)}.')
 
 		elif 'user is deactivated' in error.message:
-			logging.exception(f'⚠️ User {anonymize_id(chat.id)} was deactivated.')
+			logging.exception(
+				f'⚠️ User {anonymize_id(chat.id)} was deactivated.')
 
 		elif 'bot was kicked from the supergroup chat' in error.message:
-			logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat.id)}.')
+			logging.exception(
+				f'⚠️ Bot was kicked from supergroup {anonymize_id(chat.id)}.')
 
 		elif 'bot is not a member of the supergroup chat' in error.message:
-			logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat.id)}.')
+			logging.exception(
+				f'⚠️ Bot was kicked from supergroup {anonymize_id(chat.id)}.')
 
 		elif "Can't parse entities" in error.message:
 			logging.exception('🛑 Error parsing message markdown!')
@@ -328,29 +399,41 @@ def command_pre_handler(update, context, skip_timer_handle):
 		conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
 		cursor_ = conn.cursor()
 
-		cursor_.execute("DELETE FROM chats WHERE chat = ?", (chat.id),)
+		cursor_.execute(
+			"DELETE FROM chats WHERE chat = ?",
+			(chat.id),
+		)
 		conn.commit()
 		conn.close()
 
-		logging.info(f'⚠️ Bot removed from chat {anonymize_id(chat.id)} – notifications database cleaned [1]')
+		logging.info(
+			f'⚠️ Bot removed from chat {anonymize_id(chat.id)} – notifications database cleaned [1]'
+		)
 		return False
 
 	# filter spam
 	try:
 		cmd = update.message.text.split(' ')[0]
 	except AttributeError:
-		logging.warning(f'(ignored) Error setting value for cmd (AttrError). Update.message: {update.message}')
+		logging.warning(
+			f'(ignored) Error setting value for cmd (AttrError). Update.message: {update.message}'
+		)
 		return True
 	except KeyError:
-		logging.warning(f'Error setting value for cmd (KeyError). Update.message: {update.message}')
+		logging.warning(
+			f'Error setting value for cmd (KeyError). Update.message: {update.message}'
+		)
 		return False
 
 	if not skip_timer_handle:
-		if not timer_handle(update, context, cmd, chat.id, update.message.from_user.id):
+		if not timer_handle(update, context, cmd, chat.id,
+			update.message.from_user.id):
 			blocked_user = update.message.from_user.id
 			blocked_chat = chat.id
 
-			logging.info(f'✋ [{cmd}] Spam prevented from {blocked_chat} by {blocked_user}.')
+			logging.info(
+				f'✋ [{cmd}] Spam prevented from {blocked_chat} by {blocked_user}.'
+			)
 			return False
 
 	# check if sender is an admin/creator, and/or if we're in a public chat
@@ -361,37 +444,58 @@ def command_pre_handler(update, context, skip_timer_handle):
 			all_admins = False
 
 		if not all_admins:
-			sender = context.bot.get_chat_member(chat.id, update.message.from_user.id)
+			sender = context.bot.get_chat_member(chat.id,
+				update.message.from_user.id)
 			if sender.status not in ('creator', 'administrator'):
 				# check for bot's admin status and whether we can remove the message
-				bot_chat_specs = context.bot.get_chat_member(chat.id, context.bot.getMe().id)
+				bot_chat_specs = context.bot.get_chat_member(
+					chat.id,
+					context.bot.getMe().id)
 				if bot_chat_specs.status == 'administrator':
 					try:
-						if context.bot.deleteMessage(chat.id, update.message.message_id):
-							logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): successfully deleted message! ✅')
+						if context.bot.deleteMessage(chat.id,
+							update.message.message_id):
+							logging.info(
+								f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): successfully deleted message! ✅'
+							)
 						else:
-							logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): unable to delete message ⚠️')
+							logging.info(
+								f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): unable to delete message ⚠️'
+							)
 					except telegram.error.RetryAfter as error:
 						# sleep for a while
-						logging.exception(f'🚧 [376] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+						logging.exception(
+							f'🚧 [376] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.'
+						)
 						retry_after(error.retry_after)
 
 						try:
-							if context.bot.deleteMessage(chat.id, update.message.message_id):
-								logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)}: removed!')
+							if context.bot.deleteMessage(
+								chat.id, update.message.message_id):
+								logging.info(
+									f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)}: removed!'
+								)
 							else:
-								logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)}: failed to remove!')
+								logging.info(
+									f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)}: failed to remove!'
+								)
 						except Exception:
 							pass
 
 					except telegram.error.BadRequest:
-						logging.warning('Unable to remove message sent by non-admin due to BadRequest')
+						logging.warning(
+							'Unable to remove message sent by non-admin due to BadRequest'
+						)
 
 					except Exception as error:
-						logging.exception(f'⚠️ Could not delete message sent by non-admin: {error}')
+						logging.exception(
+							f'⚠️ Could not delete message sent by non-admin: {error}'
+						)
 
 				else:
-					logging.info(f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): could not remove.')
+					logging.info(
+						f'✋ {cmd} called by a non-admin in {anonymize_id(chat.id)} ({anonymize_id(update.message.from_user.id)}): could not remove.'
+					)
 
 				return False
 
@@ -402,6 +506,7 @@ def callback_handler(update, context):
 	'''
 	Handles responses to callbacks.
 	'''
+
 	def update_main_view(chat, msg, text_refresh):
 		'''
 		Updates the main view for the notify message.
@@ -437,27 +542,42 @@ def callback_handler(update, context):
 
 		global_text = f'{rand_planet} Press to {toggle_text} all'
 
-		keyboard = InlineKeyboardMarkup(
-			inline_keyboard = [
-				[InlineKeyboardButton(text=global_text, callback_data=f'notify/toggle/all/all')],
-
-				[InlineKeyboardButton(text='🇪🇺 EU', callback_data=f'notify/list/EU'),
-				InlineKeyboardButton(text='🇺🇸 USA', callback_data=f'notify/list/USA')],
-
-				[InlineKeyboardButton(text='🇷🇺 Russia', callback_data=f'notify/list/RUS'),
-				InlineKeyboardButton(text='🇨🇳 China', callback_data=f'notify/list/CHN')],
-
-				[InlineKeyboardButton(text='🇮🇳 India', callback_data=f'notify/list/IND'),
-				InlineKeyboardButton(text='🇯🇵 Japan', callback_data=f'notify/list/JPN')],
-
-				[InlineKeyboardButton(text='🇹🇼 Taiwan', callback_data=f'notify/list/TWN'),
-				InlineKeyboardButton(text='🏳 Placeholder', callback_data='notify/main_menu')],
-
-				[InlineKeyboardButton(text='⚙️ Edit your preferences', callback_data=f'prefs/main_menu')],
-
-				[InlineKeyboardButton(text='✅ Save and exit', callback_data=f'notify/done')]
-			]
-		)
+		keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+			InlineKeyboardButton(text=global_text,
+			callback_data=f'notify/toggle/all/all')
+		],
+			[
+			InlineKeyboardButton(text='🇪🇺 EU',
+			callback_data=f'notify/list/EU'),
+			InlineKeyboardButton(text='🇺🇸 USA',
+			callback_data=f'notify/list/USA')
+			],
+			[
+			InlineKeyboardButton(text='🇷🇺 Russia',
+			callback_data=f'notify/list/RUS'),
+			InlineKeyboardButton(text='🇨🇳 China',
+			callback_data=f'notify/list/CHN')
+			],
+			[
+			InlineKeyboardButton(text='🇮🇳 India',
+			callback_data=f'notify/list/IND'),
+			InlineKeyboardButton(text='🇯🇵 Japan',
+			callback_data=f'notify/list/JPN')
+			],
+			[
+			InlineKeyboardButton(text='🇹🇼 Taiwan',
+			callback_data=f'notify/list/TWN'),
+			InlineKeyboardButton(text='🏳 Placeholder',
+			callback_data='notify/main_menu')
+			],
+			[
+			InlineKeyboardButton(text='⚙️ Edit your preferences',
+			callback_data=f'prefs/main_menu')
+			],
+			[
+			InlineKeyboardButton(text='✅ Save and exit',
+			callback_data=f'notify/done')
+			]])
 
 		# now we have the keyboard; update the previous keyboard
 		if text_refresh:
@@ -474,7 +594,8 @@ def callback_handler(update, context):
 
 			try:
 				query.edit_message_text(text=inspect.cleandoc(message_text),
-					reply_markup=keyboard, parse_mode='Markdown')
+					reply_markup=keyboard,
+					parse_mode='Markdown')
 			except:
 				logging.exception('Error updating main view message text!')
 		else:
@@ -483,8 +604,8 @@ def callback_handler(update, context):
 			except telegram.error.BadRequest:
 				pass
 			except:
-				logging.exception('Error updating main view message reply markup!')
-
+				logging.exception(
+					'Error updating main view message reply markup!')
 
 	def update_list_view(msg, chat, provider_list):
 		'''
@@ -498,7 +619,8 @@ def callback_handler(update, context):
 			else:
 				providers.add(provider)
 
-		notification_statuses = get_user_notifications_status(DATA_DIR, chat, providers, provider_by_cc)
+		notification_statuses = get_user_notifications_status(
+			DATA_DIR, chat, providers, provider_by_cc)
 		disabled_count = 0
 
 		for key, val in notification_statuses.items():
@@ -511,50 +633,58 @@ def callback_handler(update, context):
 		# we now have the list of providers for this country code. Generate the buttons dynamically.
 		inline_keyboard = [[
 			InlineKeyboardButton(
-				text=f'{map_country_code_to_flag(country_code)} {local_text}',
-				callback_data=f'notify/toggle/country_code/{country_code}/{country_code}')
+			text=f'{map_country_code_to_flag(country_code)} {local_text}',
+			callback_data=
+			f'notify/toggle/country_code/{country_code}/{country_code}')
 		]]
 
 		# in the next part we need to sort the provider_list, which is a set: convert to a list
 		provider_list = list(provider_list)
-
 		''' dynamically creates a two-row keyboard that's as short as possible but still
 		readable with the long provider names. '''
 		provider_list.sort(key=len)
-		current_row = 0 # the all-toggle is the 0th row
+		current_row = 0  # the all-toggle is the 0th row
 		for provider, i in zip(provider_list, range(len(provider_list))):
 			if provider in provider_name_map.keys():
 				provider_db_name = provider_name_map[provider]
 			else:
 				provider_db_name = provider
 
-			notification_icon = {0:'🔕', 1:'🔔'}[notification_statuses[provider_db_name]]
+			notification_icon = {
+				0: '🔕',
+				1: '🔔'
+			}[notification_statuses[provider_db_name]]
 
 			# create a new row
 			if i % 2 == 0 or i == 0:
 				current_row += 1
 				inline_keyboard.append([
 					InlineKeyboardButton(
-						text=f'{provider} {notification_icon}',
-						callback_data=f'notify/toggle/lsp/{provider}/{country_code}')
-					])
+					text=f'{provider} {notification_icon}',
+					callback_data=f'notify/toggle/lsp/{provider}/{country_code}'
+					)
+				])
 			else:
 				if len(provider) <= len('Virgin Orbit'):
 					inline_keyboard[current_row].append(
 						InlineKeyboardButton(
-							text=f'{provider} {notification_icon}',
-							callback_data=f'notify/toggle/lsp/{provider}/{country_code}')
-						)
+						text=f'{provider} {notification_icon}',
+						callback_data=
+						f'notify/toggle/lsp/{provider}/{country_code}'))
 				else:
 					current_row += 1
 					inline_keyboard.append([
-					InlineKeyboardButton(
+						InlineKeyboardButton(
 						text=f'{provider} {notification_icon}',
-						callback_data=f'notify/toggle/lsp/{provider}/{country_code}')
+						callback_data=
+						f'notify/toggle/lsp/{provider}/{country_code}')
 					])
 
 		# append a back button, so user can return to the "main menu"
-		inline_keyboard.append([InlineKeyboardButton(text='⏮ Return to menu', callback_data='notify/main_menu')])
+		inline_keyboard.append([
+			InlineKeyboardButton(text='⏮ Return to menu',
+			callback_data='notify/main_menu')
+		])
 		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 		# now we have the keyboard; update the previous keyboard
@@ -571,7 +701,8 @@ def callback_handler(update, context):
 		query_data = update.callback_query.data
 		from_id = update.callback_query.from_user.id
 	except Exception as caught_exception:
-		logging.exception(f'⚠️ Exception in callback_handler: {caught_exception}')
+		logging.exception(
+			f'⚠️ Exception in callback_handler: {caught_exception}')
 		return
 
 	# start timer
@@ -599,7 +730,8 @@ def callback_handler(update, context):
 				sender = context.bot.get_chat_member(chat, from_id)
 			except telegram.error.Unauthorized as error:
 				if 'bot was kicked' in error.message:
-					logging.info('🗃 Bot was kicked: cleaning chats database...')
+					logging.info(
+						'🗃 Bot was kicked: cleaning chats database...')
 					clean_chats_db(DATA_DIR, chat)
 					return
 				else:
@@ -608,25 +740,36 @@ def callback_handler(update, context):
 
 			if sender.status == 'left':
 				try:
-					query.answer(text="⚠️ Send the /command again! (chat migrated) ⚠️")
+					query.answer(
+						text="⚠️ Send the /command again! (chat migrated) ⚠️")
 				except Exception as error:
-					logging.exception(f'⚠️ Ran into error when answering callbackquery (left): {error}')
+					logging.exception(
+						f'⚠️ Ran into error when answering callbackquery (left): {error}'
+					)
 					return
 
-				logging.info(f'✋ Callback query called by a left member in {anonymize_id(chat)}')
+				logging.info(
+					f'✋ Callback query called by a left member in {anonymize_id(chat)}'
+				)
 				return
 
 			if sender.status not in ('creator', 'administrator'):
 				try:
-					query.answer(text="⚠️ This button is only callable by admins! ⚠️")
+					query.answer(
+						text="⚠️ This button is only callable by admins! ⚠️")
 				except Exception as error:
-					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+					logging.exception(
+						f'⚠️ Ran into error when answering callbackquery: {error}'
+					)
 
-				logging.info(f'✋ Callback query called by a non-admin in {anonymize_id(chat)}, returning | {(1000*(timer() - start)):.0f} ms')
+				logging.info(
+					f'✋ Callback query called by a non-admin in {anonymize_id(chat)}, returning | {(1000*(timer() - start)):.0f} ms'
+				)
 				return
 
 	# callbacks only supported for notify at the moment; verify it's a notify command
-	if input_data[0] not in ('notify', 'mute', 'next_flight', 'schedule', 'prefs', 'stats'):
+	if input_data[0] not in ('notify', 'mute', 'next_flight', 'schedule',
+		'prefs', 'stats'):
 		logging.info(f'''
 			⚠️ Incorrect input data in callback_handler! input_data={input_data} | 
 			{(1000*(timer() - start)):.0f} ms''')
@@ -639,7 +782,9 @@ def callback_handler(update, context):
 			try:
 				provider_list = provider_by_cc[country_code]
 			except:
-				logging.info(f'Error finding country code {country_code} from provider_by_cc!')
+				logging.info(
+					f'Error finding country code {country_code} from provider_by_cc!'
+				)
 				return
 
 			update_list_view(msg, chat, provider_list)
@@ -647,7 +792,8 @@ def callback_handler(update, context):
 			try:
 				query.answer(text=f'{map_country_code_to_flag(country_code)}')
 			except Exception as error:
-				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+				logging.exception(
+					f'⚠️ Ran into error when answering callbackquery: {error}')
 
 		# user requests to return to the main menu; send the main keyboard
 		elif input_data[1] == 'main_menu':
@@ -660,14 +806,17 @@ def callback_handler(update, context):
 			try:
 				query.answer(text='⏮ Returned to main menu')
 			except Exception as error:
-				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+				logging.exception(
+					f'⚠️ Ran into error when answering callbackquery: {error}')
 
 			#if chat != OWNER:
 			#	logging.info(f'⏮ {anonymize_id(chat)} (main-view update) | {(1000*(timer() - start)):.0f} ms')
 
 		# user requested to toggle a notification
 		elif input_data[1] == 'toggle':
-			def get_new_notify_group_toggle_state(toggle_type, country_code, chat):
+
+			def get_new_notify_group_toggle_state(
+					toggle_type, country_code, chat):
 				'''
 				Function returns the status to toggle the notification state to
 				for multiple entries: either all, or by a country code.
@@ -682,7 +831,8 @@ def callback_handler(update, context):
 					for provider in provider_by_cc[country_code]:
 						providers.add(provider)
 
-				notification_statuses = get_user_notifications_status(DATA_DIR, chat, providers, provider_name_map)
+				notification_statuses = get_user_notifications_status(
+					DATA_DIR, chat, providers, provider_name_map)
 				disabled_count = 0
 
 				for key, val in notification_statuses.items():
@@ -701,37 +851,44 @@ def callback_handler(update, context):
 			if input_data[2] not in ('country_code', 'lsp', 'all'):
 				return
 			if input_data[2] == 'all':
-				all_toggle_new_status = get_new_notify_group_toggle_state('all', None, chat)
+				all_toggle_new_status = get_new_notify_group_toggle_state(
+					'all', None, chat)
 			else:
 				country_code = input_data[3]
 				if input_data[2] == 'country_code':
-					all_toggle_new_status = get_new_notify_group_toggle_state('country_code', country_code, chat)
+					all_toggle_new_status = get_new_notify_group_toggle_state(
+						'country_code', country_code, chat)
 				else:
 					all_toggle_new_status = 0
-
 			''' Toggle the notification state. Input: chat, type, lsp_name '''
-			new_status = toggle_notification(
-				DATA_DIR, chat, input_data[2], input_data[3], all_toggle_new_status,
-				provider_by_cc, provider_name_map)
+			new_status = toggle_notification(DATA_DIR, chat, input_data[2],
+				input_data[3], all_toggle_new_status, provider_by_cc,
+				provider_name_map)
 
 			if input_data[2] == 'lsp':
 				reply_text = {
-					1:f'🔔 Enabled notifications for {input_data[3]}',
-					0:f'🔕 Disabled notifications for {input_data[3]}'}[new_status]
+					1: f'🔔 Enabled notifications for {input_data[3]}',
+					0: f'🔕 Disabled notifications for {input_data[3]}'
+				}[new_status]
 			elif input_data[2] == 'country_code':
 				reply_text = {
-					1:f'🔔 Enabled notifications for {map_country_code_to_flag(input_data[3])}',
-					0:f'🔕 Disabled notifications for {map_country_code_to_flag(input_data[3])}'}[new_status]
+					1:
+					f'🔔 Enabled notifications for {map_country_code_to_flag(input_data[3])}',
+					0:
+					f'🔕 Disabled notifications for {map_country_code_to_flag(input_data[3])}'
+				}[new_status]
 			elif input_data[2] == 'all':
 				reply_text = {
-					1:'🔔 Enabled all notifications 🌍',
-					0:'🔕 Disabled all notifications 🌍'}[new_status]
+					1: '🔔 Enabled all notifications 🌍',
+					0: '🔕 Disabled all notifications 🌍'
+				}[new_status]
 
 			# give feedback to the button press
 			try:
 				query.answer(text=reply_text, show_alert=True)
 			except Exception as error:
-				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+				logging.exception(
+					f'⚠️ Ran into error when answering callbackquery: {error}')
 
 			#if chat != OWNER:
 			#	logging.info(f'{anonymize_id(chat)} {reply_text} | {(1000*(timer() - start)):.0f} ms')
@@ -742,7 +899,9 @@ def callback_handler(update, context):
 				try:
 					provider_list = provider_by_cc[country_code]
 				except:
-					logging.info(f'Error finding country code {country_code} from provider_by_cc!')
+					logging.info(
+						f'Error finding country code {country_code} from provider_by_cc!'
+					)
 					return
 
 				# update keyboard list view
@@ -753,15 +912,20 @@ def callback_handler(update, context):
 
 			# clear /next cache for user
 			if rd.exists(f'next-{chat}-maxindex'):
-				logging.debug(f'📕 Expiring /next cache for {chat} after notify toggle...')
+				logging.debug(
+					f'📕 Expiring /next cache for {chat} after notify toggle...'
+				)
 				max_index = rd.get(f'next-{chat}-maxindex')
 
 				# expire keys in 0.1 seconds
-				rd.expire(f'next-{chat}-maxindex', datetime.timedelta(seconds=0.1))
+				rd.expire(f'next-{chat}-maxindex',
+					datetime.timedelta(seconds=0.1))
 
 				for i in range(0, int(max_index)):
-					rd.expire(f'next-{chat}-{i}', datetime.timedelta(seconds=0.1))
-					rd.expire(f'next-{chat}-{i}-net', datetime.timedelta(seconds=0.1))
+					rd.expire(f'next-{chat}-{i}',
+						datetime.timedelta(seconds=0.1))
+					rd.expire(f'next-{chat}-{i}-net',
+						datetime.timedelta(seconds=0.1))
 
 		# user is done; remove the keyboard
 		elif input_data[1] == 'done':
@@ -776,19 +940,25 @@ def callback_handler(update, context):
 			'''
 
 			# add a button to go back
-			inline_keyboard = [[InlineKeyboardButton(text="⏮ I wasn't done!", callback_data='notify/main_menu')]]
+			inline_keyboard = [[
+				InlineKeyboardButton(text="⏮ I wasn't done!",
+				callback_data='notify/main_menu')
+			]]
 			keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 			# update message
 			try:
-				query.edit_message_text(text=inspect.cleandoc(msg_text), reply_markup=keyboard, parse_mode='Markdown')
+				query.edit_message_text(text=inspect.cleandoc(msg_text),
+					reply_markup=keyboard,
+					parse_mode='Markdown')
 			except telegram.error.BadRequest:
 				pass
 
 			try:
 				query.answer(text=reply_text)
 			except Exception as error:
-				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+				logging.exception(
+					f'⚠️ Ran into error when answering callbackquery: {error}')
 
 			#if chat != OWNER:
 			#	logging.info(f'💫 {anonymize_id(chat)} finished setting notifications with the "Done" button! | {(1000*(timer() - start)):.0f} ms')
@@ -799,20 +969,26 @@ def callback_handler(update, context):
 
 		# reverse the button status on press
 		new_toggle_state = 0 if int(input_data[2]) == 1 else 1
-		new_text = {0:'🔊 Unmute this launch', 1:'🔇 Mute this launch'}[new_toggle_state]
+		new_text = {
+			0: '🔊 Unmute this launch',
+			1: '🔇 Mute this launch'
+		}[new_toggle_state]
 		new_data = f'mute/{input_data[1]}/{new_toggle_state}'
 
 		# maximum number of bytes telegram's bot API supports in callback_data is 64 bytes
 		if len(new_data.encode('utf-8')) > 64:
-			logging.warning(f'Bytelen of new_data is >64! new_data: {new_data}')
+			logging.warning(
+				f'Bytelen of new_data is >64! new_data: {new_data}')
 
 		# create new keyboard
-		inline_keyboard = [[InlineKeyboardButton(text=new_text, callback_data=new_data)]]
-		keyboard = InlineKeyboardMarkup(
-			inline_keyboard=inline_keyboard)
+		inline_keyboard = [[
+			InlineKeyboardButton(text=new_text, callback_data=new_data)
+		]]
+		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 		# tuple containing necessary information to edit the message
-		callback_text = '🔇 Launch muted!' if input_data[2] == '1' else '🔊 Launch unmuted!'
+		callback_text = '🔇 Launch muted!' if input_data[
+			2] == '1' else '🔊 Launch unmuted!'
 
 		try:
 			query.edit_message_reply_markup(reply_markup=keyboard)
@@ -820,7 +996,8 @@ def callback_handler(update, context):
 			try:
 				query.answer(text=callback_text)
 			except Exception as error:
-				logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+				logging.exception(
+					f'⚠️ Ran into error when answering callbackquery: {error}')
 
 			#if chat != OWNER:
 			#	if new_toggle_state == 0:
@@ -830,66 +1007,100 @@ def callback_handler(update, context):
 
 		except Exception as exception:
 			logging.exception(
-				f'⚠️ User attempted to mute/unmute a launch, but no reply could be provided (sending message...): {exception}')
+				f'⚠️ User attempted to mute/unmute a launch, but no reply could be provided (sending message...): {exception}'
+			)
 
 			try:
-				context.bot.send_message(chat, callback_text, parse_mode='Markdown')
+				context.bot.send_message(chat,
+					callback_text,
+					parse_mode='Markdown')
 			except Exception as exception:
-				logging.exception(f'🛑 Ran into an error sending the mute/unmute message to chat={chat}! {exception}')
+				logging.exception(
+					f'🛑 Ran into an error sending the mute/unmute message to chat={chat}! {exception}'
+				)
 
 		# toggle the mute here, so we can give more responsive feedback
-		toggle_launch_mute(db_path=DATA_DIR, chat=chat, launch_id=input_data[1], toggle=int(input_data[2]))
+		toggle_launch_mute(db_path=DATA_DIR,
+			chat=chat,
+			launch_id=input_data[1],
+			toggle=int(input_data[2]))
 
 	elif input_data[0] == 'next_flight':
 		# next_flight(msg, current_index, command_invoke, cmd):
 		# next_flight/{next/prev}/{current_index}/{cmd}
 		# next_flight/refresh/0/{cmd}'
 		if input_data[1] not in ('next', 'prev', 'refresh'):
-			logging.info(f'⚠️ Error with callback_handler input_data[1] for next_flight. input_data={input_data}')
+			logging.info(
+				f'⚠️ Error with callback_handler input_data[1] for next_flight. input_data={input_data}'
+			)
 			return
 
 		current_index = input_data[2]
 		if input_data[1] == 'next':
-			new_message_text, keyboard = generate_next_flight_message(chat, int(current_index)+1)
+			new_message_text, keyboard = generate_next_flight_message(
+				chat,
+				int(current_index) + 1)
 
 		elif input_data[1] == 'prev':
-			new_message_text, keyboard = generate_next_flight_message(chat, int(current_index)-1)
+			new_message_text, keyboard = generate_next_flight_message(
+				chat,
+				int(current_index) - 1)
 
 		elif input_data[1] == 'refresh':
 			try:
-				new_message_text, keyboard = generate_next_flight_message(chat, int(current_index))
+				new_message_text, keyboard = generate_next_flight_message(
+					chat, int(current_index))
 
 			except TypeError:
 				new_message_text = '🔄 No launches found! Try enabling notifications for other providers, or searching for all flights.'
 				inline_keyboard = []
-				inline_keyboard.append([InlineKeyboardButton(text='🔔 Adjust your notification settings', callback_data=f'notify/main_menu/refresh_text')])
-				inline_keyboard.append([InlineKeyboardButton(text='🔎 Search for all flights', callback_data=f'next_flight/refresh/0')])
-				keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+				inline_keyboard.append([
+					InlineKeyboardButton(
+					text='🔔 Adjust your notification settings',
+					callback_data=f'notify/main_menu/refresh_text')
+				])
+				inline_keyboard.append([
+					InlineKeyboardButton(text='🔎 Search for all flights',
+					callback_data=f'next_flight/refresh/0')
+				])
+				keyboard = InlineKeyboardMarkup(
+					inline_keyboard=inline_keyboard)
 
 				logging.info(
-					'🔎 No launches found after next refresh. Sent user the "No launches found" message.')
+					'🔎 No launches found after next refresh. Sent user the "No launches found" message.'
+				)
 
 			except Exception as e:
-				new_message_text, keyboard = generate_next_flight_message(chat, int(current_index))
+				new_message_text, keyboard = generate_next_flight_message(
+					chat, int(current_index))
 				logging.exception(f'⚠️ No launches found after refresh! {e}')
 
 		# query reply text
-		query_reply_text = {'next': 'Next flight ⏩', 'prev': '⏪ Previous flight', 'refresh': '🔄 Refreshed data!'}[input_data[1]]
+		query_reply_text = {
+			'next': 'Next flight ⏩',
+			'prev': '⏪ Previous flight',
+			'refresh': '🔄 Refreshed data!'
+		}[input_data[1]]
 
 		# now we have the keyboard; update the previous keyboard
 		try:
-			query.edit_message_text(text=new_message_text, reply_markup=keyboard, parse_mode='MarkdownV2')
+			query.edit_message_text(text=new_message_text,
+				reply_markup=keyboard,
+				parse_mode='MarkdownV2')
 		except telegram.error.TelegramError as exception:
 			if 'Message is not modified' in exception.message:
 				pass
 			else:
-				logging.exception(f'⚠️ TelegramError updating message text: {exception}, {vars(exception)}')
+				logging.exception(
+					f'⚠️ TelegramError updating message text: {exception}, {vars(exception)}'
+				)
 				logging.warning(f'⚠️new_message_text: {new_message_text}')
 
 		try:
 			query.answer(text=query_reply_text)
 		except Exception as error:
-			logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+			logging.exception(
+				f'⚠️ Ran into error when answering callbackquery: {error}')
 
 		#if chat != OWNER:
 		#	logging.info(f'{anonymize_id(chat)} pressed "{query_reply_text}" button in /next | {(1000*(timer() - start)):.0f} ms')
@@ -902,19 +1113,25 @@ def callback_handler(update, context):
 		# pull new text and the keyboard
 		if input_data[1] == 'refresh':
 			try:
-				new_schedule_msg, keyboard = generate_schedule_message(input_data[2], chat)
-			except IndexError: # let's not break """legacy""" compatibility
-				new_schedule_msg, keyboard = generate_schedule_message('vehicle', chat)
+				new_schedule_msg, keyboard = generate_schedule_message(
+					input_data[2], chat)
+			except IndexError:  # let's not break """legacy""" compatibility
+				new_schedule_msg, keyboard = generate_schedule_message(
+					'vehicle', chat)
 		else:
-			new_schedule_msg, keyboard = generate_schedule_message(input_data[1], chat)
+			new_schedule_msg, keyboard = generate_schedule_message(
+				input_data[1], chat)
 
 		try:
-			query.edit_message_text(text=new_schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
+			query.edit_message_text(text=new_schedule_msg,
+				reply_markup=keyboard,
+				parse_mode='MarkdownV2')
 
 			if input_data[1] == 'refresh':
 				query_reply_text = '🔄 Schedule updated!'
 			else:
-				query_reply_text = '🚀 Vehicle schedule loaded!' if input_data[1] == 'vehicle' else '🛰 Mission schedule loaded!'
+				query_reply_text = '🚀 Vehicle schedule loaded!' if input_data[
+					1] == 'vehicle' else '🛰 Mission schedule loaded!'
 
 			query.answer(text=query_reply_text)
 
@@ -924,20 +1141,26 @@ def callback_handler(update, context):
 					query_reply_text = '🔄 Schedule refreshed – no changes detected!'
 					query.answer(text=query_reply_text)
 				except Exception as error:
-					logging.exception(f'⚠️ Ran into error when answering callbackquery: {error}')
+					logging.exception(
+						f'⚠️ Ran into error when answering callbackquery: {error}'
+					)
 				pass
 			else:
-				logging.exception(f'⚠️ TelegramError updating message text: {exception}')
+				logging.exception(
+					f'⚠️ TelegramError updating message text: {exception}')
 
 	elif input_data[0] == 'prefs':
-		if input_data[1] not in ('timezone', 'notifs', 'cmds', 'done', 'main_menu'):
+		if input_data[1] not in ('timezone', 'notifs', 'cmds', 'done',
+			'main_menu'):
 			return
 
 		if input_data[1] == 'done':
 			query.answer(text='✅ All done!')
 			message_text = '💫 Your preferences were saved!'
 			try:
-				query.edit_message_text(text=message_text, reply_markup=None, parse_mode='Markdown')
+				query.edit_message_text(text=message_text,
+					reply_markup=None,
+					parse_mode='Markdown')
 			except telegram.error.BadRequest:
 				pass
 
@@ -955,12 +1178,18 @@ def callback_handler(update, context):
 			Your time zone is used when sending notifications to show your local time, instead of the default UTC+0.
 			'''
 
-			keyboard = InlineKeyboardMarkup(
-				inline_keyboard = [
-					[InlineKeyboardButton(text=f'{rand_planet} Time zone settings', callback_data='prefs/timezone/menu')],
-					[InlineKeyboardButton(text='⏰ Notification settings', callback_data='prefs/notifs')],
-					[InlineKeyboardButton(text='⏮ Back to main menu', callback_data='notify/main_menu/refresh_text')]])
-
+			keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+				InlineKeyboardButton(text=f'{rand_planet} Time zone settings',
+				callback_data='prefs/timezone/menu')
+			],
+				[
+				InlineKeyboardButton(text='⏰ Notification settings',
+				callback_data='prefs/notifs')
+				],
+				[
+				InlineKeyboardButton(text='⏮ Back to main menu',
+				callback_data='notify/main_menu/refresh_text')
+				]])
 			'''
 			# TODO update to this keyboard once command permissions is implemented
 			keyboard = InlineKeyboardMarkup(
@@ -973,21 +1202,24 @@ def callback_handler(update, context):
 
 			try:
 				query.edit_message_text(text=inspect.cleandoc(message_text),
-					reply_markup=keyboard, parse_mode='Markdown')
+					reply_markup=keyboard,
+					parse_mode='Markdown')
 			except telegram.error.BadRequest:
 				pass
 
 		elif input_data[1] == 'notifs':
 			if len(input_data) == 3:
 				if input_data[2] in ('24h', '12h', '1h', '5m'):
-					new_state = update_notif_preference(
-						db_path=DATA_DIR, chat=chat, notification_type=input_data[2])
+					new_state = update_notif_preference(db_path=DATA_DIR,
+						chat=chat,
+						notification_type=input_data[2])
 
 					# generate reply text
 					query_reply_text = f'{input_data[2]} notifications '
 
 					if 'h' in query_reply_text:
-						query_reply_text = query_reply_text.replace('h', ' hour')
+						query_reply_text = query_reply_text.replace(
+							'h', ' hour')
 					else:
 						query_reply_text.replace('m', ' minute')
 
@@ -1009,26 +1241,34 @@ def callback_handler(update, context):
 			🔕 = *not* enabled
 			'''
 
-			keyboard = InlineKeyboardMarkup(
-				inline_keyboard = [
-					[InlineKeyboardButton(
-						text=f'24 hours before {bell_dict[notif_prefs[0]]}',
-						callback_data='prefs/notifs/24h')],
-					[InlineKeyboardButton(
-						text=f'12 hours before {bell_dict[notif_prefs[1]]}',
-						callback_data='prefs/notifs/12h')],
-					[InlineKeyboardButton(
-						text=f'1 hour before {bell_dict[notif_prefs[2]]}',
-						callback_data='prefs/notifs/1h')],
-					[InlineKeyboardButton(
-						text=f'5 minutes before {bell_dict[notif_prefs[3]]}',
-						callback_data='prefs/notifs/5m')],
-					[InlineKeyboardButton(
-						text='⏮ Return to menu',
-						callback_data='prefs/main_menu')]])
+			keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+				InlineKeyboardButton(
+				text=f'24 hours before {bell_dict[notif_prefs[0]]}',
+				callback_data='prefs/notifs/24h')
+			],
+				[
+				InlineKeyboardButton(
+				text=f'12 hours before {bell_dict[notif_prefs[1]]}',
+				callback_data='prefs/notifs/12h')
+				],
+				[
+				InlineKeyboardButton(
+				text=f'1 hour before {bell_dict[notif_prefs[2]]}',
+				callback_data='prefs/notifs/1h')
+				],
+				[
+				InlineKeyboardButton(
+				text=f'5 minutes before {bell_dict[notif_prefs[3]]}',
+				callback_data='prefs/notifs/5m')
+				],
+				[
+				InlineKeyboardButton(text='⏮ Return to menu',
+				callback_data='prefs/main_menu')
+				]])
 			try:
-				query.edit_message_text(
-					text=inspect.cleandoc(new_prefs_text), reply_markup=keyboard, parse_mode='Markdown')
+				query.edit_message_text(text=inspect.cleandoc(new_prefs_text),
+					reply_markup=keyboard,
+					parse_mode='Markdown')
 			except telegram.error.BadRequest:
 				pass
 
@@ -1050,26 +1290,36 @@ def callback_handler(update, context):
 				if locale_string is not None:
 					text += f' *({locale_string})*'
 
-				keyboard = InlineKeyboardMarkup(
-					inline_keyboard = [
-						[InlineKeyboardButton(text='🌎 Automatic setup', callback_data='prefs/timezone/auto_setup')],
-						[InlineKeyboardButton(text='🕹 Manual setup', callback_data='prefs/timezone/manual_setup')],
-						[InlineKeyboardButton(text='🗑 Remove my time zone', callback_data='prefs/timezone/remove')],
-						[InlineKeyboardButton(text='⏮ Back to menu', callback_data='prefs/main_menu')]
-					]
-				)
+				keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+					InlineKeyboardButton(text='🌎 Automatic setup',
+					callback_data='prefs/timezone/auto_setup')
+				],
+					[
+					InlineKeyboardButton(text='🕹 Manual setup',
+					callback_data='prefs/timezone/manual_setup')
+					],
+					[
+					InlineKeyboardButton(text='🗑 Remove my time zone',
+					callback_data='prefs/timezone/remove')
+					],
+					[
+					InlineKeyboardButton(text='⏮ Back to menu',
+					callback_data='prefs/main_menu')
+					]])
 
 				try:
-					query.edit_message_text(
-						text=inspect.cleandoc(text), reply_markup=keyboard, parse_mode='Markdown')
+					query.edit_message_text(text=inspect.cleandoc(text),
+						reply_markup=keyboard,
+						parse_mode='Markdown')
 				except telegram.error.BadRequest:
 					pass
 
 				query.answer('🌎 Time zone settings loaded')
 
-
 			elif input_data[2] == 'manual_setup':
-				current_time_zone = load_time_zone_status(DATA_DIR, chat, readable=True)
+				current_time_zone = load_time_zone_status(DATA_DIR,
+					chat,
+					readable=True)
 
 				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time.
 							
@@ -1082,27 +1332,32 @@ def callback_handler(update, context):
 				🕗 Your time zone is set to: *UTC{current_time_zone}*
 				'''
 
-				keyboard = InlineKeyboardMarkup(
-					inline_keyboard = [
-						[
-							InlineKeyboardButton(text='-5 hours', callback_data='prefs/timezone/set/-5h'),
-							InlineKeyboardButton(text='-1 hour', callback_data='prefs/timezone/set/-1h'),
-							InlineKeyboardButton(text='+1 hour', callback_data='prefs/timezone/set/+1h'),
-							InlineKeyboardButton(text='+5 hours', callback_data='prefs/timezone/set/+5h')
-						],
-						[
-							InlineKeyboardButton(text='-15 minutes', callback_data='prefs/timezone/set/-15m'),
-							InlineKeyboardButton(text='+15 minutes', callback_data='prefs/timezone/set/+15m'),
-						],
-						[InlineKeyboardButton(text='⏮ Back to menu', callback_data='prefs/main_menu')]
-					]
-				)
+				keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+					InlineKeyboardButton(text='-5 hours',
+					callback_data='prefs/timezone/set/-5h'),
+					InlineKeyboardButton(text='-1 hour',
+					callback_data='prefs/timezone/set/-1h'),
+					InlineKeyboardButton(text='+1 hour',
+					callback_data='prefs/timezone/set/+1h'),
+					InlineKeyboardButton(text='+5 hours',
+					callback_data='prefs/timezone/set/+5h')
+				],
+					[
+					InlineKeyboardButton(text='-15 minutes',
+					callback_data='prefs/timezone/set/-15m'),
+					InlineKeyboardButton(text='+15 minutes',
+					callback_data='prefs/timezone/set/+15m'),
+					],
+					[
+					InlineKeyboardButton(text='⏮ Back to menu',
+					callback_data='prefs/main_menu')
+					]])
 
 				try:
-					query.edit_message_text(
-						text=inspect.cleandoc(text), parse_mode='Markdown',
-						reply_markup=keyboard, disable_web_page_preview=True
-					)
+					query.edit_message_text(text=inspect.cleandoc(text),
+						parse_mode='Markdown',
+						reply_markup=keyboard,
+						disable_web_page_preview=True)
 				except telegram.error.BadRequest:
 					pass
 
@@ -1121,48 +1376,55 @@ def callback_handler(update, context):
 				*Note:* time zone and command permission support is coming later.
 				'''
 				try:
-					sent_message = context.bot.send_message(
-						chat, inspect.cleandoc(message_text),
+					sent_message = context.bot.send_message(chat,
+						inspect.cleandoc(message_text),
 						parse_mode='Markdown',
-						reply_markup=ReplyKeyboardRemove(remove_keyboard=True)
-					)
+						reply_markup=ReplyKeyboardRemove(remove_keyboard=True))
 				except telegram.error.RetryAfter as error:
-					logging.exception(f'🚧 [1130] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+					logging.exception(
+						f'🚧 [1130] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.'
+					)
 					retry_after(error.retry_after)
 
-					sent_message = context.bot.send_message(
-						chat, inspect.cleandoc(message_text),
+					sent_message = context.bot.send_message(chat,
+						inspect.cleandoc(message_text),
 						parse_mode='Markdown',
-						reply_markup=ReplyKeyboardRemove(remove_keyboard=True)
-					)
-
+						reply_markup=ReplyKeyboardRemove(remove_keyboard=True))
 
 				try:
-					context.bot.deleteMessage(sent_message.chat.id, sent_message.message_id)
+					context.bot.deleteMessage(sent_message.chat.id,
+						sent_message.message_id)
 				except telegram.error.RetryAfter as error:
-					logging.exception(f'🚧 [1143] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+					logging.exception(
+						f'🚧 [1143] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.'
+					)
 					retry_after(error.retry_after)
 
-					context.bot.deleteMessage(sent_message.chat.id, sent_message.message_id)
+					context.bot.deleteMessage(sent_message.chat.id,
+						sent_message.message_id)
 
-				keyboard = InlineKeyboardMarkup(
-					inline_keyboard = [
-						[InlineKeyboardButton(text='⏰ Notification settings', callback_data='prefs/notifs')],
-						[InlineKeyboardButton(text='⏮ Back to main menu', callback_data='notify/main_menu/refresh_text')]
-					]
-				)
+				keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+					InlineKeyboardButton(text='⏰ Notification settings',
+					callback_data='prefs/notifs')
+				],
+					[
+					InlineKeyboardButton(text='⏮ Back to main menu',
+					callback_data='notify/main_menu/refresh_text')
+					]])
 
 				try:
-					sent_message = context.bot.send_message(
-						chat, inspect.cleandoc(message_text),
+					sent_message = context.bot.send_message(chat,
+						inspect.cleandoc(message_text),
 						parse_mode='Markdown',
 						reply_markup=keyboard)
 				except telegram.error.RetryAfter as error:
-					logging.exception(f'🚧 [1161] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+					logging.exception(
+						f'🚧 [1161] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.'
+					)
 					retry_after(error.retry_after)
 
-					sent_message = context.bot.send_message(
-						chat, inspect.cleandoc(message_text),
+					sent_message = context.bot.send_message(chat,
+						inspect.cleandoc(message_text),
 						parse_mode='Markdown',
 						reply_markup=keyboard)
 
@@ -1170,7 +1432,9 @@ def callback_handler(update, context):
 
 			elif input_data[2] == 'set':
 				update_time_zone_value(DATA_DIR, chat, input_data[3])
-				current_time_zone = load_time_zone_status(data_dir=DATA_DIR, chat=chat, readable=True)
+				current_time_zone = load_time_zone_status(data_dir=DATA_DIR,
+					chat=chat,
+					readable=True)
 
 				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time.
 
@@ -1181,26 +1445,33 @@ def callback_handler(update, context):
 				🕗 Your time zone is set to: *UTC{current_time_zone}*
 				'''
 
-				keyboard = InlineKeyboardMarkup(inline_keyboard = [
+				keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+					InlineKeyboardButton(text='-5 hours',
+					callback_data='prefs/timezone/set/-5h'),
+					InlineKeyboardButton(text='-1 hour',
+					callback_data='prefs/timezone/set/-1h'),
+					InlineKeyboardButton(text='+1 hour',
+					callback_data='prefs/timezone/set/+1h'),
+					InlineKeyboardButton(text='+5 hours',
+					callback_data='prefs/timezone/set/+5h')
+				],
 					[
-						InlineKeyboardButton(text='-5 hours', callback_data='prefs/timezone/set/-5h'),
-						InlineKeyboardButton(text='-1 hour', callback_data='prefs/timezone/set/-1h'),
-						InlineKeyboardButton(text='+1 hour', callback_data='prefs/timezone/set/+1h'),
-						InlineKeyboardButton(text='+5 hours', callback_data='prefs/timezone/set/+5h')
+					InlineKeyboardButton(text='-15 minutes',
+					callback_data='prefs/timezone/set/-15m'),
+					InlineKeyboardButton(text='+15 minutes',
+					callback_data='prefs/timezone/set/+15m'),
 					],
 					[
-						InlineKeyboardButton(text='-15 minutes', callback_data='prefs/timezone/set/-15m'),
-						InlineKeyboardButton(text='+15 minutes', callback_data='prefs/timezone/set/+15m'),
-					],
-					[InlineKeyboardButton(text='⏮ Back to menu', callback_data='prefs/main_menu')]
-					]
-				)
+					InlineKeyboardButton(text='⏮ Back to menu',
+					callback_data='prefs/main_menu')
+					]])
 
 				query.answer(text=f'🌎 Time zone set to UTC{current_time_zone}')
 				try:
-					query.edit_message_text(
-						text=inspect.cleandoc(text), reply_markup=keyboard,
-					parse_mode='Markdown', disable_web_page_preview=True)
+					query.edit_message_text(text=inspect.cleandoc(text),
+						reply_markup=keyboard,
+						parse_mode='Markdown',
+						disable_web_page_preview=True)
 				except telegram.error.BadRequest:
 					pass
 
@@ -1221,15 +1492,20 @@ def callback_handler(update, context):
 				'''
 
 				context.bot.delete_message(msg.chat.id, msg.message_id)
-				sent_message = context.bot.send_message(
-					chat, text=inspect.cleandoc(text),
-					reply_markup=ForceReply(selective=True), parse_mode='Markdown')
+				sent_message = context.bot.send_message(chat,
+					text=inspect.cleandoc(text),
+					reply_markup=ForceReply(selective=True),
+					parse_mode='Markdown')
 
-				time_zone_setup_chats[chat] = [sent_message.message_id, from_id]
+				time_zone_setup_chats[chat] = [
+					sent_message.message_id, from_id
+				]
 
 			elif input_data[2] == 'remove':
 				remove_time_zone_information(DATA_DIR, chat)
-				query.answer('✅ Your time zone information was deleted from the server', show_alert=True)
+				query.answer(
+					'✅ Your time zone information was deleted from the server',
+					show_alert=True)
 
 				text = f'''🌎 This tool allows you to set your time zone so notifications can show your local time.
 
@@ -1241,21 +1517,29 @@ def callback_handler(update, context):
 				Your current time zone is *UTC{load_time_zone_status(data_dir=DATA_DIR, chat=chat, readable=True)}*
 				'''
 
-				keyboard = InlineKeyboardMarkup(
-					inline_keyboard = [
-						[InlineKeyboardButton(text='🌎 Automatic setup', callback_data='prefs/timezone/auto_setup')],
-						[InlineKeyboardButton(text='🕹 Manual setup', callback_data='prefs/timezone/manual_setup')],
-						[InlineKeyboardButton(text='🗑 Remove my time zone', callback_data='prefs/timezone/remove')],
-						[InlineKeyboardButton(text='⏮ Back to menu', callback_data='prefs/main_menu')]
-					]
-				)
+				keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+					InlineKeyboardButton(text='🌎 Automatic setup',
+					callback_data='prefs/timezone/auto_setup')
+				],
+					[
+					InlineKeyboardButton(text='🕹 Manual setup',
+					callback_data='prefs/timezone/manual_setup')
+					],
+					[
+					InlineKeyboardButton(text='🗑 Remove my time zone',
+					callback_data='prefs/timezone/remove')
+					],
+					[
+					InlineKeyboardButton(text='⏮ Back to menu',
+					callback_data='prefs/main_menu')
+					]])
 
 				try:
-					query.edit_message_text(
-						text=inspect.cleandoc(text), reply_markup=keyboard, parse_mode='Markdown')
+					query.edit_message_text(text=inspect.cleandoc(text),
+						reply_markup=keyboard,
+						parse_mode='Markdown')
 				except:
 					pass
-
 
 	elif input_data[0] == 'stats':
 		if input_data[1] == 'refresh':
@@ -1263,17 +1547,19 @@ def callback_handler(update, context):
 			#	logging.info(f'🔄 {anonymize_id(chat)} refreshed statistics')
 
 			new_text = generate_statistics_message()
-			if msg.text == new_text.replace('*',''):
+			if msg.text == new_text.replace('*', ''):
 				query.answer(text='🔄 Statistics are up to date!')
 				return
 
-			keyboard = InlineKeyboardMarkup(
-				inline_keyboard=[[
-					InlineKeyboardButton(text='🔄 Refresh statistics', callback_data='stats/refresh')]])
+			keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+				InlineKeyboardButton(text='🔄 Refresh statistics',
+				callback_data='stats/refresh')
+			]])
 
 			try:
-				query.edit_message_text(
-					text=new_text, reply_markup=keyboard, parse_mode='Markdown',
+				query.edit_message_text(text=new_text,
+					reply_markup=keyboard,
+					parse_mode='Markdown',
 					disable_web_page_preview=True)
 			except telegram.error.BadRequest:
 				pass
@@ -1282,7 +1568,7 @@ def callback_handler(update, context):
 
 	# update stats, except if command was a stats refresh
 	if input_data[0] != 'stats':
-		update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
+		update_stats_db(stats_update={'commands': 1}, db_path=DATA_DIR)
 
 
 def feedback_handler(update, context):
@@ -1302,41 +1588,49 @@ def feedback_handler(update, context):
 			return
 
 		logging.warning(
-			f'Error parsing chat in feedback_handler! update:{update}, context:{context}')
+			f'Error parsing chat in feedback_handler! update:{update}, context:{context}'
+		)
 		return
 
 	chat = update.message.chat
 	if update.message.reply_to_message is not None:
 		if update.message.reply_to_message.message_id in feedback_message_IDs:
 			if len(update.message.text) > 1000:
-				update.message.text = update.message.text[0:1001] + ' <CUT\_OFF:LENGTH>'
+				update.message.text = update.message.text[
+					0:1001] + ' <CUT\_OFF:LENGTH>'
 
 			logging.info(f'✍️ Received feedback: {update.message.text}')
 
-			sender = context.bot.get_chat_member(chat.id, update.message.from_user.id)
-			if sender.status in ('creator', 'administrator') or chat.type == 'private':
-				context.bot.send_message(
-					chat.id,
+			sender = context.bot.get_chat_member(chat.id,
+				update.message.from_user.id)
+			if sender.status in ('creator',
+				'administrator') or chat.type == 'private':
+				context.bot.send_message(chat.id,
 					'😄 Thank you for your feedback!',
 					reply_to_message_id=update.message.message_id)
 
-				try: # remove the original feedback message
-					context.bot.deleteMessage(chat.id, update.message.reply_to_message.message_id)
+				try:  # remove the original feedback message
+					context.bot.deleteMessage(
+						chat.id, update.message.reply_to_message.message_id)
 				except Exception:
-					logging.exception(f'''Unable to remove sent feedback message with params
-						chat={chat.id}, message_id={update.message.reply_to_message.message_id}''')
+					logging.exception(
+						f'''Unable to remove sent feedback message with params
+						chat={chat.id}, message_id={update.message.reply_to_message.message_id}'''
+					)
 
 				if OWNER != 0:
 					# parse the message so it's suitable for markdown
-					update.message.text = reconstruct_message_for_markdown(update.message.text)
-				
+					update.message.text = reconstruct_message_for_markdown(
+						update.message.text)
+
 					# if owner is defined, notify of a new feedback message
 					feedback_notify_msg = f'''
 						✍️ *Received feedback* from `{anonymize_id(update.message.from_user.id)}`\n
 						{update.message.text}'''
-				
-					context.bot.send_message(
-						OWNER, inspect.cleandoc(feedback_notify_msg), parse_mode='MarkdownV2')
+
+					context.bot.send_message(OWNER,
+						inspect.cleandoc(feedback_notify_msg),
+						parse_mode='MarkdownV2')
 
 
 def location_handler(update, context):
@@ -1346,14 +1640,17 @@ def location_handler(update, context):
 	# verify it's a reply to a message
 	if update.message.reply_to_message is not None:
 		if chat.id not in time_zone_setup_chats.keys():
-			logging.info('🗺 Location received, but chat not in time_zone_setup_chats')
+			logging.info(
+				'🗺 Location received, but chat not in time_zone_setup_chats')
 			return
 
 		if (update.message.from_user.id == time_zone_setup_chats[chat.id][1]
-			and update.message.reply_to_message.message_id == time_zone_setup_chats[chat.id][0]):
+			and update.message.reply_to_message.message_id
+			== time_zone_setup_chats[chat.id][0]):
 
 			# delete old message
-			context.bot.deleteMessage(chat.id, time_zone_setup_chats[chat.id][0])
+			context.bot.deleteMessage(chat.id,
+				time_zone_setup_chats[chat.id][0])
 
 			try:
 				# remove the message sent by the user so their location isn't visible for long
@@ -1364,11 +1661,12 @@ def location_handler(update, context):
 			latitude = update.message.location.latitude
 			longitude = update.message.location.longitude
 
-			timezone_str = TimezoneFinder().timezone_at(lng=longitude, lat=latitude)
+			timezone_str = TimezoneFinder().timezone_at(lng=longitude,
+				lat=latitude)
 			timezone = pytz.timezone(timezone_str)
 
 			user_local_now = datetime.datetime.now(timezone)
-			user_utc_offset = user_local_now.utcoffset().total_seconds()/3600
+			user_utc_offset = user_local_now.utcoffset().total_seconds() / 3600
 
 			if user_utc_offset % 1 == 0:
 				user_utc_offset = int(user_utc_offset)
@@ -1387,14 +1685,16 @@ def location_handler(update, context):
 			You can now return to other settings.'''
 
 			# construct keyboard
-			keyboard = InlineKeyboardMarkup(
-				inline_keyboard = [[
-					InlineKeyboardButton(text='⏮ Return to menu', callback_data='prefs/main_menu')]])
+			keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+				InlineKeyboardButton(text='⏮ Return to menu',
+				callback_data='prefs/main_menu')
+			]])
 
 			# send message
-			context.bot.send_message(
-				chat.id, text=inspect.cleandoc(new_text),
-				reply_markup=keyboard, parse_mode='Markdown')
+			context.bot.send_message(chat.id,
+				text=inspect.cleandoc(new_text),
+				reply_markup=keyboard,
+				parse_mode='Markdown')
 
 			# store user's timezone_str
 			update_time_zone_string(DATA_DIR, chat.id, timezone_str)
@@ -1471,24 +1771,29 @@ def timer_handle(update, context, command, chat, user):
 			if offenses is not None:
 				# add offense, log
 				offenses += 1
-				logging.info(f'⚠️ User {anonymize_id(user)} now has {offenses} spam offenses.')
+				logging.info(
+					f'⚠️ User {anonymize_id(user)} now has {offenses} spam offenses.'
+				)
 
 				# if more than 10 offenses, block user
 				if offenses >= 10:
 					bot_running = time.time() - STARTUP_TIME
 					if bot_running > 60:
 						ignored_users.add(user)
-						logging.info(f'⚠️⚠️⚠️ User {anonymize_id(user)} is now ignored due to excessive spam!')
+						logging.info(
+							f'⚠️⚠️⚠️ User {anonymize_id(user)} is now ignored due to excessive spam!'
+						)
 
-						context.bot.send_message(
-							chat,
+						context.bot.send_message(chat,
 							'⚠️ *Please do not spam the bot.* Your user ID has been blocked and all commands by you will be ignored for an indefinite amount of time.',
-							parse_mode='Markdown', reply_to_message_id=update.message.message_id)
+							parse_mode='Markdown',
+							reply_to_message_id=update.message.message_id)
 					else:
 						run_time_ = int(time.time()) - STARTUP_TIME
 						logging.info(f'''
 							✅ Successfully avoided blocking a user on bot startup! Run_time was {run_time_} seconds.
-							Spam offenses set to 0 for user {anonymize_id(user)} from original {offenses}''')
+							Spam offenses set to 0 for user {anonymize_id(user)} from original {offenses}'''
+										)
 
 						# clear offenses
 						rd.hset('spammers', user, 0)
@@ -1499,7 +1804,8 @@ def timer_handle(update, context, command, chat, user):
 				rd.hset('spammers', user, offenses)
 			else:
 				rd.hset('spammers', user, 1)
-				logging.info(f'⚠️ Added user {anonymize_id(user)} to spammers.')
+				logging.info(
+					f'⚠️ Added user {anonymize_id(user)} to spammers.')
 
 			return False
 
@@ -1554,20 +1860,26 @@ def start(update, context):
 
 	# pull chat id, send message
 	chat_id = update.message.chat.id
-	context.bot.send_message(
-		chat_id, inspect.cleandoc(reply_msg), parse_mode='Markdown', disable_web_page_preview=True)
+	context.bot.send_message(chat_id,
+		inspect.cleandoc(reply_msg),
+		parse_mode='Markdown',
+		disable_web_page_preview=True)
 
 	# /start, send also the inline keyboard
 	try:
 		if command_ == '/start':
 			notify(update, context)
-			logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat_id)}. Sent user the new inline keyboard. [2]')
+			logging.info(
+				f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat_id)}. Sent user the new inline keyboard. [2]'
+			)
 	except:
 		notify(update, context)
-		logging.info(f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat_id)}. Sent user the new inline keyboard. [2]')
+		logging.info(
+			f'🌟 Bot added to a new chat! chat_id={anonymize_id(chat_id)}. Sent user the new inline keyboard. [2]'
+		)
 
 	# update stats
-	update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
+	update_stats_db(stats_update={'commands': 1}, db_path=DATA_DIR)
 
 
 def name_from_provider_id(lsp_id):
@@ -1580,7 +1892,8 @@ def name_from_provider_id(lsp_id):
 	cursor_ = conn.cursor()
 
 	# get provider name corresponding to this ID
-	cursor_.execute("SELECT lsp_name FROM launches WHERE lsp_id = ?", (lsp_id,))
+	cursor_.execute("SELECT lsp_name FROM launches WHERE lsp_id = ?",
+		(lsp_id, ))
 	query_return = cursor_.fetchall()
 
 	if len(query_return) != 0:
@@ -1621,8 +1934,9 @@ def notify(update, context):
 		lsp_set = lsp_set.union(cc_lsp_set)
 
 	# get a dict composed of lsp:enabled_bool entries.
-	notification_statuses = get_user_notifications_status(
-		db_dir=DATA_DIR, chat=chat, provider_set=lsp_set,
+	notification_statuses = get_user_notifications_status(db_dir=DATA_DIR,
+		chat=chat,
+		provider_set=lsp_set,
 		provider_name_map=provider_name_map)
 
 	# count for the toggle all button
@@ -1633,34 +1947,52 @@ def notify(update, context):
 	toggle_text = 'enable' if disabled_count != 0 else 'disable'
 	global_text = f'{rand_planet} Press to {toggle_text} all'
 
-	keyboard = InlineKeyboardMarkup(
-			inline_keyboard = [
-				[InlineKeyboardButton(text=global_text, callback_data='notify/toggle/all/all')],
-
-				[InlineKeyboardButton(text='🇪🇺 EU', callback_data='notify/list/EU'),
-				InlineKeyboardButton(text='🇺🇸 USA', callback_data='notify/list/USA')],
-
-				[InlineKeyboardButton(text='🇷🇺 Russia', callback_data='notify/list/RUS'),
-				InlineKeyboardButton(text='🇨🇳 China', callback_data='notify/list/CHN')],
-
-				[InlineKeyboardButton(text='🇮🇳 India', callback_data='notify/list/IND'),
-				InlineKeyboardButton(text='🇯🇵 Japan', callback_data='notify/list/JPN')],
-
-				[InlineKeyboardButton(text='🇹🇼 Taiwan', callback_data=f'notify/list/TWN'),
-				InlineKeyboardButton(text='🏳 Placeholder', callback_data='notify/main_menu')],
-
-				[InlineKeyboardButton(text='⚙️ Edit your preferences', callback_data='prefs/main_menu')],
-
-				[InlineKeyboardButton(text='✅ Save and exit', callback_data='notify/done')]])
+	keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+		InlineKeyboardButton(text=global_text,
+		callback_data='notify/toggle/all/all')
+	],
+		[
+		InlineKeyboardButton(text='🇪🇺 EU', callback_data='notify/list/EU'),
+		InlineKeyboardButton(text='🇺🇸 USA', callback_data='notify/list/USA')
+		],
+		[
+		InlineKeyboardButton(text='🇷🇺 Russia',
+		callback_data='notify/list/RUS'),
+		InlineKeyboardButton(text='🇨🇳 China', callback_data='notify/list/CHN')
+		],
+		[
+		InlineKeyboardButton(text='🇮🇳 India', callback_data='notify/list/IND'),
+		InlineKeyboardButton(text='🇯🇵 Japan', callback_data='notify/list/JPN')
+		],
+		[
+		InlineKeyboardButton(text='🇹🇼 Taiwan',
+		callback_data=f'notify/list/TWN'),
+		InlineKeyboardButton(text='🏳 Placeholder',
+		callback_data='notify/main_menu')
+		],
+		[
+		InlineKeyboardButton(text='⚙️ Edit your preferences',
+		callback_data='prefs/main_menu')
+		],
+		[
+		InlineKeyboardButton(text='✅ Save and exit',
+		callback_data='notify/done')
+		]])
 
 	try:
-		context.bot.send_message(chat, inspect.cleandoc(message_text),
-			parse_mode='Markdown', reply_markup=keyboard)
+		context.bot.send_message(chat,
+			inspect.cleandoc(message_text),
+			parse_mode='Markdown',
+			reply_markup=keyboard)
 	except telegram.error.RetryAfter as error:
-		logging.exception(f'🚧 [1660] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		logging.exception(
+			f'🚧 [1660] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.'
+		)
 		retry_after(error.retry_after)
-		context.bot.send_message(chat, inspect.cleandoc(message_text),
-			parse_mode='Markdown', reply_markup=keyboard)
+		context.bot.send_message(chat,
+			inspect.cleandoc(message_text),
+			parse_mode='Markdown',
+			reply_markup=keyboard)
 
 	# update stats
 	update_stats_db(stats_update={'commands': 1}, db_path=DATA_DIR)
@@ -1693,30 +2025,38 @@ def feedback(update, context):
 	'''
 
 	try:
-		sent_msg = context.bot.send_message(
-			chat_id, inspect.cleandoc(message_text), parse_mode='Markdown',
-			reply_markup=ForceReply(selective=True), reply_to_message_id=update.message.message_id)
+		sent_msg = context.bot.send_message(chat_id,
+			inspect.cleandoc(message_text),
+			parse_mode='Markdown',
+			reply_markup=ForceReply(selective=True),
+			reply_to_message_id=update.message.message_id)
 	except telegram.error.Unauthorized as error:
-		logging.info(f'Unauthorized to send message! Error.message: {error.message}')
+		logging.info(
+			f'Unauthorized to send message! Error.message: {error.message}')
 		clean_chats_db(db_path=DATA_DIR, chat=chat_id)
+		return
 	except telegram.error.RetryAfter as error:
-		logging.exception(f'🚧 [1703] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		logging.exception(
+			f'🚧 [1703] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.'
+		)
 		retry_after(error.retry_after)
 
-		sent_msg = context.bot.send_message(
-			chat_id, inspect.cleandoc(message_text), parse_mode='Markdown',
-			reply_markup=ForceReply(selective=True), reply_to_message_id=update.message.message_id)
+		sent_msg = context.bot.send_message(chat_id,
+			inspect.cleandoc(message_text),
+			parse_mode='Markdown',
+			reply_markup=ForceReply(selective=True),
+			reply_to_message_id=update.message.message_id)
 	except telegram.error.TimedOut as error:
 		logging.info(f'Error: timed out! Error.message: {error.message}')
 		time.sleep(1)
 		feedback(update, context)
-
+		return
 	''' add sent message id to feedback_message_IDs, so we can keep
 	track of what to parse as feedback, and what not to '''
 	feedback_message_IDs.add(sent_msg.message_id)
 
 	# update stats
-	update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
+	update_stats_db(stats_update={'commands': 1}, db_path=DATA_DIR)
 
 
 def generate_changelog():
@@ -1747,7 +2087,8 @@ def generate_schedule_message(call_type: str, chat: str):
 	cursor_ = conn.cursor()
 
 	# perform the select; if cmd == all, just pull the next launch
-	cursor_.execute('SELECT * FROM launches WHERE net_unix >= ?',(int(time.time()),))
+	cursor_.execute('SELECT * FROM launches WHERE net_unix >= ?',
+		(int(time.time()), ))
 
 	# sort in place by NET, convert to dicts
 	query_return = [dict(row) for row in cursor_.fetchall()]
@@ -1758,10 +2099,19 @@ def generate_schedule_message(call_type: str, chat: str):
 
 	# map months numbers to strings
 	month_map = {
-		1: 'January', 2: 'February', 3: 'March', 4: 'April',
-		5: 'May', 6: 'June', 7: 'July', 8: 'August',
-		9: 'September', 10: 'October', 11: 'November', 12: 'December' }
-
+		1: 'January',
+		2: 'February',
+		3: 'March',
+		4: 'April',
+		5: 'May',
+		6: 'June',
+		7: 'July',
+		8: 'August',
+		9: 'September',
+		10: 'October',
+		11: 'November',
+		12: 'December'
+	}
 	''' Sometimes, the default name is quite long. In these cases, we can use a more common,
 	short name for the provider instead of the abbreviation used by LL2.
 
@@ -1769,29 +2119,27 @@ def generate_schedule_message(call_type: str, chat: str):
 	we can simply use "Firefly" to display the provider name. 
 	'''
 	providers_short = {
-		"RL": 			"Rocket Lab",
-		"RFSA": 		"Roscosmos",
-		"VO": 			"Virgin Orbit",
-		"Astra Space": 	"Astra",
-		"FA":			"Firefly",
-		"MOD_RUS": 		"Russian MoD",
-		"NGIS":			"Northrop Gr."
+		"RL": "Rocket Lab",
+		"RFSA": "Roscosmos",
+		"VO": "Virgin Orbit",
+		"Astra Space": "Astra",
+		"FA": "Firefly",
+		"MOD_RUS": "Russian MoD",
+		"NGIS": "Northrop Gr."
 	}
-
 	''' Like with provider names above, the vehicle names are sometimes too long (or weird) as well. '''
-	vehicle_map = {
-		"Falcon 9 Block 5": "Falcon 9",
-		"Firefly Alpha": "Alpha"
-	}
+	vehicle_map = {"Falcon 9 Block 5": "Falcon 9", "Firefly Alpha": "Alpha"}
 
 	# pull user time zone preferences, set tz_offset from hours to seconds
 	# TODO cache in redis under chat ID, update on tz update
-	user_tz_offset = 3600 * load_time_zone_status(DATA_DIR, chat, readable=False)
+	user_tz_offset = 3600 * load_time_zone_status(
+		DATA_DIR, chat, readable=False)
 
 	# pick 5 dates, map missions into dict with dates
 	sched_dict = {}
 	for i, row in enumerate(query_return):
-		launch_unix = datetime.datetime.utcfromtimestamp(row['net_unix'] + user_tz_offset)
+		launch_unix = datetime.datetime.utcfromtimestamp(row['net_unix'] +
+			user_tz_offset)
 
 		if len(row['lsp_name']) <= len('Arianespace'):
 			provider = row['lsp_name']
@@ -1817,7 +2165,7 @@ def generate_schedule_message(call_type: str, chat: str):
 
 		vehicle = row['rocket_name'].split('/')[0]
 
-		country_code= row['lsp_country_code']
+		country_code = row['lsp_country_code']
 		flag = map_country_code_to_flag(country_code)
 
 		# shorten some vehicle names
@@ -1873,7 +2221,11 @@ def generate_schedule_message(call_type: str, chat: str):
 			if int(ymd_split[2]) in (11, 12, 13):
 				suffix = 'th'
 			else:
-				suffix = {1: 'st', 2: 'nd', 3: 'rd'}[int(str(ymd_split[2])[-1])]
+				suffix = {
+					1: 'st',
+					2: 'nd',
+					3: 'rd'
+				}[int(str(ymd_split[2])[-1])]
 		except:
 			suffix = 'th'
 
@@ -1881,7 +2233,8 @@ def generate_schedule_message(call_type: str, chat: str):
 		launch_date = datetime.datetime.strptime(key, '%Y-%m-%d')
 
 		# get today based on chat preferences: if not available, use UTC+0
-		today = datetime.datetime.utcfromtimestamp(time.time() + user_tz_offset)
+		today = datetime.datetime.utcfromtimestamp(time.time() +
+			user_tz_offset)
 		time_delta = abs(launch_date - today)
 
 		if (launch_date.day, launch_date.month) == (today.day, today.month):
@@ -1895,15 +2248,17 @@ def generate_schedule_message(call_type: str, chat: str):
 					eta_days = f'in {launch_date.day - today.day} days'
 			else:
 				sec_time = time_delta.seconds + time_delta.days * 3600 * 24
-				days = math.floor(sec_time/(3600*24))
-				hours = (sec_time/(3600) - math.floor(sec_time/(3600*24))*24)
+				days = math.floor(sec_time / (3600 * 24))
+				hours = (sec_time / (3600) - math.floor(sec_time /
+					(3600 * 24)) * 24)
 
 				if today.hour + hours >= 24:
 					days += 1
 
 				eta_days = f'in {days+1} days'
 
-		eta_days = provider = ' '.join("`{}`".format(word) for word in eta_days.split(' '))
+		eta_days = provider = ' '.join("`{}`".format(word)
+			for word in eta_days.split(' '))
 
 		schedule_msg += f'*{month_map[int(ymd_split[1])]} {ymd_split[2]}{suffix}* {eta_days}\n'
 		for mission, j in zip(val, range(len(val))):
@@ -1913,7 +2268,8 @@ def generate_schedule_message(call_type: str, chat: str):
 			schedule_msg += mission
 
 			if j == 2 and len(val) > 3:
-				upcoming_flight_count = 'flight' if len(val) - 3 == 1 else 'flights'
+				upcoming_flight_count = 'flight' if len(
+					val) - 3 == 1 else 'flights'
 				schedule_msg += f'\n+ {len(val)-3} more {upcoming_flight_count}'
 				break
 
@@ -1942,8 +2298,12 @@ def generate_schedule_message(call_type: str, chat: str):
 
 	inline_keyboard = []
 	inline_keyboard.append([
-		InlineKeyboardButton(text='🔄 Refresh', callback_data=f'schedule/refresh/{call_type}'),
-		InlineKeyboardButton(text=switch_text, callback_data=f"schedule/{'mission' if call_type == 'vehicle' else 'vehicle'}")])
+		InlineKeyboardButton(text='🔄 Refresh',
+		callback_data=f'schedule/refresh/{call_type}'),
+		InlineKeyboardButton(text=switch_text,
+		callback_data=
+		f"schedule/{'mission' if call_type == 'vehicle' else 'vehicle'}")
+	])
 
 	keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
@@ -1964,21 +2324,31 @@ def flight_schedule(update, context):
 	chat_id = update.message.chat.id
 
 	# generate message
-	schedule_msg, keyboard = generate_schedule_message(call_type='vehicle', chat=chat_id)
+	schedule_msg, keyboard = generate_schedule_message(call_type='vehicle',
+		chat=chat_id)
 
 	# send
 	try:
-		context.bot.send_message(chat_id, schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
+		context.bot.send_message(chat_id,
+			schedule_msg,
+			reply_markup=keyboard,
+			parse_mode='MarkdownV2')
 
 	except telegram.error.Unauthorized as error:
-		logging.info(f'Unauthorized to send message! Error.message: {error.message}')
+		logging.info(
+			f'Unauthorized to send message! Error.message: {error.message}')
 		clean_chats_db(db_path=DATA_DIR, chat=chat_id)
 
 	except telegram.error.RetryAfter as error:
-		logging.exception(f'🚧 [1978] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		logging.exception(
+			f'🚧 [1978] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.'
+		)
 		retry_after(error.retry_after)
 
-		context.bot.send_message(chat_id, schedule_msg, reply_markup=keyboard, parse_mode='MarkdownV2')
+		context.bot.send_message(chat_id,
+			schedule_msg,
+			reply_markup=keyboard,
+			parse_mode='MarkdownV2')
 
 	except telegram.error.TimedOut as error:
 		logging.info(f'Error: timed out! Error.message: {error.message}')
@@ -1986,7 +2356,7 @@ def flight_schedule(update, context):
 		flight_schedule(update, context)
 
 	# update stats
-	update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
+	update_stats_db(stats_update={'commands': 1}, db_path=DATA_DIR)
 
 
 def generate_next_flight_message(chat, current_index: int):
@@ -2001,6 +2371,7 @@ def generate_next_flight_message(chat, current_index: int):
 
 	Purge cache on API updates
 	'''
+
 	def cached_response():
 		# generate the keyboard here
 		try:
@@ -2016,40 +2387,49 @@ def generate_next_flight_message(chat, current_index: int):
 			if current_index != 0:
 				back = True
 				inline_keyboard[0].append(
-						InlineKeyboardButton(
-							text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}'))
+					InlineKeyboardButton(text='⏪ Previous',
+					callback_data=f'next_flight/prev/{current_index}'))
 
 			inline_keyboard[0].append(
-				InlineKeyboardButton(
-					text='🔄 Refresh', callback_data=f'next_flight/refresh/{current_index}'))
+				InlineKeyboardButton(text='🔄 Refresh',
+				callback_data=f'next_flight/refresh/{current_index}'))
 
 			# if we can go forward, add a next button
-			if current_index+1 < max_index:
+			if current_index + 1 < max_index:
 				fwd = True
 				inline_keyboard[0].append(
-					InlineKeyboardButton(text='Next ⏩', callback_data=f'next_flight/next/{current_index}'))
+					InlineKeyboardButton(text='Next ⏩',
+					callback_data=f'next_flight/next/{current_index}'))
 
 			# if the length is one, make the button really wide
 			if len(inline_keyboard[0]) == 1:
 				# only forwards, so the first entry; add a refresh button
 				if fwd:
 					inline_keyboard = [[]]
-					inline_keyboard[0].append(InlineKeyboardButton(
-						text='🔄 Refresh', callback_data=f'next_flight/refresh/0'))
-					inline_keyboard[0].append(InlineKeyboardButton(
-						text='Next ⏩', callback_data=f'next_flight/next/{current_index}'))
+					inline_keyboard[0].append(
+						InlineKeyboardButton(text='🔄 Refresh',
+						callback_data=f'next_flight/refresh/0'))
+					inline_keyboard[0].append(
+						InlineKeyboardButton(text='Next ⏩',
+						callback_data=f'next_flight/next/{current_index}'))
 				elif back:
-					inline_keyboard = [([InlineKeyboardButton(
-						text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}')])]
-					inline_keyboard.append([(InlineKeyboardButton(
-						text='⏮ First', callback_data=f'next_flight/prev/1'))])
+					inline_keyboard = [([
+						InlineKeyboardButton(text='⏪ Previous',
+						callback_data=f'next_flight/prev/{current_index}')
+					])]
+					inline_keyboard.append([
+						(InlineKeyboardButton(text='⏮ First',
+						callback_data=f'next_flight/prev/1'))
+					])
 
 			keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 		elif max_index == 1:
 			inline_keyboard = []
-			inline_keyboard.append([InlineKeyboardButton(
-				text='🔄 Refresh', callback_data=f'next_flight/prev/1')])
+			inline_keyboard.append([
+				InlineKeyboardButton(text='🔄 Refresh',
+				callback_data=f'next_flight/prev/1')
+			])
 
 			keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
@@ -2063,10 +2443,13 @@ def generate_next_flight_message(chat, current_index: int):
 			if launch_status in ('GO', 'TBC', 'TBD'):
 				if launch_net < int(time.time()):
 					eta_str = '⏸ Waiting for status update'
-					next_str = next_str.replace('⏰ ???ETASTR???', short_monospaced_text(eta_str))
+					next_str = next_str.replace('⏰ ???ETASTR???',
+						short_monospaced_text(eta_str))
 				else:
-					eta_str = time_delta_to_legible_eta(time_delta=eta, full_accuracy=True)
-					next_str = next_str.replace('???ETASTR???', short_monospaced_text(eta_str))
+					eta_str = time_delta_to_legible_eta(time_delta=eta,
+						full_accuracy=True)
+					next_str = next_str.replace('???ETASTR???',
+						short_monospaced_text(eta_str))
 			else:
 				if launch_status == 'HOLD':
 					t_prefx, eta_str = '⏸', 'Launch in hold: stand by'
@@ -2075,15 +2458,18 @@ def generate_next_flight_message(chat, current_index: int):
 					t_prefx, eta_str = '🚀', 'Vehicle in flight: stand by'
 
 				else:
-					logging.warning(f'Unknown status_state: {launch["status_state"]}')
+					logging.warning(
+						f'Unknown status_state: {launch["status_state"]}')
 					t_prefx, eta_str = '⚠️', 'Internal server error'
 
 				next_str = next_str.replace(
 					'⏰ ???ETASTR???',
 					f'{t_prefx} {short_monospaced_text(eta_str)}')
 		else:
-			eta_str = time_delta_to_legible_eta(time_delta=eta, full_accuracy=True)
-			next_str = next_str.replace('???ETASTR???', short_monospaced_text(eta_str))
+			eta_str = time_delta_to_legible_eta(time_delta=eta,
+				full_accuracy=True)
+			next_str = next_str.replace('???ETASTR???',
+				short_monospaced_text(eta_str))
 
 		# return msg + keyboard
 		return inspect.cleandoc(next_str), keyboard
@@ -2100,13 +2486,15 @@ def generate_next_flight_message(chat, current_index: int):
 	cursor_ = conn.cursor()
 
 	# verify db exists
-	cursor_.execute('SELECT name FROM sqlite_master WHERE type = ? AND name = ?', ('table', 'chats'))
+	cursor_.execute(
+		'SELECT name FROM sqlite_master WHERE type = ? AND name = ?',
+		('table', 'chats'))
 	if len(cursor_.fetchall()) == 0:
 		create_chats_db(db_path=DATA_DIR, cursor=cursor_)
 		conn.commit()
 
 	# find what launches the chat is subscribed to
-	cursor_.execute('''SELECT * FROM chats WHERE chat = ?''', (chat,))
+	cursor_.execute('''SELECT * FROM chats WHERE chat = ?''', (chat, ))
 
 	# convert rows into dictionaries for super easy parsing
 	query_return = [dict(row) for row in cursor_.fetchall()]
@@ -2171,7 +2559,8 @@ def generate_next_flight_message(chat, current_index: int):
 	if cmd == 'all':
 		# select all launches that have a net_unix ≥ today, or haven't launched and are holding,
 		# or are flying and were launched at most an hour ago
-		cursor_.execute('''
+		cursor_.execute(
+			'''
 			SELECT * FROM launches WHERE net_unix >= ? OR launched = 0 
 			AND status_state = ? OR status_state = ? AND net_unix >= ?''',
 			(today_unix, 'HOLD', 'FLYING', flying_net_window))
@@ -2191,11 +2580,12 @@ def generate_next_flight_message(chat, current_index: int):
 				query_str = f'''SELECT * FROM launches WHERE net_unix >= ? AND lsp_name NOT IN ({disabled_str})
 				AND lsp_short NOT IN ({disabled_str})'''
 
-				cursor_.execute(query_str, (today_unix,))
+				cursor_.execute(query_str, (today_unix, ))
 				query_return = cursor_.fetchall()
 
 			else:
-				cursor_.execute('SELECT * FROM launches WHERE net_unix >= ?',(today_unix,))
+				cursor_.execute('SELECT * FROM launches WHERE net_unix >= ?',
+					(today_unix, ))
 				query_return = cursor_.fetchall()
 		else:
 			# if no all_flag set, simply select all that are enabled
@@ -2222,17 +2612,28 @@ def generate_next_flight_message(chat, current_index: int):
 		try:
 			launch = dict(query_return[current_index])
 		except Exception as error:
-			logging.exception(f'⚠️ Exception setting launch via current_index: {error}')
-			logging.debug(f'current_index: {current_index} | query_return: {query_return}')
+			logging.exception(
+				f'⚠️ Exception setting launch via current_index: {error}')
+			logging.debug(
+				f'current_index: {current_index} | query_return: {query_return}'
+			)
 			launch = dict(query_return[0])
 	else:
 		msg_text = '🔄 No launches found! Try enabling notifications for other providers, or searching for all flights.'
 		inline_keyboard = []
-		inline_keyboard.append([InlineKeyboardButton(text='🔔 Adjust your notification settings', callback_data='notify/main_menu/refresh_text')])
-		inline_keyboard.append([InlineKeyboardButton(text='🔎 Search for all flights', callback_data='next_flight/refresh/0/all')])
+		inline_keyboard.append([
+			InlineKeyboardButton(text='🔔 Adjust your notification settings',
+			callback_data='notify/main_menu/refresh_text')
+		])
+		inline_keyboard.append([
+			InlineKeyboardButton(text='🔎 Search for all flights',
+			callback_data='next_flight/refresh/0/all')
+		])
 		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
-		logging.info('🔎 No launches found in next. Sent user the "No launches found" message.')
+		logging.info(
+			'🔎 No launches found in next. Sent user the "No launches found" message.'
+		)
 		return reconstruct_message_for_markdown(msg_text), keyboard
 
 	# launch name
@@ -2260,8 +2661,10 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# shorten very common pad names
 	if 'LC-' not in launch['pad_name']:
-		launch['pad_name'] = launch['pad_name'].replace('Space Launch Complex ', 'SLC-')
-		launch['pad_name'] = launch['pad_name'].replace('Launch Complex ', 'LC-')
+		launch['pad_name'] = launch['pad_name'].replace(
+			'Space Launch Complex ', 'SLC-')
+		launch['pad_name'] = launch['pad_name'].replace(
+			'Launch Complex ', 'LC-')
 
 	if 'air launch' in launch['pad_name'].lower():
 		launch['pad_name'] = 'Air launch to orbit'
@@ -2276,7 +2679,8 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# if not holding/flying, use regular ETA
 	if launch['status_state'] in ('GO', 'TBD', 'TBC'):
-		t_prefx, eta_str = '⏰', time_delta_to_legible_eta(time_delta=eta, full_accuracy=True)
+		t_prefx, eta_str = '⏰', time_delta_to_legible_eta(time_delta=eta,
+			full_accuracy=True)
 	elif launch['status_state'] == 'HOLD':
 		t_prefx, eta_str = '⏸', 'Launch in hold: stand by'
 	elif launch['status_state'] == 'FLYING':
@@ -2286,10 +2690,12 @@ def generate_next_flight_message(chat, current_index: int):
 		t_prefx, eta_str = '⚠️', 'Internal server error'
 
 	# # pull user time zone preferences, set tz_offset from hours to seconds
-	user_tz_offset = 3600 * load_time_zone_status(DATA_DIR, chat, readable=False)
+	user_tz_offset = 3600 * load_time_zone_status(
+		DATA_DIR, chat, readable=False)
 
 	# generate launch time string
-	launch_datetime = datetime.datetime.utcfromtimestamp(launch['net_unix'] + user_tz_offset)
+	launch_datetime = datetime.datetime.utcfromtimestamp(launch['net_unix'] +
+		user_tz_offset)
 	if launch_datetime.minute < 10:
 		min_time = f'0{launch_datetime.minute}'
 	else:
@@ -2298,15 +2704,16 @@ def generate_next_flight_message(chat, current_index: int):
 	launch_time = f'{launch_datetime.hour}:{min_time}'
 
 	# generate date string
-	date_str = timestamp_to_legible_date_string(
-		timestamp=launch['net_unix'] + user_tz_offset,
-		use_utc=True
-	)
+	date_str = timestamp_to_legible_date_string(timestamp=launch['net_unix'] +
+		user_tz_offset,
+		use_utc=True)
 
 	# verified launch date
 	if launch['status_state'] in ('GO', 'TBC', 'FLYING'):
 		# load UTC offset in readable format
-		readable_utc_offset = load_time_zone_status(data_dir=DATA_DIR, chat=chat, readable=True)
+		readable_utc_offset = load_time_zone_status(data_dir=DATA_DIR,
+			chat=chat,
+			readable=True)
 
 		if launch['status_state'] in ('GO', 'FLYING'):
 			# verified launch date and launch time
@@ -2323,16 +2730,25 @@ def generate_next_flight_message(chat, current_index: int):
 				# holding: time unknown
 				time_str = 'Waiting for new launch date'
 			else:
-				logging.warning(f'Unknown status state for time_str ({launch["status_state"]})')
+				logging.warning(
+					f'Unknown status state for time_str ({launch["status_state"]})'
+				)
 
 	# add mission information: type, orbit
-	mission_type = launch['mission_type'].capitalize() if launch['mission_type'] is not None else 'Unknown purpose'
+	mission_type = launch['mission_type'].capitalize(
+	) if launch['mission_type'] is not None else 'Unknown purpose'
 
 	# TODO add orbits for TMI and TLI, once these pop up for the first time
 	orbit_map = {
-		'Sub': 'Sub-orbital', 'VLEO': 'Very-low Earth orbit', 'LEO': 'Low Earth orbit',
-		'SSO': 'Sun-synchronous orbit', 'MEO': 'Medium Earth orbit', 'GTO': 'Geostationary (transfer)',
-		'Direct-GEO': 'Geostationary (direct)', 'GSO': 'Geosynchronous orbit', 'LO': 'Lunar orbit'
+		'Sub': 'Sub-orbital',
+		'VLEO': 'Very-low Earth orbit',
+		'LEO': 'Low Earth orbit',
+		'SSO': 'Sun-synchronous orbit',
+		'MEO': 'Medium Earth orbit',
+		'GTO': 'Geostationary (transfer)',
+		'Direct-GEO': 'Geostationary (direct)',
+		'GSO': 'Geosynchronous orbit',
+		'LO': 'Lunar orbit'
 	}
 
 	try:
@@ -2340,7 +2756,8 @@ def generate_next_flight_message(chat, current_index: int):
 		if launch['mission_orbit_abbrev'] in orbit_map.keys():
 			orbit_str = orbit_map[launch['mission_orbit_abbrev']]
 		else:
-			orbit_str = launch['mission_orbit'] if launch['mission_orbit_abbrev'] is not None else 'Unknown'
+			orbit_str = launch['mission_orbit'] if launch[
+				'mission_orbit_abbrev'] is not None else 'Unknown'
 			if 'Starlink' in launch_name:
 				orbit_str = 'Very-low Earth orbit'
 	except:
@@ -2368,9 +2785,14 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# add location to common landing objects
 	landing_loc_map = {
-		'OCISLY': 'Atlantic Ocean', 'JRTI': 'Atlantic Ocean', 'ASLOG': 'Pacific Ocean',
-		'LZ-1': 'CCAFS RTLS', 'LZ-2': 'CCAFS RTLS', 'LZ-4': 'VAFB RTLS',
-		'ATL': 'Expend 💥', 'PAC': 'Expend 💥'
+		'OCISLY': 'Atlantic Ocean',
+		'JRTI': 'Atlantic Ocean',
+		'ASLOG': 'Pacific Ocean',
+		'LZ-1': 'CCAFS RTLS',
+		'LZ-2': 'CCAFS RTLS',
+		'LZ-4': 'VAFB RTLS',
+		'ATL': 'Expend 💥',
+		'PAC': 'Expend 💥'
 	}
 
 	# if there's a landing attempt, generate the string for the booster (not a FH)
@@ -2417,16 +2839,15 @@ def generate_next_flight_message(chat, current_index: int):
 	elif multiple_boosters:
 		# find indices for core + boosters from str split
 		booster_indices = {'core': None, 'boosters': []}
-		for enum, stage_type in enumerate(launch['launcher_stage_type'].split(';;')):
+		for enum, stage_type in enumerate(
+			launch['launcher_stage_type'].split(';;')):
 			if stage_type.lower() == 'core':
 				booster_indices['core'] = enum
 			elif stage_type.lower() == 'strap-on booster':
 				booster_indices['boosters'].append(enum)
 			else:
-				logging.warning(
-					f'Unknown booster type when parsin indices!\
+				logging.warning(f'Unknown booster type when parsin indices!\
 					enum: {enum} | type: {stage_type} | launch_id: {launch["unique_id"]}')
-
 
 		# construct strings
 		recovery_str = '''\n*Vehicle configuration* 🚀'''
@@ -2440,7 +2861,8 @@ def generate_next_flight_message(chat, current_index: int):
 			core_str = 'Unknown' if core_str is None else core_str
 
 			if launch['launcher_is_flight_proven'].split(';;')[idx]:
-				reuse_count = launch['launcher_stage_flight_number'].split(';;')[idx]
+				reuse_count = launch['launcher_stage_flight_number'].split(
+					';;')[idx]
 
 				# append .x to F9 core names
 				if lsp_name == 'SpaceX' and core_str[0:2] == 'B1':
@@ -2537,40 +2959,47 @@ def generate_next_flight_message(chat, current_index: int):
 		if current_index != 0:
 			back = True
 			inline_keyboard[0].append(
-					InlineKeyboardButton(
-						text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}'))
+				InlineKeyboardButton(text='⏪ Previous',
+				callback_data=f'next_flight/prev/{current_index}'))
 
 		inline_keyboard[0].append(
-			InlineKeyboardButton(
-				text='🔄 Refresh', callback_data=f'next_flight/refresh/{current_index}'))
+			InlineKeyboardButton(text='🔄 Refresh',
+			callback_data=f'next_flight/refresh/{current_index}'))
 
 		# if we can go forward, add a next button
-		if current_index+1 < max_index:
+		if current_index + 1 < max_index:
 			fwd = True
 			inline_keyboard[0].append(
-				InlineKeyboardButton(text='Next ⏩', callback_data=f'next_flight/next/{current_index}'))
+				InlineKeyboardButton(text='Next ⏩',
+				callback_data=f'next_flight/next/{current_index}'))
 
 		# if the length is one, make the button really wide
 		if len(inline_keyboard[0]) == 1:
 			# only forwards, so the first entry; add a refresh button
 			if fwd:
 				inline_keyboard = [[]]
-				inline_keyboard[0].append(InlineKeyboardButton(
-					text='🔄 Refresh', callback_data=f'next_flight/refresh/0'))
-				inline_keyboard[0].append(InlineKeyboardButton(
-					text='Next ⏩', callback_data=f'next_flight/next/{current_index}'))
+				inline_keyboard[0].append(
+					InlineKeyboardButton(text='🔄 Refresh',
+					callback_data=f'next_flight/refresh/0'))
+				inline_keyboard[0].append(
+					InlineKeyboardButton(text='Next ⏩',
+					callback_data=f'next_flight/next/{current_index}'))
 			elif back:
-				inline_keyboard = [([InlineKeyboardButton(
-					text='⏪ Previous', callback_data=f'next_flight/prev/{current_index}')])]
-				inline_keyboard.append([(InlineKeyboardButton(
-					text='⏮ First', callback_data=f'next_flight/prev/1'))])
+				inline_keyboard = [([
+					InlineKeyboardButton(text='⏪ Previous',
+					callback_data=f'next_flight/prev/{current_index}')
+				])]
+				inline_keyboard.append([(InlineKeyboardButton(text='⏮ First',
+					callback_data=f'next_flight/prev/1'))])
 
 		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 	elif max_index == 1:
 		inline_keyboard = []
-		inline_keyboard.append([InlineKeyboardButton(
-			text='🔄 Refresh', callback_data=f'next_flight/prev/1')])
+		inline_keyboard.append([
+			InlineKeyboardButton(text='🔄 Refresh',
+			callback_data=f'next_flight/prev/1')
+		])
 
 		keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
@@ -2579,25 +3008,31 @@ def generate_next_flight_message(chat, current_index: int):
 
 	# expire keys 15 seconds after next api update
 	if rd.exists('next-api-update'):
-		to_next_update = int(float(rd.get('next-api-update'))) - int(time.time()) + 30
+		to_next_update = int(float(rd.get('next-api-update'))) - int(
+			time.time()) + 30
 	else:
-		to_next_update = 30*60
+		to_next_update = 30 * 60
 
 	if to_next_update < 0:
 		to_next_update = 60
 
 	# cache string, NET timestamp, launch status
 	rd.setex(f'next-{chat}-maxindex',
-		datetime.timedelta(seconds=to_next_update), value=max_index)
+		datetime.timedelta(seconds=to_next_update),
+		value=max_index)
 	rd.setex(f'next-{chat}-{current_index}',
-		datetime.timedelta(seconds=to_next_update), value=next_str)
+		datetime.timedelta(seconds=to_next_update),
+		value=next_str)
 	rd.setex(f'next-{chat}-{current_index}-net',
-		datetime.timedelta(seconds=to_next_update), value=launch['net_unix'])
+		datetime.timedelta(seconds=to_next_update),
+		value=launch['net_unix'])
 	rd.setex(f'next-{chat}-{current_index}-status',
-		datetime.timedelta(seconds=to_next_update), value=launch['status_state'])
+		datetime.timedelta(seconds=to_next_update),
+		value=launch['status_state'])
 
 	# TODO replace ETA
-	next_str = next_str.replace('⏰ ???ETASTR???', f'{t_prefx} {short_monospaced_text(eta_str)}')
+	next_str = next_str.replace('⏰ ???ETASTR???',
+		f'{t_prefx} {short_monospaced_text(eta_str)}')
 
 	# return msg + keyboard
 	return inspect.cleandoc(next_str), keyboard
@@ -2623,19 +3058,26 @@ def next_flight(update, context):
 
 	# send message
 	try:
-		context.bot.send_message(
-			chat_id, message, reply_markup=keyboard, parse_mode='MarkdownV2')
+		context.bot.send_message(chat_id,
+			message,
+			reply_markup=keyboard,
+			parse_mode='MarkdownV2')
 
 	except telegram.error.Unauthorized as error:
-		logging.info(f'Unauthorized to send message! Error.message: {error.message}')
+		logging.info(
+			f'Unauthorized to send message! Error.message: {error.message}')
 		clean_chats_db(db_path=DATA_DIR, chat=chat_id)
 
 	except telegram.error.RetryAfter as error:
-		logging.exception(f'🚧 [2634] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		logging.exception(
+			f'🚧 [2634] Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.'
+		)
 		retry_after(error.retry_after)
 
-		context.bot.send_message(
-			chat_id, message, reply_markup=keyboard, parse_mode='MarkdownV2')
+		context.bot.send_message(chat_id,
+			message,
+			reply_markup=keyboard,
+			parse_mode='MarkdownV2')
 
 	except telegram.error.TimedOut as error:
 		logging.info(f'Error: timed out! Error.message: {error.message}')
@@ -2643,7 +3085,7 @@ def next_flight(update, context):
 		next_flight(update, context)
 
 	# update stats
-	update_stats_db(stats_update={'commands':1}, db_path=DATA_DIR)
+	update_stats_db(stats_update={'commands': 1}, db_path=DATA_DIR)
 
 
 def generate_statistics_message() -> str:
@@ -2654,7 +3096,8 @@ def generate_statistics_message() -> str:
 	# verify stats exist in hot db
 	if not rd.exists('stats'):
 		# pull from disk
-		stats_conn = sqlite3.connect(os.path.join(DATA_DIR, 'launchbot-data.db'))
+		stats_conn = sqlite3.connect(
+			os.path.join(DATA_DIR, 'launchbot-data.db'))
 		stats_conn.row_factory = sqlite3.Row
 		stats_cursor = stats_conn.cursor()
 
@@ -2689,7 +3132,7 @@ def generate_statistics_message() -> str:
 		load_avg_str = rd.get('load_avg')
 	else:
 		if sys.platform != 'win32':
-			load_avgs = os.getloadavg() # [1 min, 5 min, 15 min]
+			load_avgs = os.getloadavg()  # [1 min, 5 min, 15 min]
 			load_avg_str = f'{load_avgs[0]:.2f} {load_avgs[1]:.2f} {load_avgs[2]:.2f}'
 		else:
 			load_avg_str = 'unknown'
@@ -2697,8 +3140,8 @@ def generate_statistics_message() -> str:
 		rd.setex('load_avg', datetime.timedelta(minutes=5), value=load_avg_str)
 
 	# format transfered API data to MB, GB
-	data_suffix = 'GB' if data/10**9 >= 1 else 'MB'
-	data = data/10**9 if data/10**9 >= 1 else data/10**6
+	data_suffix = 'GB' if data / 10**9 >= 1 else 'MB'
+	data = data / 10**9 if data / 10**9 >= 1 else data / 10**6
 
 	# get amount of stored data
 	if rd.exists('disk_storage'):
@@ -2706,25 +3149,31 @@ def generate_statistics_message() -> str:
 	else:
 		try:
 			db_storage = 0.00
-			db_storage += os.path.getsize(os.path.join(DATA_DIR, 'launchbot-data.db'))
-			db_storage += os.path.getsize(os.path.join(DATA_DIR, 'bot-config.json'))
+			db_storage += os.path.getsize(
+				os.path.join(DATA_DIR, 'launchbot-data.db'))
+			db_storage += os.path.getsize(
+				os.path.join(DATA_DIR, 'bot-config.json'))
 		except:
 			db_storage = 0.00
 
-		rd.setex('disk_storage', datetime.timedelta(minutes=60), value=db_storage)
+		rd.setex('disk_storage',
+			datetime.timedelta(minutes=60),
+			value=db_storage)
 
 	# format stored data to KB, MB, GB
-	if db_storage/10**6 >= 1:
-		db_storage_suffix = 'GB' if db_storage/10**9 >= 1 else 'MB'
-		db_storage = db_storage/10**9 if db_storage/10**9 >= 1 else db_storage/10**6
+	if db_storage / 10**6 >= 1:
+		db_storage_suffix = 'GB' if db_storage / 10**9 >= 1 else 'MB'
+		db_storage = db_storage / 10**9 if db_storage / 10**9 >= 1 else db_storage / 10**6
 	else:
 		db_storage_suffix = 'KB'
-		db_storage = db_storage/10**3
+		db_storage = db_storage / 10**3
 
 	# convert time since last db update to a readable ETA, add suffix
 	db_update_delta = int(time.time()) - last_db_update
-	last_db_update = time_delta_to_legible_eta(time_delta=db_update_delta, full_accuracy=False)
-	last_db_update_suffix = 'ago' if last_db_update not in ('never', 'just now') else ''
+	last_db_update = time_delta_to_legible_eta(time_delta=db_update_delta,
+		full_accuracy=False)
+	last_db_update_suffix = 'ago' if last_db_update not in ('never',
+		'just now') else ''
 
 	# check if we have enabled_notifications count cached: if not, pull from disk and cache
 	if rd.exists('subscribed_chats'):
@@ -2746,8 +3195,8 @@ def generate_statistics_message() -> str:
 			notification_recipients = 0
 
 		# cache value
-		rd.setex(
-			'subscribed_chats', datetime.timedelta(minutes=60),
+		rd.setex('subscribed_chats',
+			datetime.timedelta(minutes=60),
 			value=notification_recipients)
 
 	# get repo head's commit hex hash
@@ -2817,28 +3266,34 @@ def statistics(update, context):
 	stats_str = generate_statistics_message()
 
 	# add a keyboard for refreshing
-	keyboard = InlineKeyboardMarkup(
-		inline_keyboard=[[
-			InlineKeyboardButton(text='🔄 Refresh statistics', callback_data='stats/refresh')]])
+	keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+		InlineKeyboardButton(text='🔄 Refresh statistics',
+		callback_data='stats/refresh')
+	]])
 
 	try:
-		context.bot.send_message(
-			chat_id, stats_str, reply_markup=keyboard, parse_mode='Markdown',
-			disable_web_page_preview=True
-			)
+		context.bot.send_message(chat_id,
+			stats_str,
+			reply_markup=keyboard,
+			parse_mode='Markdown',
+			disable_web_page_preview=True)
 
 	except telegram.error.Unauthorized as error:
-		logging.info(f'Unauthorized to send message! Error.message: {error.message}')
+		logging.info(
+			f'Unauthorized to send message! Error.message: {error.message}')
 		clean_chats_db(db_path=DATA_DIR, chat=chat_id)
 
 	except telegram.error.RetryAfter as error:
-		logging.exception(f'[2835] 🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.')
+		logging.exception(
+			f'[2835] 🚧 Got a telegram.error.retryAfter: sleeping for {error.retry_after} sec.'
+		)
 		retry_after(error.retry_after)
 
-		context.bot.send_message(
-			chat_id, stats_str, reply_markup=keyboard, parse_mode='Markdown',
-			disable_web_page_preview=True
-			)
+		context.bot.send_message(chat_id,
+			stats_str,
+			reply_markup=keyboard,
+			parse_mode='Markdown',
+			disable_web_page_preview=True)
 
 	except telegram.error.TimedOut as error:
 		logging.info(f'Error: timed out! Error.message: {error.message}')
@@ -2854,7 +3309,9 @@ def update_token(data_dir: str):
 	config_ = load_config(data_dir)
 	token_input = str(input('Enter the bot token for LaunchBot: '))
 	while ':' not in token_input:
-		print('Please try again – bot-tokens look like "123456789:ABHMeJViB0RHL..."')
+		print(
+			'Please try again – bot-tokens look like "123456789:ABHMeJViB0RHL..."'
+		)
 		token_input = str(input('Enter the bot token for launchbot: '))
 
 	config_['bot_token'] = token_input
@@ -2870,7 +3327,8 @@ def sigterm_handler(signal, frame):
 	Logs program run time when we get sigterm.
 	'''
 	running_sec = int(time.time() - STARTUP_TIME)
-	time_running = time_delta_to_legible_eta(time_delta=running_sec, full_accuracy=True)
+	time_running = time_delta_to_legible_eta(time_delta=running_sec,
+		full_accuracy=True)
 
 	logging.info(f'✅ Got SIGTERM. Runtime: {time_running}.')
 	logging.info(f'Signal: {signal}, frame: {frame}.')
@@ -2882,7 +3340,8 @@ def apscheduler_event_listener(event):
 	Listens to exceptions coming in from apscheduler's threads.
 	'''
 	if event.exception:
-		logging.critical(f'Error: scheduled job raised an exception: {event.exception}')
+		logging.critical(
+			f'Error: scheduled job raised an exception: {event.exception}')
 		logging.critical('Exception traceback follows:')
 		logging.critical(event.traceback)
 
@@ -2892,7 +3351,8 @@ def apscheduler_event_listener(event):
 		# log exceptions to timestamped files
 		efname = os.path.join("error-logs", f"error-{int(time.time())}.log")
 		with open(efname, "w") as ef:
-			ef.write(f"ERROR EXPERIENCED AT {datetime.datetime.now().ctime()}")
+			ef.write(
+				f"ERROR EXPERIENCED AT {datetime.datetime.now().ctime()}\n\n")
 			ef.write(f"EXCEPTION: {event.exception}")
 			ef.write("TRACEBACK FOLLOWS:")
 			ef.write(event.traceback)
@@ -2902,7 +3362,7 @@ def apscheduler_event_listener(event):
 
 if __name__ == '__main__':
 	# current version, set DATA_DIR
-	VERSION = '2.1.25'
+	VERSION = "2.1.26"
 	DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 	OLD_DATA_DIR = os.path.join(os.path.dirname(__file__), 'launchbot')
 
@@ -2916,18 +3376,26 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser('launchbot.py')
 
 	# add args
-	parser.add_argument(
-		'-start', dest='start', help='Starts the bot', action='store_true')
-	parser.add_argument(
-		'-debug', dest='debug', help='Disables the activity indicator', action='store_true')
-	parser.add_argument(
-		'--new-bot-token', dest='update_token', help='Set a new bot token', action='store_true')
-	parser.add_argument(
-		'--force-api-update', dest='force_api_update',
-		help='Force an API update on startup', action='store_true')
-	parser.add_argument(
-		'--disable-api-updates', dest='api_updates_disabled',
-		help='Disables API update scheduler', action='store_true')
+	parser.add_argument('-start',
+		dest='start',
+		help='Starts the bot',
+		action='store_true')
+	parser.add_argument('-debug',
+		dest='debug',
+		help='Disables the activity indicator',
+		action='store_true')
+	parser.add_argument('--new-bot-token',
+		dest='update_token',
+		help='Set a new bot token',
+		action='store_true')
+	parser.add_argument('--force-api-update',
+		dest='force_api_update',
+		help='Force an API update on startup',
+		action='store_true')
+	parser.add_argument('--disable-api-updates',
+		dest='api_updates_disabled',
+		help='Disables API update scheduler',
+		action='store_true')
 
 	# set defaults, parse
 	parser.set_defaults(start=False, newBotToken=False, debug=False)
@@ -2937,7 +3405,9 @@ if __name__ == '__main__':
 		update_token(data_dir=DATA_DIR)
 
 	if not args.start:
-		sys.exit('No start command given, exiting. To start the bot, include -start in options.')
+		sys.exit(
+			'No start command given, exiting. To start the bot, include -start in options.'
+		)
 
 	# load config, create bot
 	config = load_config(data_dir=DATA_DIR)
@@ -2948,63 +3418,86 @@ if __name__ == '__main__':
 		config = repair_config(data_dir=DATA_DIR)
 		local_api_conf = config['local_api_server']
 
-	if (local_api_conf['enabled'], local_api_conf['logged_out']) == (True, True):
+	if (local_api_conf['enabled'], local_api_conf['logged_out']) == (True,
+		True):
 		api_url = local_api_conf['address']
-		updater = Updater(config['bot_token'], use_context=True, base_url=api_url)
+		updater = Updater(config['bot_token'],
+			use_context=True,
+			base_url=api_url)
 	else:
 		# register updater
 		updater = Updater(config['bot_token'], use_context=True)
 
 		# if local api is enabled but not in use (e.g. not logged out), log out
 		if local_api_conf['enabled'] is True:
-			logging.info('🚨 Attempting to log out from the cloud bot API server...')
+			logging.info(
+				'🚨 Attempting to log out from the cloud bot API server...')
 			if updater.bot.log_out():
 				# update config to reflect that we've logged out
 				config['local_api_server']['logged_out'] = True
 				store_config(config_json=config, data_dir=DATA_DIR)
 
-				logging.info('✅ Successfully logged out from bot API server: config updated!')
+				logging.info(
+					'✅ Successfully logged out from bot API server: config updated!'
+				)
 
 				updater.base_url = config['local_api_server']['address']
-				logging.info(f'✅ base_url set to {config["local_api_server"]["address"]}')
+				logging.info(
+					f'✅ base_url set to {config["local_api_server"]["address"]}'
+				)
 			else:
-				logging.warning('⚠️ Failed to log out from the bot API server!')
+				logging.warning(
+					'⚠️ Failed to log out from the bot API server!')
 				sys.exit('Exiting...')
-		elif local_api_conf['enabled'] is False and local_api_conf['logged_out'] is True:
+		elif local_api_conf['enabled'] is False and local_api_conf[
+			'logged_out'] is True:
 			# local API disabled manually, but not logged out yet
-			logging.info('🚨 Attempting to log out from the local bot API server...')
+			logging.info(
+				'🚨 Attempting to log out from the local bot API server...')
 
 			if updater.bot.close():
-				logging.info('✅ Successfully closed connection to local API server!')
+				logging.info(
+					'✅ Successfully closed connection to local API server!')
 
 			if updater.bot.log_out():
 				# update config to reflect that we've logged out
 				config['local_api_server']['logged_out'] = False
 				store_config(config_json=config, data_dir=DATA_DIR)
 
-				logging.info('✅ Successfully logged out from bot API server: config updated!')
+				logging.info(
+					'✅ Successfully logged out from bot API server: config updated!'
+				)
 				updater = Updater(config['bot_token'], use_context=True)
 
 			else:
-				logging.warning('⚠️ Failed to log out from the bot API server!')
+				logging.warning(
+					'⚠️ Failed to log out from the bot API server!')
 				sys.exit('Exiting...')
 
 	# get the bot: if we get a telegram.error.Unauthorized, the token is incorrect
 	try:
 		bot_specs = updater.bot.getMe()
 	except telegram.error.Unauthorized:
-		sys.exit('⚠️ Error: unable to init bot! Double-check your API token in bot-config.json!')
+		sys.exit(
+			'⚠️ Error: unable to init bot! Double-check your API token in bot-config.json!'
+		)
 	except telegram.error.NetworkError:
 		fail_count = 1
 		while True:
 			try:
 				bot_specs = updater.bot.getMe()
-				logging.info(f'✅ Recovered after {fail_count} failed connection attempts ({30*fail_count} sec)')
+				logging.info(
+					f'✅ Recovered after {fail_count} failed connection attempts ({30*fail_count} sec)'
+				)
 				break
 			except telegram.error.NetworkError:
-				logging.warning(f'[{fail_count}] ⚠️ Telegram NetworkError: trying again in 30 seconds...')
+				logging.warning(
+					f'[{fail_count}] ⚠️ Telegram NetworkError: trying again in 30 seconds...'
+				)
 			except Exception as e:
-				logging.warning(f'[{fail_count}] ⚠️ Exception: {e}: trying again in 30 seconds...')
+				logging.warning(
+					f'[{fail_count}] ⚠️ Exception: {e}: trying again in 30 seconds...'
+				)
 
 			time.sleep(30)
 			fail_count += 1
@@ -3016,8 +3509,9 @@ if __name__ == '__main__':
 
 	# valid commands we monitor for
 	VALID_COMMANDS = {
-		'/start', '/help', '/next', '/notify',
-		'/statistics', '/schedule', '/feedback'}
+		'/start', '/help', '/next', '/notify', '/statistics', '/schedule',
+		'/feedback'
+	}
 
 	# generate the "alternate" commands we listen for, as in ones suffixed with the bot's username
 	alt_commands = set()
@@ -3032,30 +3526,22 @@ if __name__ == '__main__':
 	global provider_by_cc
 	provider_by_cc = {
 		'USA': {
-			'NASA', 'SpaceX', 'ULA', 'Rocket Lab Ltd', 'Blue Origin', 'Astra Space', 'Virgin Orbit',
-			'Firefly Aerospace', 'Northrop Grumman', 'International Launch Services'},
-
-		'EU': {
-			'Arianespace', 'Eurockot', 'Starsem SA'},
-
-		'CHN': {
-			'CASC', 'ExPace', 'iSpace', 'Galactic Energy'},
-
+		'NASA', 'SpaceX', 'ULA', 'Rocket Lab Ltd', 'Blue Origin',
+		'Astra Space', 'Virgin Orbit', 'Firefly Aerospace', 'Northrop Grumman',
+		'International Launch Services'
+		},
+		'EU': {'Arianespace', 'Eurockot', 'Starsem SA'},
+		'CHN': {'CASC', 'ExPace', 'iSpace', 'Galactic Energy'},
 		'RUS': {
-			'KhSC', 'ISC Kosmotras', 'Russian Space Forces', 'Eurockot', 'Sea Launch',
-			'Land Launch', 'Starsem SA', 'International Launch Services', 'ROSCOSMOS'},
-
-		'IND': {
-			'ISRO', 'Antrix Corporation'},
-
-		'JPN': {
-			'JAXA', 'Mitsubishi Heavy Industries', 'Interstellar Technologies'},
-
-		'TWN': {
-			'TiSPACE'
-		}
+		'KhSC', 'ISC Kosmotras', 'Russian Space Forces', 'Eurockot',
+		'Sea Launch', 'Land Launch', 'Starsem SA',
+		'International Launch Services', 'ROSCOSMOS'
+		},
+		'IND': {'ISRO', 'Antrix Corporation'},
+		'JPN':
+		{'JAXA', 'Mitsubishi Heavy Industries', 'Interstellar Technologies'},
+		'TWN': {'TiSPACE'}
 	}
-
 	'''
 	Keep track of chats doing time zone setup, so we don't update
 	the time zone if someone responds to a bot message with a location,
@@ -3065,7 +3551,6 @@ if __name__ == '__main__':
 	'''
 	global time_zone_setup_chats
 	time_zone_setup_chats = {}
-
 	'''
 	LSP ID -> name, flag dictionary
 
@@ -3079,15 +3564,26 @@ if __name__ == '__main__':
 	'''
 	global LSP_IDs
 	LSP_IDs = {
-		121: ['SpaceX', '🇺🇸'], 147: ['Rocket Lab', '🇺🇸'], 265:['Firefly', '🇺🇸'],
-		141: ['Blue Origin', '🇺🇸'], 99: ['Northrop Grumman', '🇺🇸'],
-		115: ['Arianespace', '🇪🇺'], 124: ['ULA', '🇺🇸'], 98: ['Mitsubishi Heavy Industries', '🇯🇵'],
-		1002:['Interstellar Tech.', '🇯🇵'], 88: ['CASC', '🇨🇳'], 190: ['Antrix Corporation', '🇮🇳'],
-		122: ['Sea Launch', '🇷🇺'], 118: ['ILS', '🇺🇸🇷🇺'], 193: ['Eurockot', '🇪🇺🇷🇺'],
-		119: ['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'], 123: ['Starsem', '🇪🇺🇷🇺'], 194: ['ExPace', '🇨🇳'],
-		63: ['ROSCOSMOS', '🇷🇺'], 175: ['Ministry of Defence', '🇷🇺']
+		121: ['SpaceX', '🇺🇸'],
+		147: ['Rocket Lab', '🇺🇸'],
+		265: ['Firefly', '🇺🇸'],
+		141: ['Blue Origin', '🇺🇸'],
+		99: ['Northrop Grumman', '🇺🇸'],
+		115: ['Arianespace', '🇪🇺'],
+		124: ['ULA', '🇺🇸'],
+		98: ['Mitsubishi Heavy Industries', '🇯🇵'],
+		1002: ['Interstellar Tech.', '🇯🇵'],
+		88: ['CASC', '🇨🇳'],
+		190: ['Antrix Corporation', '🇮🇳'],
+		122: ['Sea Launch', '🇷🇺'],
+		118: ['ILS', '🇺🇸🇷🇺'],
+		193: ['Eurockot', '🇪🇺🇷🇺'],
+		119: ['ISC Kosmotras', '🇷🇺🇺🇦🇰🇿'],
+		123: ['Starsem', '🇪🇺🇷🇺'],
+		194: ['ExPace', '🇨🇳'],
+		63: ['ROSCOSMOS', '🇷🇺'],
+		175: ['Ministry of Defence', '🇷🇺']
 	}
-
 	''' This is effectively a reverse-map, mapping the short names used in the notify-command's
 	buttons into the proper LSP names, as found in the database. '''
 	global provider_name_map
@@ -3095,7 +3591,8 @@ if __name__ == '__main__':
 		'Rocket Lab': 'Rocket Lab Ltd',
 		'Northrop Grumman': 'Northrop Grumman Innovation Systems',
 		'ROSCOSMOS': 'Russian Federal Space Agency (ROSCOSMOS)',
-		'Ministry of Defence': 'Ministry of Defence of the Russian Federation'}
+		'Ministry of Defence': 'Ministry of Defence of the Russian Federation'
+	}
 
 	# start command timers, store in memory instead of storage to reduce disk writes
 	# TODO use redis or memcached
@@ -3107,7 +3604,7 @@ if __name__ == '__main__':
 	# TODO use redis or memcached
 	command_cooldowns['command_timers'] = {}
 	for command in VALID_COMMANDS:
-		command_cooldowns['command_timers'][command.replace('/','')] = 1
+		command_cooldowns['command_timers'][command.replace('/', '')] = 1
 
 	# init the feedback store; used to store the message IDs so we can store feedback
 	# TODO use redis or memcached
@@ -3121,8 +3618,10 @@ if __name__ == '__main__':
 	log = os.path.join(DATA_DIR, 'log-file.log')
 
 	# init log (disk)
-	logging.basicConfig(
-		filename=log, level=logging.DEBUG, format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
+	logging.basicConfig(filename=log,
+		level=logging.DEBUG,
+		format='%(asctime)s %(message)s',
+		datefmt='%d/%m/%Y %H:%M:%S')
 
 	# disable logging for urllib and requests because jesus fuck they make a lot of spam
 	logging.getLogger('requests').setLevel(logging.WARNING)
@@ -3150,7 +3649,9 @@ if __name__ == '__main__':
 	# if not in debug mode, show pretty prints
 	if not args.debug:
 		print(f"🚀 LaunchBot | version {VERSION}")
-		print("Don't close this window or set the computer to sleep. Quit: ctrl + c.")
+		print(
+			"Don't close this window or set the computer to sleep. Quit: ctrl + c."
+		)
 		time.sleep(0.5)
 
 	# init and start scheduler
@@ -3164,10 +3665,9 @@ if __name__ == '__main__':
 	dispatcher = updater.dispatcher
 
 	# register command handlers
-	dispatcher.add_handler(
-		CommandHandler(command='notify', callback=notify))
-	dispatcher.add_handler(
-		CommandHandler(command='next', callback=next_flight))
+	dispatcher.add_handler(CommandHandler(command='notify', callback=notify))
+	dispatcher.add_handler(CommandHandler(command='next',
+		callback=next_flight))
 	dispatcher.add_handler(
 		CommandHandler(command='feedback', callback=feedback))
 	dispatcher.add_handler(
@@ -3182,19 +3682,23 @@ if __name__ == '__main__':
 		CallbackQueryHandler(callback=callback_handler, run_async=True))
 
 	# register specific handlers (text for feedback, location for time zone stuff)
-	dispatcher.add_handler(MessageHandler(
-		Filters.reply & ~Filters.forwarded & ~Filters.command & ~Filters.location,
+	dispatcher.add_handler(
+		MessageHandler(Filters.reply & ~Filters.forwarded & ~Filters.command
+		& ~Filters.location,
 		callback=feedback_handler))
-	dispatcher.add_handler(MessageHandler(
-		Filters.reply & Filters.location & ~Filters.forwarded & ~Filters.command,
+	dispatcher.add_handler(
+		MessageHandler(Filters.reply & Filters.location & ~Filters.forwarded
+		& ~Filters.command,
 		callback=location_handler))
-	dispatcher.add_handler(MessageHandler(
-		Filters.status_update, callback=generic_update_handler))
+	dispatcher.add_handler(
+		MessageHandler(Filters.status_update, callback=generic_update_handler))
 
 	# if owner has been set, add handler for debug command in private
 	if OWNER != 0:
 		dispatcher.add_handler(
-			CommandHandler(command='debug', callback=admin_handler, filters=Filters.chat(OWNER)))
+			CommandHandler(command='debug',
+			callback=admin_handler,
+			filters=Filters.chat(OWNER)))
 
 	# all up to date, start polling
 	updater.start_polling()
@@ -3206,18 +3710,20 @@ if __name__ == '__main__':
 
 	# start API and notification scheduler, unless configured to not update for e.g. debug reasons
 	if not args.api_updates_disabled:
-		api_call_scheduler(
-			db_path=DATA_DIR, ignore_60=False, scheduler=scheduler, bot_username=BOT_USERNAME,
-			bot=updater.bot
-		)
+		api_call_scheduler(db_path=DATA_DIR,
+			ignore_60=False,
+			scheduler=scheduler,
+			bot_username=BOT_USERNAME,
+			bot=updater.bot)
 	else:
 		logging.warning("⚠️ Not starting API scheduler!")
 
 	# send startup message
 	if OWNER != 0:
 		try:
-			updater.bot.send_message(
-				OWNER, f'🤖 Bot started with args: `{sys.argv}`', parse_mode='Markdown')
+			updater.bot.send_message(OWNER,
+				f'🤖 Bot started with args: `{sys.argv}`',
+				parse_mode='Markdown')
 		except telegram.error.Unauthorized:
 			pass
 
@@ -3232,7 +3738,8 @@ if __name__ == '__main__':
 
 			while True:
 				for char in ('⠷', '⠯', '⠟', '⠻', '⠽', '⠾'):
-					sys.stdout.write('%s\r' % '  Connected to Telegram! To quit: ctrl + c.')
+					sys.stdout.write('%s\r' %
+						'  Connected to Telegram! To quit: ctrl + c.')
 					sys.stdout.write('\033[92m%s\r\033[0m' % char)
 					sys.stdout.flush()
 					time.sleep(0.1)
@@ -3253,10 +3760,12 @@ if __name__ == '__main__':
 			pass
 
 		scheduler.shutdown()
-		run_time = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME), True)
+		run_time = time_delta_to_legible_eta(int(time.time() - STARTUP_TIME),
+			True)
 		run_time_str = f'\n🔶 Program ending... Runtime: {run_time}.'
 		logging.warning(run_time_str)
 
 	except Exception as error:
 		logging.exception('Ran into an exception!')
-		updater.bot.send_message(OWNER, f'⚠️ Shutting down! exception: {error}')
+		updater.bot.send_message(OWNER,
+			f'⚠️ Shutting down! exception: {error}')
