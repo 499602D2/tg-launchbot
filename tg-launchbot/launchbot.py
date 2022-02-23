@@ -209,7 +209,7 @@ def admin_handler(update, context):
 			# only admin can call this function, so this is fine
 			chatId = chat.id
 
-		feedbackReplyMessage = f"*🚀 LaunchBot developer feedback reply* \n\n{' '.join(textContent)}"
+		feedbackReplyMessage = f"*📟 LaunchBot developer feedback reply* \n\n{' '.join(textContent)}"
 		feedbackReplyMessage += "\n\nℹ️ _To reply to this message, simply use /feedback again._"
 
 		# send
@@ -223,6 +223,11 @@ def admin_handler(update, context):
 			context.bot.send_message(chat_id=chat.id,
 				parse_mode='Markdown',
 				text=f"Error sending message: {e}. Refer to logs.")
+
+		# Notify admin of send
+		context.bot.send_message(chat_id=chat.id,
+			parse_mode='Markdown',
+			text=f"📟 Sent message to `{chatId}`!")
 
 	else:
 		invalid_command()
