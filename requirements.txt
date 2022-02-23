@@ -11,3 +11,5 @@ redis
 hiredis
 gitpython
 nltk
+flag
+iso3166
