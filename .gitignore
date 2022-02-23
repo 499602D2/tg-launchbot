@@ -5,6 +5,7 @@ env
 /tg-launchbot/launchbot
 /tg-launchbot/data
 /tg-launchbot/__pycache__
+tg-launchbot/error-logs
 .python-version
 utils/1.6-migrate/launchbot-data.db
 utils/1.6-migrate/notifications.db
