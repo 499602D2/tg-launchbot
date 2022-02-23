@@ -11,5 +11,5 @@ redis
 hiredis
 gitpython
 nltk
-flag
+emoji-country-flag
 iso3166
