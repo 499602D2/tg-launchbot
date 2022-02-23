@@ -17,29 +17,34 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from db import create_chats_db, update_stats_db
 from timezone import load_bulk_tz_offset
-from utils import (
-	short_monospaced_text, map_country_code_to_flag, reconstruct_link_for_markdown,
-	reconstruct_message_for_markdown, anonymize_id, suffixed_readable_int,
-	timestamp_to_legible_date_string, retry_after, time_delta_to_legible_eta)
+from utils import (short_monospaced_text, map_country_code_to_flag,
+	reconstruct_link_for_markdown, reconstruct_message_for_markdown,
+	anonymize_id, suffixed_readable_int, timestamp_to_legible_date_string,
+	retry_after, time_delta_to_legible_eta)
 
 
-def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bot.Bot'):
+def postpone_notification(
+		db_path: str, postpone_tuple: tuple, bot: 'telegram.bot.Bot'):
 	'''
 	Handles the final stages of the flow associated with sending a postpone notification.
 	'''
+
 	def send_postpone_notification(chat_id: str, launch_id: str):
 		'''
 		Handles the actual sending of the notification.
 		'''
 		try:
 			# set the muting button
-			keyboard = InlineKeyboardMarkup(
-				inline_keyboard = [[InlineKeyboardButton(
-					text='🔇 Mute this launch', callback_data=f'mute/{launch_id}/1')]])
+			keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+				InlineKeyboardButton(text='🔇 Mute this launch',
+				callback_data=f'mute/{launch_id}/1')
+			]])
 
 			# catch the sent message object so we can store its id
-			sent_msg = bot.sendMessage(
-				chat_id, message, parse_mode='MarkdownV2', reply_markup=keyboard)
+			sent_msg = bot.sendMessage(chat_id,
+				message,
+				parse_mode='MarkdownV2',
+				reply_markup=keyboard)
 
 			# sent message is stored in sent_msg; store in db so we can edit messages
 			msg_identifier = f'{sent_msg["chat"]["id"]}:{sent_msg["message_id"]}'
@@ -49,13 +54,16 @@ def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bo
 			''' Rate-limited by Telegram
 			https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this '''
 			retry_time = error.retry_after
-			logging.exception(f'🚧 [postpone-send] Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
+			logging.exception(
+				f'🚧 [postpone-send] Got a telegram.error.retryAfter: sleeping for {retry_time} sec.'
+			)
 			retry_after(retry_time)
 
 			return False, None
 
 		except telegram.error.TimedOut as error:
-			logging.exception('🚧 Got a telegram.error.TimedOut: sleeping for 1 second.')
+			logging.exception(
+				'🚧 Got a telegram.error.TimedOut: sleeping for 1 second.')
 			retry_after(1)
 
 			return False, None
@@ -71,40 +79,52 @@ def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bo
 			return True, None
 
 		except telegram.error.ChatMigrated as error:
-			logging.info(f'⚠️ Chat {chat_id} migrated to {error.new_chat_id}! Updating chats db...')
+			logging.info(
+				f'⚠️ Chat {chat_id} migrated to {error.new_chat_id}! Updating chats db...'
+			)
 			conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 			cursor = conn.cursor()
 
 			try:
-				cursor.execute('UPDATE chats SET chat = ? WHERE chat = ?', (error.new_chat_id, chat_id))
+				cursor.execute('UPDATE chats SET chat = ? WHERE chat = ?',
+					(error.new_chat_id, chat_id))
 			except:
-				logging.exception(f'Unable to migrate {chat_id} to {error.new_chat_id}!')
+				logging.exception(
+					f'Unable to migrate {chat_id} to {error.new_chat_id}!')
 
 			conn.commit()
 			conn.close()
 
 		except telegram.error.TelegramError as error:
 			if 'chat not found' in error.message:
-				logging.exception(f'⚠️ Chat {anonymize_id(chat_id)} not found.')
+				logging.exception(
+					f'⚠️ Chat {anonymize_id(chat_id)} not found.')
 
 			elif 'bot was blocked' in error.message:
 				logging.info(f'⚠️ Bot was blocked by {anonymize_id(chat_id)}.')
 
 			elif 'user is deactivated' in error.message:
-				logging.exception(f'⚠️ User {anonymize_id(chat_id)} was deactivated.')
+				logging.exception(
+					f'⚠️ User {anonymize_id(chat_id)} was deactivated.')
 
 			elif 'bot was kicked from the supergroup chat' in error.message:
-				logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat_id)}.')
+				logging.exception(
+					f'⚠️ Bot was kicked from supergroup {anonymize_id(chat_id)}.'
+				)
 
 			elif 'bot is not a member of the supergroup chat' in error.message:
-				logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat_id)}.')
+				logging.exception(
+					f'⚠️ Bot was kicked from supergroup {anonymize_id(chat_id)}.'
+				)
 
 			elif "Can't parse entities" in error.message:
 				logging.exception('🛑 Error parsing message markdown!')
 				return False, None
 
 			else:
-				logging.exception('⚠️ Unhandled telegram.error.TelegramError in send_notification!')
+				logging.exception(
+					'⚠️ Unhandled telegram.error.TelegramError in send_notification!'
+				)
 
 			# known error: clean the chat from the chats db
 			logging.info('🗃 Cleaning chats database...')
@@ -115,7 +135,9 @@ def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bo
 
 		else:
 			# Something else, log
-			logging.exception('⚠️ Unhandled telegram.error.TelegramError in send_notification!')
+			logging.exception(
+				'⚠️ Unhandled telegram.error.TelegramError in send_notification!'
+			)
 			return True, None
 
 	# pull info from postpone_tuple
@@ -131,16 +153,15 @@ def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bo
 		lsp_db_name = launch_obj.lsp_name
 
 	# load chats to notify
-	notification_list = get_notify_list(
-		db_path=db_path,
+	notification_list = get_notify_list(db_path=db_path,
 		lsp=lsp_db_name,
 		launch_id=launch_obj.unique_id,
 		notify_class='postpone',
-		notif_states=old_notif_states
-	)
+		notif_states=old_notif_states)
 
 	# load tz tuple for each chat
-	notification_list_tzs = load_bulk_tz_offset(data_dir=db_path, chat_id_set=notification_list)
+	notification_list_tzs = load_bulk_tz_offset(data_dir=db_path,
+		chat_id_set=notification_list)
 
 	# Enforce API limits
 	# Postpone notifications are small in size, therefore we can do the full 30 msg/sec
@@ -152,8 +173,8 @@ def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bo
 	for chat, tz_tuple in notification_list_tzs.items():
 		# generate unique time for each chat
 		utc_offset = 3600 * tz_tuple[0]
-		launch_unix = datetime.datetime.utcfromtimestamp(
-			launch_obj.net_unix + utc_offset)
+		launch_unix = datetime.datetime.utcfromtimestamp(launch_obj.net_unix +
+			utc_offset)
 
 		# generate lift-off time string
 		if launch_unix.minute < 10:
@@ -167,30 +188,28 @@ def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bo
 
 		# set date for chat
 		date_string = timestamp_to_legible_date_string(
-			timestamp=launch_obj.net_unix + utc_offset,
-			use_utc=True
-		)
+			timestamp=launch_obj.net_unix + utc_offset, use_utc=True)
 
 		# replace placeholder date with date string
 		message = message.replace('DATEHERE', date_string)
 
 		# send message
-		success, msg_id = send_postpone_notification(
-			chat_id=chat, launch_id=launch_obj.unique_id)
+		success, msg_id = send_postpone_notification(chat_id=chat,
+			launch_id=launch_obj.unique_id)
 
 		if success and msg_id is not None:
 			''' send counts as success even if we fail due to the bot being blocked etc.:
 			if we succeeded, but got a message id (actually sent something), store it '''
 			sent_notification_ids.add(msg_id)
 		elif not success:
-			logging.info(f'⚠️ Failed to send postpone notification to chat={chat}!')
+			logging.info(
+				f'⚠️ Failed to send postpone notification to chat={chat}!')
 
 			fail_count = 0
 			while fail_count < 5:
 				fail_count += 1
-				success, msg_id = send_postpone_notification(
-					chat_id=chat, launch_id=launch_obj.unique_id
-				)
+				success, msg_id = send_postpone_notification(chat_id=chat,
+					launch_id=launch_obj.unique_id)
 
 				if success:
 					break
@@ -205,7 +224,7 @@ def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bo
 
 		# After each send (successful or not), enforce the API limit by sleeping
 		# 30 messages/second limit -> sleep for 33 milliseconds
-		time.sleep(1/API_SEND_LIMIT_PER_SECOND)
+		time.sleep(1 / API_SEND_LIMIT_PER_SECOND)
 
 		# Every 30 messages, sleep an additional 50 milliseconds
 		messages_sent += 1
@@ -213,14 +232,17 @@ def postpone_notification(db_path: str, postpone_tuple: tuple, bot: 'telegram.bo
 			time.sleep(3)
 
 	send_end_time = int(time.time())
-	eta_string = time_delta_to_legible_eta(send_end_time-send_start_time, True)
-	logging.info(f"⏱ Sent {len(notification_list_tzs)} postpone notifications in {eta_string}")
+	eta_string = time_delta_to_legible_eta(send_end_time - send_start_time,
+		True)
+	logging.info(
+		f"⏱ Sent {len(notification_list_tzs)} postpone notifications in {eta_string}"
+	)
 
 	return notification_list, sent_notification_ids
 
 
 def get_user_notifications_status(db_dir: str, chat: str, provider_set: set,
-provider_name_map: dict) -> dict:
+	provider_name_map: dict) -> dict:
 	'''
 	The function takes a list of provider strings as input, and returns a dict containing
 	the notification status for all providers.
@@ -231,7 +253,9 @@ provider_name_map: dict) -> dict:
 	cursor = conn.cursor()
 
 	# verify table exists
-	cursor.execute('SELECT name FROM sqlite_master WHERE type = ? AND name = ?', ('table', 'chats'))
+	cursor.execute(
+		'SELECT name FROM sqlite_master WHERE type = ? AND name = ?',
+		('table', 'chats'))
 	if len(cursor.fetchall()) == 0:
 		logging.warning("⚠️ Chats table doesn't exists: creating...")
 		create_chats_db(db_path=db_dir, cursor=cursor)
@@ -240,7 +264,7 @@ provider_name_map: dict) -> dict:
 		logging.info('✅ Chats table created!')
 
 	# select the field for our chat, convert to a dict, close conn
-	cursor.execute("SELECT * FROM chats WHERE chat = ?", (chat,))
+	cursor.execute("SELECT * FROM chats WHERE chat = ?", (chat, ))
 	query_return = [dict(row) for row in cursor.fetchall()]
 	conn.close()
 
@@ -308,7 +332,8 @@ provider_name_map: dict) -> dict:
 	return notification_statuses
 
 
-def store_notification_identifiers(db_path: str, launch_id: str, identifiers: str):
+def store_notification_identifiers(
+		db_path: str, launch_id: str, identifiers: str):
 	'''
 	Stores the notification identifiers for a sent notification. Already parsed into
 	a string, so all we have to do is insert it.
@@ -321,7 +346,9 @@ def store_notification_identifiers(db_path: str, launch_id: str, identifiers: st
 	update_tuple = (identifiers, launch_id)
 
 	try:
-		cursor.execute('UPDATE launches SET sent_notification_ids = ? WHERE unique_id = ?', update_tuple)
+		cursor.execute(
+			'UPDATE launches SET sent_notification_ids = ? WHERE unique_id = ?',
+			update_tuple)
 	except:
 		logging.exception('Error updating notification identifiers!')
 
@@ -329,8 +356,9 @@ def store_notification_identifiers(db_path: str, launch_id: str, identifiers: st
 	conn.close()
 
 
-def toggle_notification(data_dir: str, chat: str, toggle_type: str, keyword: str,
-toggle_to_state: int, provider_by_cc: dict, provider_name_map: dict):
+def toggle_notification(data_dir: str, chat: str, toggle_type: str,
+	keyword: str, toggle_to_state: int, provider_by_cc: dict,
+	provider_name_map: dict):
 	'''
 	Toggle a notification to the toggle_to_state state (if keyword is all or a cc),
 	otherwise determine the new toggle state ourselves.
@@ -375,25 +403,26 @@ toggle_to_state: int, provider_by_cc: dict, provider_name_map: dict):
 					provider_list_mod.add(provider)
 
 		provider_list = provider_list_mod
-
 	''' Do string operations so we can update the notification states.
 	Basically, we have a new toggle_state that indicated whether the new
 	state is enabled or disabled. Before we can proceed, pull the current
 	notification states. '''
 
-	cursor.execute('SELECT * FROM chats WHERE chat = ?', (chat,))
+	cursor.execute('SELECT * FROM chats WHERE chat = ?', (chat, ))
 	query_return = [dict(row) for row in cursor.fetchall()]
 	data_exists = bool(len(query_return) != 0)
 
 	# pull existing strs, split
 	if data_exists:
 		if query_return[0]['enabled_notifications'] is not None:
-			old_enabled_states = query_return[0]['enabled_notifications'].split(',')
+			old_enabled_states = query_return[0][
+				'enabled_notifications'].split(',')
 		else:
 			old_enabled_states = []
 
 		if query_return[0]['disabled_notifications'] is not None:
-			old_disabled_states = query_return[0]['disabled_notifications'].split(',')
+			old_disabled_states = query_return[0][
+				'disabled_notifications'].split(',')
 		else:
 			old_disabled_states = []
 
@@ -406,7 +435,6 @@ toggle_to_state: int, provider_by_cc: dict, provider_name_map: dict):
 			old_disabled_states.remove('')
 		except ValueError:
 			pass
-
 
 	# merge enabled and disabled states into one dict of kw:bool
 	old_states = {}
@@ -461,16 +489,20 @@ toggle_to_state: int, provider_by_cc: dict, provider_name_map: dict):
 
 	try:
 		if data_exists:
-			cursor.execute('''UPDATE chats SET enabled_notifications = ?, disabled_notifications = ?
+			cursor.execute(
+				'''UPDATE chats SET enabled_notifications = ?, disabled_notifications = ?
 				WHERE chat = ?''', (new_enabled_str, new_disabled_str, chat))
 		else:
-			cursor.execute('''INSERT INTO chats (chat, subscribed_since, time_zone, time_zone_str,
+			cursor.execute(
+				'''INSERT INTO chats (chat, subscribed_since, time_zone, time_zone_str,
 				command_permissions, postpone_notify, notify_time_pref, enabled_notifications, 
 				disabled_notifications) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-				(chat, int(time.time()), None, None, None, None, '1,1,1,1', new_enabled_str, new_disabled_str))
+				(chat, int(time.time()), None, None, None, None, '1,1,1,1',
+				new_enabled_str, new_disabled_str))
 	except sqlite3.IntegrityError:
 		# already found: simply update the db row
-		cursor.execute('''UPDATE chats SET enabled_notifications = ?, disabled_notifications = ?
+		cursor.execute(
+			'''UPDATE chats SET enabled_notifications = ?, disabled_notifications = ?
 				WHERE chat = ?''', (new_enabled_str, new_disabled_str, chat))
 
 	conn.commit()
@@ -482,7 +514,8 @@ toggle_to_state: int, provider_by_cc: dict, provider_name_map: dict):
 	return toggle_to_state
 
 
-def update_notif_preference(db_path: str, chat: str, notification_type: str) -> int:
+def update_notif_preference(db_path: str, chat: str,
+	notification_type: str) -> int:
 	'''
 	db_path (str): main data dir path
 	chat (str): chat to update preferences for
@@ -500,25 +533,29 @@ def update_notif_preference(db_path: str, chat: str, notification_type: str) -> 
 
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	cursor = conn.cursor()
-
 	''' chats table:
 	chat TEXT 				subscribed_since INT 			time_zone TEXT
 	time_zone_str TEXT 		command_permissions TEXT 		postpone_notify BOOLEAN
 	notify_time_pref TEXT 	enabled_notifications TEXT 		disabled_notifications TEXT
 	'''
 	try:
-		cursor.execute('''INSERT INTO chats
+		cursor.execute(
+			'''INSERT INTO chats
 			(chat, subscribed_since, time_zone, time_zone_str, command_permissions, postpone_notify,
 			notify_time_pref, enabled_notifications, disabled_notifications) VALUES (?,?,?,?,?,?,?,?,?)''',
-			(chat, int(time.time()), None, None, None, None, new_preferences, None, None))
+			(chat, int(
+			time.time()), None, None, None, None, new_preferences, None, None))
 	except sqlite3.IntegrityError:
-		cursor.execute("UPDATE chats SET notify_time_pref = ? WHERE chat = ?", (new_preferences, chat))
+		cursor.execute("UPDATE chats SET notify_time_pref = ? WHERE chat = ?",
+			(new_preferences, chat))
 
 	conn.commit()
 	conn.close()
 
 	toggle_state_text = 'enabled (🔔)' if new_state == 1 else 'disabled (🔕)'
-	logging.info(f'📩 {anonymize_id(chat)} {toggle_state_text} {notification_type} notification')
+	logging.info(
+		f'📩 {anonymize_id(chat)} {toggle_state_text} {notification_type} notification'
+	)
 
 	return new_state
 
@@ -530,7 +567,8 @@ def get_notif_preference(db_path: str, chat: str) -> tuple:
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	cursor = conn.cursor()
 
-	cursor.execute("SELECT notify_time_pref FROM chats WHERE chat = ?",(chat,))
+	cursor.execute("SELECT notify_time_pref FROM chats WHERE chat = ?",
+		(chat, ))
 	query_return = cursor.fetchall()
 	conn.close()
 
@@ -539,8 +577,7 @@ def get_notif_preference(db_path: str, chat: str) -> tuple:
 
 	notif_preferences = query_return[0][0].split(',')
 
-	return (
-		int(notif_preferences[0]), int(notif_preferences[1]),
+	return (int(notif_preferences[0]), int(notif_preferences[1]),
 		int(notif_preferences[2]), int(notif_preferences[3]))
 
 
@@ -549,7 +586,7 @@ def toggle_launch_mute(db_path: str, chat: str, launch_id: str, toggle: int):
 	Toggles launch mute for a chat.
 	'''
 	# get mute status
-	conn = sqlite3.connect(os.path.join(db_path,'launchbot-data.db'))
+	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	conn.row_factory = sqlite3.Row
 	cursor = conn.cursor()
 
@@ -557,11 +594,13 @@ def toggle_launch_mute(db_path: str, chat: str, launch_id: str, toggle: int):
 	chat = str(chat)
 
 	# pull the current muted_launches field
-	cursor.execute("SELECT muted_by FROM launches WHERE unique_id = ?", (launch_id,))
+	cursor.execute("SELECT muted_by FROM launches WHERE unique_id = ?",
+		(launch_id, ))
 	query_return = [dict(row) for row in cursor.fetchall()]
 
 	if len(query_return) == 0:
-		logging.warning(f'No launches found to mute with launch_id={launch_id}')
+		logging.warning(
+			f'No launches found to mute with launch_id={launch_id}')
 		return
 
 	if query_return[0]['muted_by'] is not None:
@@ -580,9 +619,12 @@ def toggle_launch_mute(db_path: str, chat: str, launch_id: str, toggle: int):
 	elif chat not in muted_by and toggle == 0 or chat in muted_by and toggle == 1:
 		# handle odd cases that should never happen
 		if toggle == 0:
-			logging.warning(f'Chat={chat} not found in muted_by and called with toggle==0!')
+			logging.warning(
+				f'Chat={chat} not found in muted_by and called with toggle==0!'
+			)
 		elif toggle == 1:
-			logging.warning(f'Chat={chat} found in muted_by, but called with toggle==1!')
+			logging.warning(
+				f'Chat={chat} found in muted_by, but called with toggle==1!')
 
 		return
 
@@ -593,7 +635,8 @@ def toggle_launch_mute(db_path: str, chat: str, launch_id: str, toggle: int):
 		muted_by_str = None
 
 	# insert
-	cursor.execute('UPDATE launches SET muted_by = ? WHERE unique_id = ?', (muted_by_str, launch_id))
+	cursor.execute('UPDATE launches SET muted_by = ? WHERE unique_id = ?',
+		(muted_by_str, launch_id))
 
 	# commit, close
 	conn.commit()
@@ -609,7 +652,8 @@ def load_mute_status(db_path: str, launch_id: str):
 	cursor = conn.cursor()
 
 	# pull launch mute status for chat
-	cursor.execute("SELECT muted_by FROM launches WHERE unique_id = ?", (launch_id,))
+	cursor.execute("SELECT muted_by FROM launches WHERE unique_id = ?",
+		(launch_id, ))
 	query_return = cursor.fetchall()
 	conn.close()
 
@@ -633,13 +677,14 @@ def clean_chats_db(db_path, chat):
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	cursor = conn.cursor()
 
-	cursor.execute("DELETE FROM chats WHERE chat = ?", (chat,))
+	cursor.execute("DELETE FROM chats WHERE chat = ?", (chat, ))
 	conn.commit()
 	conn.close()
 
 
 def remove_previous_notification(
-	db_path: str, launch_id: str, notify_set: set, bot: 'telegram.bot.Bot'):
+		db_path: str, launch_id: str, notify_set: set,
+		bot: 'telegram.bot.Bot'):
 	'''
 	This function attempts to remove the previously sent notification for this launch.
 
@@ -653,7 +698,9 @@ def remove_previous_notification(
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	cursor = conn.cursor()
 
-	cursor.execute('SELECT sent_notification_ids FROM launches WHERE unique_id = ?', (launch_id,))
+	cursor.execute(
+		'SELECT sent_notification_ids FROM launches WHERE unique_id = ?',
+		(launch_id, ))
 	query_return = cursor.fetchall()
 
 	if len(query_return) == 0:
@@ -669,7 +716,8 @@ def remove_previous_notification(
 	try:
 		identifiers = identifiers.split(',')
 	except:
-		logging.exception(f'Unable to split identifiers! identifiers={identifiers}')
+		logging.exception(
+			f'Unable to split identifiers! identifiers={identifiers}')
 		return
 
 	API_SEND_LIMIT_PER_SECOND = 4
@@ -684,7 +732,9 @@ def remove_previous_notification(
 			message_identifier = (chat_id, msg_id)
 		except IndexError:
 			# throws an error if nothing to remove (i.e. empty db)
-			logging.info(f'Nothing to remove: id_pair = {id_pair}, identifiers={identifiers}')
+			logging.info(
+				f'Nothing to remove: id_pair = {id_pair}, identifiers={identifiers}'
+			)
 			return
 
 		# make sure chat_id is in notify_set
@@ -694,48 +744,66 @@ def remove_previous_notification(
 				if success:
 					success_count += 1
 				else:
-					logging.info(f'Failed to delete message {message_identifier}! Ret={success}')
+					logging.info(
+						f'Failed to delete message {message_identifier}! Ret={success}'
+					)
 			except telegram.error.BadRequest:
 				pass
 			except telegram.error.RetryAfter as error:
 				# sleep for a while
 				retry_time = error.retry_after
-				logging.exception(f'🚧 [rm prev. notif] Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
+				logging.exception(
+					f'🚧 [rm prev. notif] Got a telegram.error.retryAfter: sleeping for {retry_time} sec.'
+				)
 				retry_after(retry_time)
 
 				# try deleting again
 				try:
 					if bot.delete_message(chat_id, msg_id):
-						logging.info('✅ Successfully deleted message after sleeping!')
+						logging.info(
+							'✅ Successfully deleted message after sleeping!')
 					else:
-						logging.info('⚠️ Failed to remove notification after sleeping!')
+						logging.info(
+							'⚠️ Failed to remove notification after sleeping!')
 				except Exception as e:
-					logging.exception(f'[{e}] Got another error when attempting to delete message: ignoring.')
+					logging.exception(
+						f'[{e}] Got another error when attempting to delete message: ignoring.'
+					)
 
 			except telegram.error.Unauthorized as error:
 				logging.warning(f'Unauthorized to delete message ({error})')
 				if 'bot was kicked from the supergroup chat' in error.message:
 					clean_chats_db(db_path, chat_id)
 				else:
-					logging.exception('⚠️ (caught as unauthorized) Unable to delete previous notification')
+					logging.exception(
+						'⚠️ (caught as unauthorized) Unable to delete previous notification'
+					)
 					logging.warning(f'Error: {error} | vars: {vars(error)}')
 
 			except Exception as error:
-				logging.exception(f'⚠️ Unable to delete previous notification. msg_id: {message_identifier}')
+				logging.exception(
+					f'⚠️ Unable to delete previous notification. msg_id: {message_identifier}'
+				)
 				logging.warning(f'Error: {error} | vars: {vars(error)}')
 		else:
 			muted_count += 1
-			logging.info(f'🔍 Not removing previous notification for chat={anonymize_id(chat_id)}')
+			logging.info(
+				f'🔍 Not removing previous notification for chat={anonymize_id(chat_id)}'
+			)
 
 		# Sleep to stay within API limits
-		time.sleep(1/API_SEND_LIMIT_PER_SECOND)
+		time.sleep(1 / API_SEND_LIMIT_PER_SECOND)
 
-	logging.info(f'✅ Successfully removed {success_count} previously sent notifications!')
-	logging.info(f'🔍 {muted_count} avoided due to mute status or notification disablement.')
+	logging.info(
+		f'✅ Successfully removed {success_count} previously sent notifications!'
+	)
+	logging.info(
+		f'🔍 {muted_count} avoided due to mute status or notification disablement.'
+	)
 
 
 def get_notify_list(db_path: str, lsp: str, launch_id: str, notify_class: str,
-notif_states: tuple) -> set:
+	notif_states: tuple) -> set:
 	'''
 	Pull all chats with matching keyword (LSP ID), matching country code notification,
 	or an "all" marker (and no exclusion for this ID/country)
@@ -744,11 +812,11 @@ notif_states: tuple) -> set:
 	conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 	conn.row_factory = sqlite3.Row
 	cursor = conn.cursor()
-
 	''' Select all where the lsp or 'All' is in the row. If chat has 'All' in the row,
 	make sure the lsp name isn't in disabled_notifications. '''
 	try:
-		cursor.execute("""
+		cursor.execute(
+			"""
 			SELECT * FROM chats WHERE enabled_notifications LIKE '%'||?||'%' 
 			OR enabled_notifications LIKE '%'||?||'%'""", (lsp, 'All'))
 	except sqlite3.OperationalError:
@@ -778,7 +846,6 @@ notif_states: tuple) -> set:
 		for enum, state in enumerate(notif_states):
 			enabled = bool(int(state) == 1)
 			logging.debug(f'enum: {enum}, state: {state}, enabled: {enabled}')
-
 			''' min_recvd_notif_idx should be the last notification state index that
 			a notification has been sent for: as a notification state has been reset previously,
 			we can set min_recvd_notif_idx to enum-1.
@@ -790,17 +857,20 @@ notif_states: tuple) -> set:
 				if enum == 0:
 					# should never happen
 					logging.debug('⚠️ Avoided min_recvd_notif_idx == -1 (???)')
-					logging.debug('\tint(state) == 0 | min_recvd_notif_idx = 0')
+					logging.debug(
+						'\tint(state) == 0 | min_recvd_notif_idx = 0')
 					min_recvd_notif_idx = 0
 				else:
-					logging.debug(f'\tint(state) == 0 | min_recvd_notif_idx = {enum}')
+					logging.debug(
+						f'\tint(state) == 0 | min_recvd_notif_idx = {enum}')
 					min_recvd_notif_idx = enum - 1
 
 				break
 
 			if enum == 3 and int(state) != 0:
 				# all states enabled: set min_recvd_notif_idx to 3
-				logging.info('⚠️ All notif states enabled: avoided ValueError...')
+				logging.info(
+					'⚠️ All notif states enabled: avoided ValueError...')
 				min_recvd_notif_idx = 3
 
 		for chat_row in query_return:
@@ -811,7 +881,6 @@ notif_states: tuple) -> set:
 			# if disabled, pass
 			if lsp in chat_row['disabled_notifications']:
 				continue
-
 			''' TODO determine which chats have disabled postpone notifs
 			i.e. (implement the setting for users) '''
 
@@ -831,8 +900,11 @@ notif_states: tuple) -> set:
 
 	# map notify_time to a list index, so we can check for notify preference
 	notify_index = {
-		'notify_24h': 0, 'notify_12h': 1,
-		'notify_60min': 2, 'notify_5min': 3}[notify_class]
+		'notify_24h': 0,
+		'notify_12h': 1,
+		'notify_60min': 2,
+		'notify_5min': 3
+	}[notify_class]
 
 	# parse all chat rows to figure out who to send the notification to
 	for chat_row in query_return:
@@ -855,8 +927,9 @@ notif_states: tuple) -> set:
 	return notification_list
 
 
-def send_notification(chat: str, message: str, launch_id: str, notif_class: str,
-bot: 'telegram.bot.Bot', tz_tuple: tuple, net_unix: int, db_path: str):
+def send_notification(chat: str, message: str, launch_id: str,
+	notif_class: str, bot: 'telegram.bot.Bot', tz_tuple: tuple, net_unix: int,
+	db_path: str):
 	'''
 	Functions sends a launch notification to a chat.
 	'''
@@ -879,13 +952,17 @@ bot: 'telegram.bot.Bot', tz_tuple: tuple, net_unix: int, db_path: str):
 
 	try:
 		# set the muting button
-		keyboard = InlineKeyboardMarkup(
-			inline_keyboard = [[InlineKeyboardButton(
-				text='🔇 Mute this launch', callback_data=f'mute/{launch_id}/1')]])
+		keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+			InlineKeyboardButton(text='🔇 Mute this launch',
+			callback_data=f'mute/{launch_id}/1')
+		]])
 
 		# catch the sent message object so we can store its id
-		sent_msg = bot.sendMessage(chat, message, parse_mode='MarkdownV2',
-			reply_markup=keyboard, disable_notification=silent)
+		sent_msg = bot.sendMessage(chat,
+			message,
+			parse_mode='MarkdownV2',
+			reply_markup=keyboard,
+			disable_notification=silent)
 
 		# sent message is stored in sent_msg; store in db so we can edit messages
 		msg_identifier = f'{sent_msg["chat"]["id"]}:{sent_msg["message_id"]}'
@@ -895,13 +972,16 @@ bot: 'telegram.bot.Bot', tz_tuple: tuple, net_unix: int, db_path: str):
 		''' Rate-limited by Telegram
 		https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this '''
 		retry_time = error.retry_after
-		logging.exception(f'🚧 [send notif] Got a telegram.error.retryAfter: sleeping for {retry_time} sec.')
+		logging.exception(
+			f'🚧 [send notif] Got a telegram.error.retryAfter: sleeping for {retry_time} sec.'
+		)
 		retry_after(retry_time)
 
 		return False, None
 
 	except telegram.error.TimedOut as error:
-		logging.exception('🚧 Got a telegram.error.TimedOut: sleeping for 1 second.')
+		logging.exception(
+			'🚧 Got a telegram.error.TimedOut: sleeping for 1 second.')
 		retry_after(1)
 
 		return False, None
@@ -917,28 +997,38 @@ bot: 'telegram.bot.Bot', tz_tuple: tuple, net_unix: int, db_path: str):
 		return True, None
 
 	except telegram.error.ChatMigrated as error:
-		logging.info(f'⚠️ Chat {chat} migrated to {error.new_chat_id}! Updating chats db...')
+		logging.info(
+			f'⚠️ Chat {chat} migrated to {error.new_chat_id}! Updating chats db...'
+		)
 		conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
 		cursor = conn.cursor()
 
 		try:
-			cursor.execute('UPDATE chats SET chat = ? WHERE chat = ?', (error.new_chat_id, chat))
+			cursor.execute('UPDATE chats SET chat = ? WHERE chat = ?',
+				(error.new_chat_id, chat))
 		except:
-			logging.exception(f'Unable to migrate {chat} to {error.new_chat_id}!')
+			logging.exception(
+				f'Unable to migrate {chat} to {error.new_chat_id}!')
 
 		conn.commit()
 		conn.close()
 
 	except telegram.error.BadRequest as error:
 		if 'Chat_write_forbidden' in error.message:
-			logging.warning('⚠️ Unallowed to send messages to chat! (Chat_write_forbidden)')
+			logging.warning(
+				'⚠️ Unallowed to send messages to chat! (Chat_write_forbidden)'
+			)
 			return True, None
 
 		if 'Have no rights to send a message' in error.message:
-			logging.warning('⚠️ Unallowed to send messages to chat! (Have no rights to send message)')
+			logging.warning(
+				'⚠️ Unallowed to send messages to chat! (Have no rights to send message)'
+			)
 			return True, None
 
-		logging.error('⚠️ Unknown BadRequest when sending message (telegram.error.BadRequest)')
+		logging.error(
+			'⚠️ Unknown BadRequest when sending message (telegram.error.BadRequest)'
+		)
 		return True, None
 
 	except telegram.error.TelegramError as error:
@@ -952,17 +1042,21 @@ bot: 'telegram.bot.Bot', tz_tuple: tuple, net_unix: int, db_path: str):
 			logging.exception(f'⚠️ User {anonymize_id(chat)} was deactivated.')
 
 		elif 'bot was kicked from the supergroup chat' in error.message:
-			logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)}.')
+			logging.exception(
+				f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)}.')
 
 		elif 'bot is not a member of the supergroup chat' in error.message:
-			logging.exception(f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)}.')
+			logging.exception(
+				f'⚠️ Bot was kicked from supergroup {anonymize_id(chat)}.')
 
 		elif "Can't parse entities" in error.message:
 			logging.exception('🛑 Error parsing message markdown!')
 			return False, None
 
 		else:
-			logging.exception('⚠️ Unhandled telegram.error.TelegramError in send_notification!')
+			logging.exception(
+				'⚠️ Unhandled telegram.error.TelegramError in send_notification!'
+			)
 
 		# known error: clean the chat from the chats db
 		logging.info('🗃 Cleaning chats database...')
@@ -973,11 +1067,13 @@ bot: 'telegram.bot.Bot', tz_tuple: tuple, net_unix: int, db_path: str):
 
 	else:
 		# Something else, log
-		logging.exception('⚠️ Unhandled telegram.error.TelegramError in send_notification!')
+		logging.exception(
+			'⚠️ Unhandled telegram.error.TelegramError in send_notification!')
 		return True, None
 
 
-def create_notification_message(launch: dict, notif_class: str, bot_username: str) -> str:
+def create_notification_message(launch: dict, notif_class: str,
+	bot_username: str) -> str:
 	'''Summary
 	Generates the notification message body from the provided launch
 	database row.
@@ -989,7 +1085,8 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	provider_name_map = {
 		'Rocket Lab Ltd': 'Rocket Lab',
 		'Northrop Grumman Innovation Systems': 'Northrop Grumman',
-		'Russian Federal Space Agency (ROSCOSMOS)': 'ROSCOSMOS'}
+		'Russian Federal Space Agency (ROSCOSMOS)': 'ROSCOSMOS'
+	}
 
 	# shorten long launch service provider names
 	if launch['lsp_name'] in provider_name_map.keys():
@@ -1008,8 +1105,10 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 
 	# shorten very common pad names
 	if 'LC-' not in launch['pad_name']:
-		launch['pad_name'] = launch['pad_name'].replace('Space Launch Complex ', 'SLC-')
-		launch['pad_name'] = launch['pad_name'].replace('Launch Complex ', 'LC-')
+		launch['pad_name'] = launch['pad_name'].replace(
+			'Space Launch Complex ', 'SLC-')
+		launch['pad_name'] = launch['pad_name'].replace(
+			'Launch Complex ', 'LC-')
 
 	if 'air launch' in launch['pad_name'].lower():
 		launch['pad_name'] = 'Air launch to orbit'
@@ -1024,15 +1123,20 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 		location = f'{launch["pad_name"]}, {launch_site} {location_flag}'
 
 	# add mission information: type, orbit
-	mission_type = launch['mission_type'].capitalize() if launch['mission_type'] is not None else 'Unknown purpose'
+	mission_type = launch['mission_type'].capitalize(
+	) if launch['mission_type'] is not None else 'Unknown purpose'
 
 	# TODO add orbits for TMI and TLI, once these pop up for the first time
 	orbit_map = {
 		'Sub Orbital': 'Sub-orbital',
-		'VLEO': 'Very low-Earth orbit', 'LEO': 'Low-Earth orbit',
-		'SSO': 'Sun-synchronous orbit', 'PO': 'Polar orbit',
-		'MEO': 'Medium-Earth orbit', 'GEO': 'Geostationary (direct)',
-		'GTO': 'Geostationary (transfer)', 'GSO': 'Geosynchronous orbit',
+		'VLEO': 'Very low-Earth orbit',
+		'LEO': 'Low-Earth orbit',
+		'SSO': 'Sun-synchronous orbit',
+		'PO': 'Polar orbit',
+		'MEO': 'Medium-Earth orbit',
+		'GEO': 'Geostationary (direct)',
+		'GTO': 'Geostationary (transfer)',
+		'GSO': 'Geosynchronous orbit',
 		'LO': 'Lunar orbit'
 	}
 
@@ -1041,7 +1145,8 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 		if launch['mission_orbit_abbrev'] in orbit_map.keys():
 			orbit_str = orbit_map[launch['mission_orbit_abbrev']]
 		else:
-			orbit_str = launch['mission_orbit'] if launch['mission_orbit_abbrev'] is not None else 'Unknown'
+			orbit_str = launch['mission_orbit'] if launch[
+				'mission_orbit_abbrev'] is not None else 'Unknown'
 			if 'Starlink' in launch_name:
 				orbit_str = 'Very-low Earth orbit'
 	except TypeError:
@@ -1073,9 +1178,14 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 
 	# add location to common landing objects
 	landing_loc_map = {
-		'OCISLY': 'Atlantic Ocean', 'JRTI': 'Atlantic Ocean', 'ASLOG': 'Pacific Ocean',
-		'LZ-1': 'CCAFS RTLS', 'LZ-2': 'CCAFS RTLS', 'LZ-4': 'VAFB RTLS',
-		'ATL': 'Expend 💥', 'PAC': 'Expend 💥'
+		'OCISLY': 'Atlantic Ocean',
+		'JRTI': 'Atlantic Ocean',
+		'ASLOG': 'Pacific Ocean',
+		'LZ-1': 'CCAFS RTLS',
+		'LZ-2': 'CCAFS RTLS',
+		'LZ-4': 'VAFB RTLS',
+		'ATL': 'Expend 💥',
+		'PAC': 'Expend 💥'
 	}
 
 	# if there's a landing attempt, generate the string for the booster (not a FH)
@@ -1126,14 +1236,14 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	elif multiple_boosters:
 		# find indices for core + boosters from str split
 		booster_indices = {'core': None, 'boosters': []}
-		for enum, stage_type in enumerate(launch['launcher_stage_type'].split(';;')):
+		for enum, stage_type in enumerate(
+			launch['launcher_stage_type'].split(';;')):
 			if stage_type.lower() == 'core':
 				booster_indices['core'] = enum
 			elif stage_type.lower() == 'strap-on booster':
 				booster_indices['boosters'].append(enum)
 			else:
-				logging.warning(
-					f'Unknown booster type when parsin indices!\
+				logging.warning(f'Unknown booster type when parsin indices!\
 					enum: {enum} | type: {stage_type} | launch_id: {launch["unique_id"]}')
 
 		# construct strings
@@ -1148,7 +1258,8 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 			core_str = 'Unknown' if core_str is None else core_str
 
 			if launch['launcher_is_flight_proven'].split(';;')[idx]:
-				reuse_count = launch['launcher_stage_flight_number'].split(';;')[idx]
+				reuse_count = launch['launcher_stage_flight_number'].split(
+					';;')[idx]
 
 				# append .x to F9 core names
 				if lsp_name == 'SpaceX' and core_str[0:2] == 'B1':
@@ -1222,8 +1333,11 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 
 	# map notif_class to a more readable string
 	t_minus = {
-		'notify_24h': '24 hours', 'notify_12h': '12 hours',
-		'notify_60min': '60 minutes', 'notify_5min': '5 minutes'}
+		'notify_24h': '24 hours',
+		'notify_12h': '12 hours',
+		'notify_60min': '60 minutes',
+		'notify_5min': '5 minutes'
+	}
 
 	# construct the base message
 	base_message = f'''
@@ -1280,19 +1394,19 @@ def create_notification_message(launch: dict, notif_class: str, bot_username: st
 	if link_text is not None and 'LinkTextGoesHere' in base_message:
 		base_message = base_message.replace(
 			'LinkTextGoesHere',
-			f'[live\!]({reconstruct_link_for_markdown(vid_url)})'
-		)
+			f'[live\!]({reconstruct_link_for_markdown(vid_url)})')
 
 	return inspect.cleandoc(base_message)
 
 
-def notification_handler(db_path: str, notification_dict: dict, bot_username: str,
-bot: 'telegram.bot.Bot'):
+def notification_handler(db_path: str, notification_dict: dict,
+	bot_username: str, bot: 'telegram.bot.Bot'):
 	''' Summary
 	Handles the flow associated with sending a notification.
 
 	notification_dict is of type dict(uid1:notify_class, uid2:notify_class...)
 	'''
+
 	def verify_launch_is_up_to_date(launch_uid: str, cursor: sqlite3.Cursor):
 		''' Summary
 		Function verifies that the last time the launch info was update is equal
@@ -1300,11 +1414,14 @@ bot: 'telegram.bot.Bot'):
 		the launch may have moved so much forward that we don't "see" it anymore.
 		'''
 		# verify update times match: if not, remove launch and return false
-		cursor.execute('SELECT last_updated FROM launches WHERE unique_id = ?', (launch_uid,))
+		cursor.execute('SELECT last_updated FROM launches WHERE unique_id = ?',
+			(launch_uid, ))
 		query_return = cursor.fetchall()
 
 		if len(query_return) == 0:
-			logging.warning(f'verify_launch_is_up_to_date couldn\'t find launch with id={launch_uid}')
+			logging.warning(
+				f'verify_launch_is_up_to_date couldn\'t find launch with id={launch_uid}'
+			)
 			return False
 
 		# integer unix time stamp of when the launch was last updated
@@ -1316,7 +1433,8 @@ bot: 'telegram.bot.Bot'):
 		try:
 			last_api_update = cursor.fetchall()[0][0]
 		except KeyError:
-			logging.exception('Error pulling last_api_update from stats database!')
+			logging.exception(
+				'Error pulling last_api_update from stats database!')
 			return False
 
 		# if equal, we're good
@@ -1324,8 +1442,7 @@ bot: 'telegram.bot.Bot'):
 			return True
 
 		# if not, uh oh...
-		logging.warning(
-			f'''
+		logging.warning(f'''
 			🛑 [verify_launch_is_up_to_date] launch_last_update != last_api_update!
 			🛑 launch_uid={launch_uid}
 			🛑 launch_last_update={launch_last_update}
@@ -1333,8 +1450,10 @@ bot: 'telegram.bot.Bot'):
 			''')
 
 		# remove launch from db
-		cursor.execute('DELETE FROM launches WHERE unique_id = ?', (launch_uid,))
-		logging.warning(f'⚠️ launch_id={launch_uid} successfully removed from database!')
+		cursor.execute('DELETE FROM launches WHERE unique_id = ?',
+			(launch_uid, ))
+		logging.warning(
+			f'⚠️ launch_id={launch_uid} successfully removed from database!')
 
 		return False
 
@@ -1348,7 +1467,8 @@ bot: 'telegram.bot.Bot'):
 
 	for launch_id, notify_class in notification_dict.items():
 		# select launches with matching IDs, execute query
-		cursor.execute("SELECT * FROM launches WHERE unique_id = ?", (launch_id,))
+		cursor.execute("SELECT * FROM launches WHERE unique_id = ?",
+			(launch_id, ))
 
 		# convert rows into dictionaries for super easy parsing
 		launch_dict = [dict(row) for row in cursor.fetchall()][0]
@@ -1357,16 +1477,18 @@ bot: 'telegram.bot.Bot'):
 		launch_id = launch_dict['unique_id']
 
 		# toggle notification to 1 in launch db
-		cursor.execute(f"UPDATE launches SET {notify_class} = 1 WHERE unique_id = ?", (launch_id,))
+		cursor.execute(
+			f"UPDATE launches SET {notify_class} = 1 WHERE unique_id = ?",
+			(launch_id, ))
 
 		# log, commit changes
 		logging.info(f'🚩 Toggled notification flags to 1 for {notify_class}')
 		conn.commit()
-
 		''' Right before sending, verify launch was actually updated in the last API update:
 		if it wasn't, the launch may have slipped so much forward that it's not included within
 		the 50 launches we request. In this case, delete the launch row from the database. '''
-		up_to_date = verify_launch_is_up_to_date(launch_uid=launch_id, cursor=cursor)
+		up_to_date = verify_launch_is_up_to_date(launch_uid=launch_id,
+			cursor=cursor)
 
 		# if launch isn't up to date, uh oh
 		if not up_to_date:
@@ -1374,17 +1496,21 @@ bot: 'telegram.bot.Bot'):
 			conn.commit()
 			conn.close()
 
-			logging.warning(f'⚠️ Launch info isn\'t up to date! launch_id={launch_id}')
+			logging.warning(
+				f'⚠️ Launch info isn\'t up to date! launch_id={launch_id}')
 			logging.warning('⚠️ Commiting database change and returning...')
 			return
 
 		# info is up to date!
-		logging.info('✅ Launch info is up to date! Proceeding with sending notification...')
+		logging.info(
+			'✅ Launch info is up to date! Proceeding with sending notification...'
+		)
 
-		# create the notification message 
+		# create the notification message
 		# TODO add astronaut & spacecraft info
-		notification_message = create_notification_message(
-			launch=launch_dict, notif_class=notify_class, bot_username=bot_username)
+		notification_message = create_notification_message(launch=launch_dict,
+			notif_class=notify_class,
+			bot_username=bot_username)
 
 		# log message
 		logging.info(notification_message)
@@ -1399,20 +1525,25 @@ bot: 'telegram.bot.Bot'):
 		logging.info(f'✅ lsp_db_name set to {lsp_db_name}')
 
 		# get list of people to send the notification to
-		notification_list = get_notify_list(
-			db_path=db_path, lsp=lsp_db_name, launch_id=launch_id,
-			notify_class=notify_class, notif_states=None
-		)
+		notification_list = get_notify_list(db_path=db_path,
+			lsp=lsp_db_name,
+			launch_id=launch_id,
+			notify_class=notify_class,
+			notif_states=None)
 
 		logging.info(f'✅ Got notification list (len={len(notification_list)})')
 
 		# get time zone information for each chat: this is a lot faster in bulk
-		notification_list_tzs = load_bulk_tz_offset(data_dir=db_path, chat_id_set=notification_list)
+		notification_list_tzs = load_bulk_tz_offset(data_dir=db_path,
+			chat_id_set=notification_list)
 		# logging.info(f'✅ Got notification tz list {notification_list_tzs}')
 
 		# log send mode (silent or with sound)
-		without_sound = bool(notify_class not in ('notify_60min', 'notify_5min'))
-		logging.info(f'🔈 Sending notification {"silenty" if without_sound else "with sound"}...')
+		without_sound = bool(notify_class not in ('notify_60min',
+			'notify_5min'))
+		logging.info(
+			f'🔈 Sending notification {"silenty" if without_sound else "with sound"}...'
+		)
 
 		# Enforce API send limits
 		# https://telegra.ph/So-your-bot-is-rate-limited-01-26
@@ -1423,7 +1554,8 @@ bot: 'telegram.bot.Bot'):
 		messages_sent = 0
 		send_start_time = int(time.time())
 
-		approx_send_time = 1/API_SEND_LIMIT_PER_SECOND * len(notification_list_tzs)
+		approx_send_time = 1 / API_SEND_LIMIT_PER_SECOND * len(
+			notification_list_tzs)
 		send_delta = time_delta_to_legible_eta(int(approx_send_time), True)
 		logging.info(f"⏳ Expecting send to take {send_delta} with API limits")
 
@@ -1431,12 +1563,17 @@ bot: 'telegram.bot.Bot'):
 		sent_notification_ids = set()
 		for chat_id, tz_tuple in notification_list_tzs.items():
 			try:
-				success, msg_id = send_notification(
-					chat=chat_id, message=notification_message, launch_id=launch_id,
-					notif_class=notify_class, bot=bot, tz_tuple=tz_tuple,
-					net_unix=launch_dict['net_unix'], db_path=db_path)
+				success, msg_id = send_notification(chat=chat_id,
+					message=notification_message,
+					launch_id=launch_id,
+					notif_class=notify_class,
+					bot=bot,
+					tz_tuple=tz_tuple,
+					net_unix=launch_dict['net_unix'],
+					db_path=db_path)
 			except Exception as error:
-				logging.exception(f'⚠️ Exception sending notification ({error})')
+				logging.exception(
+					f'⚠️ Exception sending notification ({error})')
 				continue
 
 			if success and msg_id is not None:
@@ -1448,14 +1585,19 @@ bot: 'telegram.bot.Bot'):
 				# TODO add reached_people back (slow; sensible?)
 				sent_notification_ids.add(msg_id)
 			elif not success:
-				logging.info(f'⚠️ Failed to send notification to chat={chat_id}!')
+				logging.info(
+					f'⚠️ Failed to send notification to chat={chat_id}!')
 
 				fail_count = 0
 				while fail_count < 5:
 					fail_count += 1
-					success, msg_id = send_notification(
-						chat=chat_id, message=notification_message, launch_id=launch_id,
-						notif_class=notify_class, bot=bot, tz_tuple=tz_tuple, net_unix=launch_dict['net_unix'],
+					success, msg_id = send_notification(chat=chat_id,
+						message=notification_message,
+						launch_id=launch_id,
+						notif_class=notify_class,
+						bot=bot,
+						tz_tuple=tz_tuple,
+						net_unix=launch_dict['net_unix'],
 						db_path=db_path)
 
 					if success:
@@ -1470,7 +1612,7 @@ bot: 'telegram.bot.Bot'):
 
 			# After each send (successful or not), enforce the API limit by sleeping
 			# 30 messages/second limit -> sleep for 33 milliseconds
-			time.sleep(1/API_SEND_LIMIT_PER_SECOND)
+			time.sleep(1 / API_SEND_LIMIT_PER_SECOND)
 
 			# Every 50 messages, take a break
 			messages_sent += 1
@@ -1478,21 +1620,29 @@ bot: 'telegram.bot.Bot'):
 				time.sleep(3)
 
 		send_end_time = int(time.time())
-		eta_string = time_delta_to_legible_eta(send_end_time-send_start_time, True)
-		logging.info(f"⏱ Sent {len(notification_list_tzs)} notifications in {eta_string}")
+		eta_string = time_delta_to_legible_eta(send_end_time - send_start_time,
+			True)
+		logging.info(
+			f"⏱ Sent {len(notification_list_tzs)} notifications in {eta_string}"
+		)
 
 		# remove previous notification
-		remove_previous_notification(
-			db_path=db_path, launch_id=launch_id, notify_set=notification_list, bot=bot)
+		remove_previous_notification(db_path=db_path,
+			launch_id=launch_id,
+			notify_set=notification_list,
+			bot=bot)
 		logging.info('✉️ Previous notifications removed!')
 
 		# notifications sent: store identifiers
 		msg_id_str = ','.join(sent_notification_ids)
-		store_notification_identifiers(db_path=db_path, launch_id=launch_id, identifiers=msg_id_str)
+		store_notification_identifiers(db_path=db_path,
+			launch_id=launch_id,
+			identifiers=msg_id_str)
 		logging.info('📃 Notification identifiers stored!')
 
 		# update stats
-		update_stats_db(stats_update={'notifications':len(notification_list)}, db_path=db_path)
+		update_stats_db(stats_update={'notifications': len(notification_list)},
+			db_path=db_path)
 		logging.info('📊 Stats updated!')
 
 	# close db connection at exit
@@ -1519,7 +1669,9 @@ def clear_missed_notifications(db_path: str, launch_id_dict_list: list):
 		# pull uid: missed_notification from launch_id_dict
 		for uid, missed_notification in launch_id_dict.items():
 			# construct insert statement for the missed notifications: all will be set to True
-			cursor.execute(f'''UPDATE launches SET {missed_notification} = 1 WHERE unique_id = ?''', (uid,))
+			cursor.execute(
+				f'''UPDATE launches SET {missed_notification} = 1 WHERE unique_id = ?''',
+				(uid, ))
 			miss_count += 1
 
 			# log
@@ -1532,7 +1684,8 @@ def clear_missed_notifications(db_path: str, launch_id_dict_list: list):
 
 
 def notification_send_scheduler(db_path: str, next_api_update_time: int,
-scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
+	scheduler: BackgroundScheduler, bot_username: str,
+	bot: 'telegram.bot.Bot'):
 	'''Summary
 	Notification checks are performed right after an API update, so they're always
 	up to date when the scheduling is performed. There should be only one of each
@@ -1552,10 +1705,12 @@ scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
 	select_fields += ', notify_24h, notify_12h, notify_60min, notify_5min'
 
 	# set a 5 minute notify window, so we don't miss notifications
-	notify_window = int(time.time()) - 60*5
+	notify_window = int(time.time()) - 60 * 5
 
 	try:
-		cursor.execute(f'SELECT {select_fields} FROM launches WHERE net_unix >= ?', (notify_window,))
+		cursor.execute(
+			f'SELECT {select_fields} FROM launches WHERE net_unix >= ?',
+			(notify_window, ))
 		query_return = cursor.fetchall()
 	except sqlite3.OperationalError:
 		query_return = set()
@@ -1565,11 +1720,16 @@ scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
 		return
 
 	# sort in-place by NET
-	query_return.sort(key=lambda tup:tup[0])
+	query_return.sort(key=lambda tup: tup[0])
 
 	# create a dict of notif_send_time: launch(es) tags
 	# add extra time to 5 min notification: sending 1000 large messages at 6 msg/sec is slow
-	notif_send_times, time_map = {}, {0: 24*3600+5*60, 1: 12*3600+5*60, 2: 3600+5*60, 3: 5*60+7*60}
+	notif_send_times, time_map = {}, {
+		0: 24 * 3600 + 5 * 60,
+		1: 12 * 3600 + 5 * 60,
+		2: 3600 + 5 * 60,
+		3: 5 * 60 + 7 * 60
+	}
 	for launch_row in query_return:
 		# don't notify of unverified launches (status=TBD)
 		launch_status = launch_row[2]
@@ -1586,8 +1746,11 @@ scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
 
 				# map enum to a notify_class
 				notify_class_map = {
-					0: 'notify_24h', 1: 'notify_12h', 2: 'notify_60min', 3: 'notify_5min'}
-
+					0: 'notify_24h',
+					1: 'notify_12h',
+					2: 'notify_60min',
+					3: 'notify_5min'
+				}
 				'''
 				send_time -> launches to notify for.
 				This isn't necessarily required, but there might be some unique case
@@ -1601,12 +1764,14 @@ scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
 					notif_send_times[send_time] = {uid: notify_class_map[enum]}
 				else:
 					if uid not in notif_send_times:
-						notif_send_times[send_time][uid] = notify_class_map[enum]
+						notif_send_times[send_time][uid] = notify_class_map[
+							enum]
 					else:
 						logging.warning(f'''⚠️ More than one notify_class!
 							Existing: {notif_send_times[send_time][uid]}
 							Replacing with: {notify_class_map[enum]}''')
-						notif_send_times[send_time][uid] = notify_class_map[enum]
+						notif_send_times[send_time][uid] = notify_class_map[
+							enum]
 
 	# clear previously stored notifications
 	logging.debug('🚮 Clearing previously queued notifications...')
@@ -1618,7 +1783,6 @@ scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
 
 	# cleared!
 	logging.debug(f'✅ Cleared {cleared_count} queued notifications!')
-
 	''' Add notifications to schedule queue until we hit the next scheduled API update.
 	This allows us to queue the minimum amount of notifications '''
 	scheduled_notifications, missed_notifications = 0, []
@@ -1626,34 +1790,44 @@ scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
 		# if send time is later than next API update, ignore
 		if send_time > next_api_update_time:
 			pass
-		elif send_time < time.time() - 60*5:
+		elif send_time < time.time() - 60 * 5:
 			# if send time is more than 5 minutes in the past, declare it missed
 			missed_notifications.append(notification_dict)
 		else:
 			# verify we're not already past send_time
 			if send_time < time.time():
 				send_time_offset = int(time.time() - send_time)
-				logging.warning(f'⚠️ Missed send_time by {send_time_offset} sec! Sending in 3 seconds.')
+				logging.warning(
+					f'⚠️ Missed send_time by {send_time_offset} sec! Sending in 3 seconds.'
+				)
 				send_time = time.time() + 3
 
 			# convert to a datetime object, add 2 sec for margin
 			notification_dt = datetime.datetime.fromtimestamp(send_time + 2)
 
 			# schedule next API update, and we're done: next update will be scheduled after the API update
-			scheduler.add_job(
-				notification_handler, 'date', id=f'notification-{int(send_time)}',
-				run_date=notification_dt, args=[db_path, notification_dict, bot_username, bot])
+			scheduler.add_job(notification_handler,
+				'date',
+				id=f'notification-{int(send_time)}',
+				run_date=notification_dt,
+				args=[db_path, notification_dict, bot_username, bot])
 
 			# done, log
-			logging.debug(f't={send_time}, dict={notification_dict}, scheduled_notifs={scheduled_notifications}')
-			logging.info(f'📨 Scheduled {len(notification_dict)} notifications for {notification_dt}')
+			logging.debug(
+				f't={send_time}, dict={notification_dict}, scheduled_notifs={scheduled_notifications}'
+			)
+			logging.info(
+				f'📨 Scheduled {len(notification_dict)} notifications for {notification_dt}'
+			)
 			scheduled_notifications += 1
 
 	# if we've missed any notifications, clear them
 	if len(missed_notifications) != 0:
 		clear_missed_notifications(db_path, missed_notifications)
 
-	logging.debug(f'⏲ Notification scheduling done! Queued {scheduled_notifications} notifications.')
+	logging.debug(
+		f'⏲ Notification scheduling done! Queued {scheduled_notifications} notifications.'
+	)
 
 	# close db connection at exit
 	conn.close()

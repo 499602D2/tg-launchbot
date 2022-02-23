@@ -20,7 +20,6 @@ Misc variables:
 	None
 '''
 
-
 import datetime
 import time
 import logging
@@ -89,7 +88,8 @@ def reconstruct_message_for_markdown(message: str) -> str:
 		message_reconstruct (str): the escaped message
 	'''
 	message_reconstruct = ''
-	char_set = ('[', ']', '(', ')', '~', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!')
+	char_set = ('[', ']', '(', ')', '~', '>', '#', '+', '-', '=', '|', '{',
+		'}', '.', '!')
 	for char in message:
 		if char in char_set:
 			message_reconstruct += f'\\{char}'
@@ -143,7 +143,9 @@ def map_country_code_to_flag(country_code: str) -> str:
 	if len(emoji_flag) == 2:
 		return emoji_flag
 
-	logging.warning(f"Got non-existent country flag: alpha3={country_code} alpha2={alpha2}")
+	logging.warning(
+		f"Got non-existent country flag: alpha3={country_code} alpha2={alpha2}"
+	)
 	return "🏳"
 
 
@@ -157,8 +159,17 @@ def suffixed_readable_int(number: int) -> str:
 	if number < 10:
 		suffixed_number = {
 			0: 'zeroth',
-			1: 'first', 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth',
-			6: 'sixth', 7: 'seventh', 8: 'eighth', 9: 'ninth', 10: 'tenth'}[number]
+			1: 'first',
+			2: 'second',
+			3: 'third',
+			4: 'fourth',
+			5: 'fifth',
+			6: 'sixth',
+			7: 'seventh',
+			8: 'eighth',
+			9: 'ninth',
+			10: 'tenth'
+		}[number]
 
 		return suffixed_number
 
@@ -209,9 +220,19 @@ def timestamp_to_legible_date_string(timestamp: int, use_utc: bool) -> str:
 
 	# map months to month names
 	month_map = {
-		1: 'January', 	2: 'February', 	3: 'March', 	4: 'April',
-		5: 'May', 		6: 'June', 		7: 'July', 		8: 'August',
-		9: 'September',	10: 'October', 	11: 'November', 12: 'December'}
+		1: 'January',
+		2: 'February',
+		3: 'March',
+		4: 'April',
+		5: 'May',
+		6: 'June',
+		7: 'July',
+		8: 'August',
+		9: 'September',
+		10: 'October',
+		11: 'November',
+		12: 'December'
+	}
 
 	try:
 		if int(date_object.day) in (11, 12, 13):
@@ -267,11 +288,8 @@ def time_delta_to_legible_eta(time_delta: int, full_accuracy: bool) -> str:
 	else:
 		# split eta_string into hours, minutes, and seconds -> convert to integers
 		hhmmss_split = eta_str.split(':')
-		hours, mins, secs = (
-			int(hhmmss_split[0]),
-			int(hhmmss_split[1]),
-			int(float(hhmmss_split[2]))
-		)
+		hours, mins, secs = (int(hhmmss_split[0]), int(hhmmss_split[1]),
+			int(float(hhmmss_split[2])))
 
 		if hours > 0:
 			pretty_eta = f'{hours} hour{"s" if hours > 1 else ""}'

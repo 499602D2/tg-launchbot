@@ -2,7 +2,6 @@ import os
 import time
 import logging
 
-
 import ujson as json
 
 
@@ -69,14 +68,14 @@ def create_config(data_dir: str):
 			'bot_token': bot_token,
 			'owner': 0,
 			'redis': {
-				'host': 'localhost',
-				'port': 6379,
-				'db_num': 0
+			'host': 'localhost',
+			'port': 6379,
+			'db_num': 0
 			},
 			'local_api_server': {
-				'enabled': False,
-				'logged_out': False,
-				'address': None
+			'enabled': False,
+			'logged_out': False,
+			'address': None
 			}
 		}
 
@@ -102,7 +101,9 @@ def load_config(data_dir: str) -> dict:
 		try:
 			return json.load(config_file)
 		except:
-			print('JSONDecodeError: error loading configuration file. Running config setup...')
+			print(
+				'JSONDecodeError: error loading configuration file. Running config setup...'
+			)
 
 			create_config(data_dir)
 			return load_config(data_dir)
@@ -116,21 +117,21 @@ def repair_config(data_dir: str) -> dict:
 	Repairs a config file
 	'''
 	# check if all the server config keys exist
-	config_keys = { 'bot_token', 'owner', 'redis', 'local_api_server' }
+	config_keys = {'bot_token', 'owner', 'redis', 'local_api_server'}
 
 	# full config
 	full_config = {
 		'bot_token': 0,
 		'owner': 0,
 		'redis': {
-			'host': 'localhost',
-			'port': 6379,
-			'db_num': 0
+		'host': 'localhost',
+		'port': 6379,
+		'db_num': 0
 		},
 		'local_api_server': {
-			'enabled': False,
-			'logged_out': False,
-			'address': None
+		'enabled': False,
+		'logged_out': False,
+		'address': None
 		}
 	}
 
@@ -142,7 +143,8 @@ def repair_config(data_dir: str) -> dict:
 	if set_diff == set():
 		return config
 
-	logging.info(f'Server configuration is missing keys {set_diff}: repairing...')
+	logging.info(
+		f'Server configuration is missing keys {set_diff}: repairing...')
 	for key, val in full_config.items():
 		if key not in config:
 			config[key] = val

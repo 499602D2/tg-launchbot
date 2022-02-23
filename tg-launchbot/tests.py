@@ -48,12 +48,14 @@ class TestNotificationUtils(unittest.TestCase):
 
 		# run for all launches
 		for row in query_return:
-			cursor.execute('SELECT * FROM launches WHERE unique_id = ?', (row[0],))
+			cursor.execute('SELECT * FROM launches WHERE unique_id = ?',
+				(row[0], ))
 			launch = [dict(row) for row in cursor.fetchall()][0]
 
-			msg = create_notification_message(launch=launch, notif_class='notify_60min', bot_username='rocketrybot')
+			msg = create_notification_message(launch=launch,
+				notif_class='notify_60min',
+				bot_username='rocketrybot')
 			print(msg + '\n------------------------\n\n')
-
 
 	def test_get_notify_list(self):
 		'''
@@ -66,7 +68,6 @@ class TestNotificationUtils(unittest.TestCase):
 
 		ret = get_notify_list(db_path, lsp, launch_id, notif_class)
 		print(ret)
-
 		'''
 		A better test case
 		1. generate an entry in chats db with a random chat ID
@@ -87,17 +88,20 @@ class TestNotificationUtils(unittest.TestCase):
 			cursor.execute()
 		'''
 
-
 	def test_toggle_launch_mute(self):
 		db_path = 'launchbot'
 		chat = load_config(db_path)['owner']
 
 		launch_id = 'c5a9ba01-d03f-4fd7-940a-8a10d535809a'
-		toggle_launch_mute(db_path=db_path, chat=chat, launch_id=launch_id, toggle=1)
+		toggle_launch_mute(db_path=db_path,
+			chat=chat,
+			launch_id=launch_id,
+			toggle=1)
 		#toggle_launch_mute(db_path=db_path, chat=chat, launch_id=launch_id, toggle=0)
 
 
 class TestUtils(unittest.TestCase):
+
 	def test_construct_params(self):
 		'''
 		Test construct_params
@@ -108,37 +112,34 @@ class TestUtils(unittest.TestCase):
 
 		self.assertEqual(construct_params(test_keyvals), expected_params)
 
-
 	def test_pretty_eta(self):
-			'''
+		'''
 			Test time_delta_to_legible_eta
 			'''
-			# test small deltas
-			for i in range(0, 100):
-				rand_delta = random.randint(0, 3600)
-				time_delta_to_legible_eta(rand_delta, True)
+		# test small deltas
+		for i in range(0, 100):
+			rand_delta = random.randint(0, 3600)
+			time_delta_to_legible_eta(rand_delta, True)
 
-			# test large deltas
-			for i in range(0, 100):
-				rand_delta = random.randint(0, 3600 * 24 * 2)
-				time_delta_to_legible_eta(rand_delta, True)
+		# test large deltas
+		for i in range(0, 100):
+			rand_delta = random.randint(0, 3600 * 24 * 2)
+			time_delta_to_legible_eta(rand_delta, True)
 
-			# test days only
-			print(time_delta_to_legible_eta(3600*24*3, False))
+		# test days only
+		print(time_delta_to_legible_eta(3600 * 24 * 3, False))
 
-			# test hours only
-			print(time_delta_to_legible_eta(3600*12, False))
+		# test hours only
+		print(time_delta_to_legible_eta(3600 * 12, False))
 
-			# test minutes only
-			print(time_delta_to_legible_eta(60*10, False))
+		# test minutes only
+		print(time_delta_to_legible_eta(60 * 10, False))
 
-			# test seconds only
-			print(time_delta_to_legible_eta(30, False))
+		# test seconds only
+		print(time_delta_to_legible_eta(30, False))
 
-
-			# test with 0 seconds
-			self.assertEqual(time_delta_to_legible_eta(0, False), 'just now')
-
+		# test with 0 seconds
+		self.assertEqual(time_delta_to_legible_eta(0, False), 'just now')
 
 	def test_time_delta_to_legible_eta(self):
 		'''
@@ -148,28 +149,30 @@ class TestUtils(unittest.TestCase):
 		# without full accuracy, large values
 		for i in range(10):
 			print(
-				time_delta_to_legible_eta(
-					time_delta=random.uniform(0, 3600*24*30), full_accuracy=False))
+				time_delta_to_legible_eta(time_delta=random.uniform(
+				0, 3600 * 24 * 30),
+				full_accuracy=False))
 
 		# without full accuracy, small values
 		for i in range(10):
 			print(
-				time_delta_to_legible_eta(
-					time_delta=random.uniform(0, 3600*24), full_accuracy=False))
-
+				time_delta_to_legible_eta(time_delta=random.uniform(
+				0, 3600 * 24),
+				full_accuracy=False))
 
 		# with full accuracy, large values
 		for i in range(10):
 			print(
-				time_delta_to_legible_eta(
-					time_delta=random.uniform(0, 3600*24*30), full_accuracy=True))
+				time_delta_to_legible_eta(time_delta=random.uniform(
+				0, 3600 * 24 * 30),
+				full_accuracy=True))
 
 		# with full accuracy, small values
 		for i in range(10):
 			print(
-				time_delta_to_legible_eta(
-					time_delta=random.uniform(0, 3600*24), full_accuracy=True))
-
+				time_delta_to_legible_eta(time_delta=random.uniform(
+				0, 3600 * 24),
+				full_accuracy=True))
 
 		def test_suffixed_readable_int(self):
 			for i in range(1000):
@@ -177,8 +180,8 @@ class TestUtils(unittest.TestCase):
 				print(f'{rand_int} -> {suffixed_readable_int(rand_int)}')
 
 
-
 class TestTimeZoneUtils(unittest.TestCase):
+
 	def test_load_bulk_tz_offset(self):
 		data_dir = 'launchbot'
 		config = load_config(data_dir)
@@ -189,15 +192,19 @@ class TestTimeZoneUtils(unittest.TestCase):
 
 
 class TestDBUtils(unittest.TestCase):
+
 	def test_update_stats_db(self):
 		notification_list = [1, 2, 3, 4]
 		db_path = 'launchbot'
 
-		update_stats_db(
-			stats_update={'notifications':len(notification_list)}, db_path=db_path)
+		update_stats_db(stats_update={'notifications': len(notification_list)},
+			db_path=db_path)
+
 
 if __name__ == '__main__':
 	# init log
-	logging.basicConfig(level=logging.DEBUG,format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
+	logging.basicConfig(level=logging.DEBUG,
+		format='%(asctime)s %(message)s',
+		datefmt='%d/%m/%Y %H:%M:%S')
 
 	unittest.main()

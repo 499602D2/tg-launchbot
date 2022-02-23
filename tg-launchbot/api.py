@@ -18,15 +18,16 @@ from nltk import tokenize
 # local imports
 from utils import timestamp_to_unix, time_delta_to_legible_eta
 from db import update_launch_db, update_stats_db
-from notifications import (
-	notification_send_scheduler, postpone_notification,
+from notifications import (notification_send_scheduler, postpone_notification,
 	remove_previous_notification, store_notification_identifiers)
+
 
 class LaunchLibrary2Launch:
 	'''
 	A class for simplifying the handling of launch objects. Contains all the properties needed
 	by the bot.
 	'''
+
 	def __init__(self, launch_json: dict):
 		# launch unique information
 		self.name = launch_json['name']
@@ -58,11 +59,16 @@ class LaunchLibrary2Launch:
 
 		# WARNING: DEPRECATED IN LL ≥2.1.0: TODO remove in a future version
 		# set tbd_time and tbd_date
-		self.tbd_time = launch_json['tbdtime'] if 'tbdtime' in launch_json else True
-		self.tbd_date = launch_json['tbddate'] if 'tbddate' in launch_json else True
+		self.tbd_time = launch_json[
+			'tbdtime'] if 'tbdtime' in launch_json else True
+		self.tbd_date = launch_json[
+			'tbddate'] if 'tbddate' in launch_json else True
 
 		# set launched state based on status_state
-		launch_bool = [status for status in ('success', 'failure') if status in self.status_state.lower()]
+		launch_bool = [
+			status for status in ('success', 'failure')
+			if status in self.status_state.lower()
+		]
 		self.launched = bool(any(launch_bool))
 
 		# lsp/agency info
@@ -70,17 +76,20 @@ class LaunchLibrary2Launch:
 			self.lsp_id = launch_json['launch_service_provider']['id']
 			self.lsp_name = launch_json['launch_service_provider']['name']
 			self.lsp_short = launch_json['launch_service_provider']['abbrev']
-			self.lsp_country_code = launch_json['launch_service_provider']['country_code']
+			self.lsp_country_code = launch_json['launch_service_provider'][
+				'country_code']
 		except TypeError:
 			self.lsp_id = None
 			self.lsp_name = None
 			self.lsp_short = None
 			self.lsp_country_code = None
-			logging.exception(f'⚠️ Error parsing launch_service_provider! launch_json: {launch_json}')
+			logging.exception(
+				f'⚠️ Error parsing launch_service_provider! launch_json: {launch_json}'
+			)
 
 		# webcast status and links
 		self.webcast_islive = launch_json['webcast_live']
-		self.webcast_url_list = None # preset to None
+		self.webcast_url_list = None  # preset to None
 
 		# url_list is a list of dictionaries
 		if len(launch_json['vidURLs']) >= 1:
@@ -104,14 +113,17 @@ class LaunchLibrary2Launch:
 			if highest_prior is not None:
 				self.webcast_url_list = priority_map[highest_prior]
 			else:
-				logging.warning(f'highest_prior is None but vidURLs ≥ 1. ID: {self.unique_id}')
+				logging.warning(
+					f'highest_prior is None but vidURLs ≥ 1. ID: {self.unique_id}'
+				)
 				self.webcast_url_list = None
 		else:
 			self.webcast_url_list = None
 
 		# rocket information
 		self.rocket_name = launch_json['rocket']['configuration']['name']
-		self.rocket_full_name = launch_json['rocket']['configuration']['full_name']
+		self.rocket_full_name = launch_json['rocket']['configuration'][
+			'full_name']
 		self.rocket_variant = launch_json['rocket']['configuration']['variant']
 		self.rocket_family = launch_json['rocket']['configuration']['family']
 
@@ -125,21 +137,30 @@ class LaunchLibrary2Launch:
 			stages = launch_json['rocket']['launcher_stage']
 
 			# attempt to parse multiple stages: do simple comma separated values
-			self.launcher_stage_id = ';;'.join([str(stage['id']) for stage in stages])
-			self.launcher_stage_type = ';;'.join([str(stage['type']) for stage in stages])
-			self.launcher_stage_is_reused = ';;'.join([str(stage['reused']) for stage in stages])
-			self.launcher_stage_flight_number = ';;'.join([str(stage['launcher_flight_number']) for stage in stages])
-			self.launcher_stage_turn_around = ';;'.join([str(stage['turn_around_time_days']) for stage in stages])
+			self.launcher_stage_id = ';;'.join(
+				[str(stage['id']) for stage in stages])
+			self.launcher_stage_type = ';;'.join(
+				[str(stage['type']) for stage in stages])
+			self.launcher_stage_is_reused = ';;'.join(
+				[str(stage['reused']) for stage in stages])
+			self.launcher_stage_flight_number = ';;'.join(
+				[str(stage['launcher_flight_number']) for stage in stages])
+			self.launcher_stage_turn_around = ';;'.join(
+				[str(stage['turn_around_time_days']) for stage in stages])
 
-			self.launcher_is_flight_proven = ';;'.join([str(stage['launcher']['flight_proven']) for stage in stages])
-			self.launcher_serial_number = ';;'.join([str(stage['launcher']['serial_number']) for stage in stages])
+			self.launcher_is_flight_proven = ';;'.join(
+				[str(stage['launcher']['flight_proven']) for stage in stages])
+			self.launcher_serial_number = ';;'.join(
+				[str(stage['launcher']['serial_number']) for stage in stages])
 
 			maiden_flights, last_flights = [], []
 			landing_attempts, landing_locs, landing_types, landing_loc_nths = [], [], [], []
 			for stage in stages:
 				try:
-					maiden_flight = timestamp_to_unix(stage['launcher']['first_launch_date'])
-					last_flight = timestamp_to_unix(stage['launcher']['last_launch_date'])
+					maiden_flight = timestamp_to_unix(
+						stage['launcher']['first_launch_date'])
+					last_flight = timestamp_to_unix(
+						stage['launcher']['last_launch_date'])
 				except:
 					maiden_flight = None
 					last_flight = None
@@ -152,7 +173,8 @@ class LaunchLibrary2Launch:
 					landing_attempts.append(str(landing_json['attempt']))
 					landing_locs.append(landing_json['location']['abbrev'])
 					landing_types.append(landing_json['type']['abbrev'])
-					landing_loc_nths.append(str(landing_json['location']['successful_landings']))
+					landing_loc_nths.append(
+						str(landing_json['location']['successful_landings']))
 				else:
 					landing_attempts.append(None)
 					landing_locs.append(None)
@@ -164,7 +186,8 @@ class LaunchLibrary2Launch:
 			self.launcher_landing_attempt = ';;'.join(landing_attempts)
 			self.launcher_landing_location = ';;'.join(landing_locs)
 			self.landing_type = ';;'.join(landing_types)
-			self.launcher_landing_location_nth_landing = ';;'.join(landing_loc_nths)
+			self.launcher_landing_location_nth_landing = ';;'.join(
+				landing_loc_nths)
 		elif stage_count == 1:
 			launcher_json = launch_json['rocket']['launcher_stage'][0]
 
@@ -172,17 +195,23 @@ class LaunchLibrary2Launch:
 			self.launcher_stage_id = launcher_json['id']
 			self.launcher_stage_type = launcher_json['type']
 			self.launcher_stage_is_reused = launcher_json['reused']
-			self.launcher_stage_flight_number = launcher_json['launcher_flight_number']
-			self.launcher_stage_turn_around = launcher_json['turn_around_time_days']
+			self.launcher_stage_flight_number = launcher_json[
+				'launcher_flight_number']
+			self.launcher_stage_turn_around = launcher_json[
+				'turn_around_time_days']
 
 			# flight proven and serial number
-			self.launcher_is_flight_proven = launcher_json['launcher']['flight_proven']
-			self.launcher_serial_number = launcher_json['launcher']['serial_number']
+			self.launcher_is_flight_proven = launcher_json['launcher'][
+				'flight_proven']
+			self.launcher_serial_number = launcher_json['launcher'][
+				'serial_number']
 
 			# first flight and maiden flight
 			try:
-				self.launcher_maiden_flight = timestamp_to_unix(launcher_json['launcher']['first_launch_date'])
-				self.launcher_last_flight = timestamp_to_unix(launcher_json['launcher']['last_launch_date'])
+				self.launcher_maiden_flight = timestamp_to_unix(
+					launcher_json['launcher']['first_launch_date'])
+				self.launcher_last_flight = timestamp_to_unix(
+					launcher_json['launcher']['last_launch_date'])
 			except:
 				self.launcher_maiden_flight = None
 				self.launcher_last_flight = None
@@ -191,9 +220,11 @@ class LaunchLibrary2Launch:
 			if launcher_json['landing'] is not None:
 				landing_json = launcher_json['landing']
 				self.launcher_landing_attempt = landing_json['attempt']
-				self.launcher_landing_location = landing_json['location']['abbrev']
+				self.launcher_landing_location = landing_json['location'][
+					'abbrev']
 				self.landing_type = landing_json['type']['abbrev']
-				self.launcher_landing_location_nth_landing = landing_json['location']['successful_landings']
+				self.launcher_landing_location_nth_landing = landing_json[
+					'location']['successful_landings']
 			else:
 				self.launcher_landing_attempt = None
 				self.launcher_landing_location = None
@@ -218,20 +249,24 @@ class LaunchLibrary2Launch:
 			spacecraft = launch_json['rocket']['spacecraft_stage']
 			self.spacecraft_id = spacecraft['id']
 			self.spacecraft_sn = spacecraft['spacecraft']['serial_number']
-			self.spacecraft_name = spacecraft['spacecraft']['spacecraft_config']['name']
+			self.spacecraft_name = spacecraft['spacecraft'][
+				'spacecraft_config']['name']
 
 			# parse mission crew, if applicable
 			if spacecraft['launch_crew'] not in (None, []):
 				astronauts = set()
 				for crew_member in spacecraft['launch_crew']:
-					astronauts.add(f"{crew_member['astronaut']['name']}:{crew_member['role']}")
+					astronauts.add(
+						f"{crew_member['astronaut']['name']}:{crew_member['role']}"
+					)
 
 				self.spacecraft_crew = ','.join(astronauts)
 				self.spacecraft_crew_count = len(astronauts)
 
 			try:
 				self.spacecraft_maiden_flight = timestamp_to_unix(
-					spacecraft['spacecraft']['spacecraft_config']['maiden_flight'])
+					spacecraft['spacecraft']['spacecraft_config']
+					['maiden_flight'])
 			except:
 				self.spacecraft_maiden_flight = None
 		else:
@@ -249,12 +284,30 @@ class LaunchLibrary2Launch:
 
 			# parse description; shorten if it's too long
 			self.mission_description = launch_json['mission']['description']
-			
+
 			if self.mission_description not in (None, ''):
 				try:
-					sentences = tokenize.sent_tokenize(self.mission_description)
+					sentences = tokenize.sent_tokenize(
+						self.mission_description)
 				except LookupError:
-					logging.exception('Error: ntlk resource not found!')
+					logging.warning(
+						'Error: ntlk resource not found! Trying to recover by installing punkt-package...'
+					)
+
+					import nltk
+					nltk.download("punkt")
+
+					try:
+						sentences = tokenize.sent_tokenize(
+							self.mission_description)
+					except:
+						logging.exception(
+							"Failed to recover from NLTK missing resource error! Read the error logs."
+						)
+						return
+			else:
+				logging.warning("Initializing sentences as an empty list!")
+				sentences = []
 
 				parsed_description = ''
 				max_idx = len(sentences) - 1
@@ -269,14 +322,16 @@ class LaunchLibrary2Launch:
 					parsed_description += sentence
 
 					if enum != max_idx:
-						if not len(parsed_description) + len(sentences[enum+1]) > 350:
+						if not len(parsed_description) + len(
+							sentences[enum + 1]) > 350:
 							parsed_description += ' '
 
 				self.mission_description = parsed_description
 
 			if launch_json['mission']['orbit'] is not None:
 				self.mission_orbit = launch_json['mission']['orbit']['name']
-				self.mission_orbit_abbrev = launch_json['mission']['orbit']['abbrev']
+				self.mission_orbit_abbrev = launch_json['mission']['orbit'][
+					'abbrev']
 			else:
 				self.mission_orbit = None
 				self.mission_orbit_abbrev = None
@@ -295,14 +350,17 @@ class LaunchLibrary2Launch:
 			self.pad_name = self.pad_name.replace('Rocket Lab', 'RL')
 
 		self.location_name = launch_json['pad']['location']['name']
-		self.location_country_code = launch_json['pad']['location']['country_code']
+		self.location_country_code = launch_json['pad']['location'][
+			'country_code']
 
 		# tidbits for fun facts etc.
 		try:
 			self.pad_nth_launch = launch_json['pad']['total_launch_count']
-			self.location_nth_launch = launch_json['pad']['location']['total_launch_count']
+			self.location_nth_launch = launch_json['pad']['location'][
+				'total_launch_count']
 			self.agency_nth_launch = launch_json['agency_launch_attempt_count']
-			self.agency_nth_launch_year = launch_json['agency_launch_attempt_count_year']
+			self.agency_nth_launch_year = launch_json[
+				'agency_launch_attempt_count_year']
 		except KeyError:
 			self.pad_nth_launch = None
 			self.location_nth_launch = None
@@ -310,7 +368,8 @@ class LaunchLibrary2Launch:
 			self.agency_nth_launch_year = None
 
 		if 'orbital_launch_attempt_count_year' in launch_json:
-			self.orbital_nth_launch_year = launch_json['orbital_launch_attempt_count_year']
+			self.orbital_nth_launch_year = launch_json[
+				'orbital_launch_attempt_count_year']
 		else:
 			self.orbital_nth_launch_year = None
 
@@ -342,7 +401,9 @@ def clean_launch_db(last_update, db_path):
 	conn.row_factory = sqlite3.Row
 	cursor = conn.cursor()
 
-	cursor.execute('SELECT name FROM sqlite_master WHERE type = ? AND name = ?', ('table', 'launches'))
+	cursor.execute(
+		'SELECT name FROM sqlite_master WHERE type = ? AND name = ?',
+		('table', 'launches'))
 	if len(cursor.fetchall()) == 0:
 		return
 
@@ -360,7 +421,9 @@ def clean_launch_db(last_update, db_path):
 		logging.debug('✨ Database already clean: nothing to do!')
 		return
 
-	logging.info(f'✨ Deleting {len(deleted_launches)} launches that have slipped out of range...')
+	logging.info(
+		f'✨ Deleting {len(deleted_launches)} launches that have slipped out of range...'
+	)
 	try:
 		cursor.execute(
 			'DELETE FROM launches WHERE launched = 0 AND last_updated < ? AND net_unix > ?',
@@ -374,8 +437,8 @@ def clean_launch_db(last_update, db_path):
 	conn.close()
 
 
-def ll2_api_call(
-	data_dir: str, scheduler: BackgroundScheduler, bot_username: str, bot: 'telegram.bot.Bot'):
+def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler,
+	bot_username: str, bot: 'telegram.bot.Bot'):
 	# debug everything but the API: "true" simply loads the previous .json
 	DEBUG_API = False
 
@@ -407,41 +470,49 @@ def ll2_api_call(
 			# create requests session
 			session = requests.Session()
 			session.headers = headers
-			session.mount("https://", HTTPAdapter(pool_connections=1, pool_maxsize=2))
+			session.mount("https://",
+				HTTPAdapter(pool_connections=1, pool_maxsize=2))
 
 			t0 = time.time()
 			API_RESPONSE = session.get(API_CALL, timeout=5)
 			rec_data = len(API_RESPONSE.content)
 
 			tdelta = time.time() - t0
-			logging.debug(f"✅ Received {rec_data/(1024*1000):.3f} MiB of data! Request took {tdelta:.3f} seconds")
+			logging.debug(
+				f"✅ Received {rec_data/(1024*1000):.3f} MiB of data! Request took {tdelta:.3f} seconds"
+			)
 		except Exception as error:
 			logging.warning(f'🛑 Error in LL API request: {error}')
 			logging.warning('⚠️ Trying again after 3 seconds...')
 
 			time.sleep(3)
-			return ll2_api_call(
-				data_dir=data_dir, scheduler=scheduler,
-				bot_username=bot_username, bot=bot)
+			return ll2_api_call(data_dir=data_dir,
+				scheduler=scheduler,
+				bot_username=bot_username,
+				bot=bot)
 
 		try:
 			api_json = json.loads(API_RESPONSE.text)
 			if DEBUG_API:
-				with open(os.path.join(data_dir, 'debug-json.json'), 'w') as jsonf:
+				with open(os.path.join(data_dir, 'debug-json.json'),
+					'w') as jsonf:
 					json.dump(api_json, jsonf, indent=4)
 		except Exception as json_parse_error:
 			logging.exception(f'⚠️ Error parsing json: {json_parse_error}')
 
 			# dump api response for inspection / debugging use
-			with open(os.path.join(data_dir, f'error-json-{int(time.time())}.txt'), 'w') as ejson:
+			with open(
+				os.path.join(data_dir, f'error-json-{int(time.time())}.txt'),
+				'w') as ejson:
 				ejson.write(API_RESPONSE.text)
 
 			logging.warning('⚠️ Trying again after 60 seconds...')
 			time.sleep(60)
 
-			return ll2_api_call(
-				data_dir=data_dir, scheduler=scheduler,
-				bot_username=bot_username, bot=bot)
+			return ll2_api_call(data_dir=data_dir,
+				scheduler=scheduler,
+				bot_username=bot_username,
+				bot=bot)
 
 	# store update time
 	api_updated = int(time.time())
@@ -456,16 +527,18 @@ def ll2_api_call(
 		launch_obj_set.add(LaunchLibrary2Launch(launch))
 
 	tdelta = time.time() - t0
-	logging.debug(f"✅ Parsed received data! Processing took {tdelta:.3f} seconds")
-
+	logging.debug(
+		f"✅ Parsed received data! Processing took {tdelta:.3f} seconds")
 
 	# success?
-	logging.debug(f'✅ Parsed {len(launch_obj_set)} launches into launch_obj_set.')
+	logging.debug(
+		f'✅ Parsed {len(launch_obj_set)} launches into launch_obj_set.')
 
 	# update database with the launch objects
-	postponed_launches = update_launch_db(
-		launch_set=launch_obj_set, db_path=data_dir,
-		bot_username=bot_username, api_update=api_updated)
+	postponed_launches = update_launch_db(launch_set=launch_obj_set,
+		db_path=data_dir,
+		bot_username=bot_username,
+		api_update=api_updated)
 
 	# clean launches that have yet to launch and that weren't updated
 	clean_launch_db(last_update=api_updated, db_path=data_dir)
@@ -475,7 +548,6 @@ def ll2_api_call(
 	# if a launch (or multiple) has been postponed, handle it here
 	if len(postponed_launches) > 0:
 		logging.info(f'Found {len(postponed_launches)} postponed launches!')
-
 		''' Handle each possibly postponed launch separately.
 		tuple: (launch_object, postpone_message) '''
 		for postpone_tuple in postponed_launches:
@@ -486,53 +558,61 @@ def ll2_api_call(
 				db_path=data_dir, postpone_tuple=postpone_tuple, bot=bot)
 
 			logging.info('Sent notifications!')
-			logging.info(f'notify_list={notify_list}, sent_notification_ids={sent_notification_ids}')
+			logging.info(
+				f'notify_list={notify_list}, sent_notification_ids={sent_notification_ids}'
+			)
 
 			# remove previous notification
-			remove_previous_notification(
-				db_path=data_dir, launch_id=launch_object.unique_id,
-				notify_set=notify_list, bot=bot)
+			remove_previous_notification(db_path=data_dir,
+				launch_id=launch_object.unique_id,
+				notify_set=notify_list,
+				bot=bot)
 
 			logging.info('✉️ Previous notifications removed!')
 
 			# notifications sent: store identifiers
 			msg_id_str = ','.join(sent_notification_ids)
-			store_notification_identifiers(
-				db_path=data_dir, launch_id=launch_object.unique_id, identifiers=msg_id_str)
-			logging.info(f'📃 Notification identifiers stored! identifiers="{msg_id_str}"')
+			store_notification_identifiers(db_path=data_dir,
+				launch_id=launch_object.unique_id,
+				identifiers=msg_id_str)
+			logging.info(
+				f'📃 Notification identifiers stored! identifiers="{msg_id_str}"'
+			)
 
 			# update stats
-			update_stats_db(stats_update={ 'notifications': len(notify_list) }, db_path=data_dir)
+			update_stats_db(stats_update={'notifications': len(notify_list)},
+				db_path=data_dir)
 			logging.info('📊 Stats updated!')
 
 	# update statistics
-	update_stats_db(
-		stats_update={
-			'api_requests': 1, 'db_updates': 1,
-			'data': rec_data, 'last_api_update': api_updated},
-		db_path=data_dir
-	)
+	update_stats_db(stats_update={
+		'api_requests': 1,
+		'db_updates': 1,
+		'data': rec_data,
+		'last_api_update': api_updated
+	},
+		db_path=data_dir)
 
 	# schedule next API call
-	next_api_update = api_call_scheduler(
-		db_path=data_dir, scheduler=scheduler, ignore_60=True,
-		bot_username=bot_username, bot=bot)
+	next_api_update = api_call_scheduler(db_path=data_dir,
+		scheduler=scheduler,
+		ignore_60=True,
+		bot_username=bot_username,
+		bot=bot)
 
 	# schedule notifications
-	notification_send_scheduler(
-		db_path=data_dir, next_api_update_time=next_api_update, scheduler=scheduler,
-		bot_username=bot_username, bot=bot)
+	notification_send_scheduler(db_path=data_dir,
+		next_api_update_time=next_api_update,
+		scheduler=scheduler,
+		bot_username=bot_username,
+		bot=bot)
 
 
-def api_call_scheduler(
-	db_path: str, scheduler: BackgroundScheduler, ignore_60: bool,
-	bot_username: str, bot: 'telegram.bot.Bot') -> int:
+def api_call_scheduler(db_path: str, scheduler: BackgroundScheduler,
+	ignore_60: bool, bot_username: str, bot: 'telegram.bot.Bot') -> int:
 	"""
 	Schedules upcoming API calls for when they'll be required.
-	Calls are scheduled with the following logic:
-	- every 20 minutes, unless any of the following has triggered an update:
-		- 30 seconds before upcoming notification sends
-		- the moment a launch is due to happen (postpone notification)
+	Calls are scheduled dynamically, based on the time until next notification.
 
 	The function returns the timestamp for when the next API call should be run.
 	Whenever an API call is performed, the next call should be scheduled.
@@ -540,10 +620,13 @@ def api_call_scheduler(
 	TODO improve checking for overlapping jobs, especially when notification checks
 	are scheduled. Keep track of scheduled job IDs. LaunchBot-class in main thread?
 	"""
+
 	def schedule_call(unix_timestamp: int) -> int:
 		# verify time isn't in the past
 		if unix_timestamp <= int(time.time()):
-			logging.warning('schedule_call called with a timestamp in the past! Scheduling for t+3 seconds.')
+			logging.warning(
+				'schedule_call called with a timestamp in the past! Scheduling for t+3 seconds.'
+			)
 			unix_timestamp = int(time.time()) + 3
 
 		# delta
@@ -553,12 +636,16 @@ def api_call_scheduler(
 		next_update_dt = datetime.datetime.fromtimestamp(unix_timestamp)
 
 		# schedule next API update, and we're done: next update will be scheduled after the API update
-		scheduler.add_job(
-			ll2_api_call, 'date', run_date=next_update_dt,
-			args=[db_path, scheduler, bot_username, bot], id=f'api-{unix_timestamp}')
+		scheduler.add_job(ll2_api_call,
+			'date',
+			run_date=next_update_dt,
+			args=[db_path, scheduler, bot_username, bot],
+			id=f'api-{unix_timestamp}')
 
-		logging.debug('🔄 Next API update in %s (%s)',
-			time_delta_to_legible_eta(time_delta=until_update, full_accuracy=False), next_update_dt)
+		logging.debug(
+			'🔄 Next API update in %s (%s)',
+			time_delta_to_legible_eta(time_delta=until_update,
+			full_accuracy=False), next_update_dt)
 
 		return unix_timestamp
 
@@ -575,12 +662,14 @@ def api_call_scheduler(
 		if last_update in ('', None):
 			return (True, None)
 
-		return (True, None) if time.time() > last_update + UPDATE_PERIOD * 60 * 2 else (False, last_update)
+		return (True,
+			None) if time.time() > last_update + UPDATE_PERIOD * 60 * 2 else (
+			False, last_update)
 
 	# debug print
 	logging.debug('⏲ Starting api_call_scheduler...')
 
-	# update period, in minutes
+	# update period, in minutes TODO: remove and use raw minutes or hours
 	UPDATE_PERIOD = 15
 
 	# load the next upcoming launch from the database
@@ -592,22 +681,26 @@ def api_call_scheduler(
 	update_immediately, last_update = db_status[0], db_status[1]
 
 	if update_immediately:
-		logging.debug('⚠️ DB outdated: scheduling next API update 5 seconds from now...')
+		logging.debug(
+			'⚠️ DB outdated: scheduling next API update 5 seconds from now...')
 		return schedule_call(int(time.time()) + 5)
 
 	# if we didn't return above, no need to update immediately
 	update_delta = int(time.time()) - last_update
-	last_updated_str = time_delta_to_legible_eta(update_delta, full_accuracy=False)
+	last_updated_str = time_delta_to_legible_eta(update_delta,
+		full_accuracy=False)
 
 	logging.debug(f'🔀 DB up-to-date! Last updated {last_updated_str} ago.')
 
 	# pull all launches with a net greater than or equal to notification window start
 	select_fields = 'net_unix, launched, status_state'
 	select_fields += ', notify_24h, notify_12h, notify_60min, notify_5min'
-	notify_window = int(time.time()) - 60*5
+	notify_window = int(time.time()) - 60 * 5
 
 	try:
-		cursor.execute(f'SELECT {select_fields} FROM launches WHERE net_unix >= ?', (notify_window,))
+		cursor.execute(
+			f'SELECT {select_fields} FROM launches WHERE net_unix >= ?',
+			(notify_window, ))
 		query_return = cursor.fetchall()
 	except sqlite3.OperationalError:
 		query_return = set()
@@ -615,23 +708,29 @@ def api_call_scheduler(
 	conn.close()
 
 	if len(query_return) == 0:
-		logging.warning('⚠️ No launches found for scheduling: running in 5 seconds...')
+		logging.warning(
+			'⚠️ No launches found for scheduling: running in 5 seconds...')
 		os.rename(
 			os.path.join(db_path, 'launchbot-data.db'),
-			os.path.join(db_path, f'launchbot-data-sched-error-{int(time.time())}.db'))
+			os.path.join(db_path,
+			f'launchbot-data-sched-error-{int(time.time())}.db'))
 
 		return schedule_call(int(time.time()) + 5)
 
 	# sort in-place by NET
-	query_return.sort(key=lambda tup:tup[0])
-
+	query_return.sort(key=lambda tup: tup[0])
 	'''
 	Create a list of notification send times, but also during launch to check for a postpone.
 	- notification times, if not sent (60 seconds before)
 	- 5 minutes after the launch is supposed to occur
 	'''
 	# notification times: 24 hours, 12 hours, 60 minutes, and 5 minutes before
-	notif_times, time_map = set(), {0: 24*3600, 1: 12*3600, 2: 3600, 3: 5*60}
+	notif_times, time_map = set(), {
+		0: 24 * 3600,
+		1: 12 * 3600,
+		2: 3600,
+		3: 5 * 60
+	}
 	notif_time_map = dict()
 
 	for launch_row in query_return:
@@ -642,9 +741,9 @@ def api_call_scheduler(
 
 		# shortly after launch time for possible postpone/abort, if not launched
 		if not launch_row[1] and time.time() - launch_row[0] < 60:
-			notif_times.add(launch_row[0] + 5*60)
+			notif_times.add(launch_row[0] + 5 * 60)
 
-			check_time = launch_row[0] + 5*60
+			check_time = launch_row[0] + 5 * 60
 			if check_time not in notif_time_map.keys():
 				notif_time_map[check_time] = {-1}
 			else:
@@ -679,14 +778,23 @@ def api_call_scheduler(
 
 	# 0: '24h', 1: '12h', 2: '60m', 3: '5m'
 	next_notif_earliest_type = max(notif_time_map[next_notif])
-	next_notif_type = {0: '24h', 1: '12h', 2: '60m', 3: '5m', -1: 'LCHECK'}[next_notif_earliest_type]
+	next_notif_type = {
+		0: '24h',
+		1: '12h',
+		2: '60m',
+		3: '5m',
+		-1: 'LCHECK'
+	}[next_notif_earliest_type]
 
 	# time until next notif + send time
 	until_next_notif = next_notif - int(time.time())
-	next_notif_send_time = time_delta_to_legible_eta(time_delta=until_next_notif, full_accuracy=False)
+	next_notif_send_time = time_delta_to_legible_eta(
+		time_delta=until_next_notif, full_accuracy=False)
 
 	# debugging TODO remove
-	logging.debug(f'next_notif_type: {next_notif_type} | until_next_notif: {until_next_notif}')
+	logging.debug(
+		f'next_notif_type: {next_notif_type} | until_next_notif: {until_next_notif}'
+	)
 	logging.debug(f'notif_time_map[next_notif]: {notif_time_map[next_notif]}')
 
 	# convert to a datetime object for scheduling
@@ -716,11 +824,16 @@ def api_call_scheduler(
 		upd_period_mult = 1.35
 	elif next_notif_type == 'LCHECK':
 		logging.debug('LCHECK found')
-		logging.warning(f'next_notif_type: {next_notif_type} | until_next_notif: {until_next_notif}')
+		logging.warning(
+			f'next_notif_type: {next_notif_type} | until_next_notif: {until_next_notif}'
+		)
 		upd_period_mult = 1.35
 	else:
-		logging.warning('⚠️ Unknown scheduling type! (using upd_period_mult=4)')
-		logging.warning(f'next_notif_type: {next_notif_type} | until_next_notif: {until_next_notif}')
+		logging.warning(
+			'⚠️ Unknown scheduling type! (using upd_period_mult=4)')
+		logging.warning(
+			f'next_notif_type: {next_notif_type} | until_next_notif: {until_next_notif}'
+		)
 		upd_period_mult = 4
 
 	# add next auto-update to notif_times
@@ -739,12 +852,17 @@ def api_call_scheduler(
 
 	# if next update is same as auto-update, log as information
 	if next_api_update == next_auto_update:
-		logging.debug('📭 Auto-updating: no notifications coming up before next API update.')
+		logging.debug(
+			'📭 Auto-updating: no notifications coming up before next API update.'
+		)
 	else:
-		logging.debug('📬 Notification coming up before next API update: not auto-updating!')
+		logging.debug(
+			'📬 Notification coming up before next API update: not auto-updating!'
+		)
 
 	# log time next notification is sent
-	logging.debug(f'📮 Next notification in {next_notif_send_time} ({next_notif})')
+	logging.debug(
+		f'📮 Next notification in {next_notif_send_time} ({next_notif})')
 
 	# schedule the call
 	return schedule_call(next_api_update)
@@ -764,8 +882,9 @@ if __name__ == '__main__':
 		os.makedirs(DATA_DIR)
 
 	# init log
-	logging.basicConfig(
-		level=logging.DEBUG, format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
+	logging.basicConfig(level=logging.DEBUG,
+		format='%(asctime)s %(message)s',
+		datefmt='%d/%m/%Y %H:%M:%S')
 
 	# disable logging for urllib and requests because jesus fuck they make a lot of spam
 	logging.getLogger('apscheduler').setLevel(logging.WARNING)
@@ -781,9 +900,11 @@ if __name__ == '__main__':
 	scheduler.start()
 
 	# start API and notification scheduler
-	api_call_scheduler(
-		db_path=DATA_DIR, ignore_60=False, scheduler=scheduler,
-		bot_username=BOT_USERNAME, bot=None)
+	api_call_scheduler(db_path=DATA_DIR,
+		ignore_60=False,
+		scheduler=scheduler,
+		bot_username=BOT_USERNAME,
+		bot=None)
 
 	while True:
 		time.sleep(10)

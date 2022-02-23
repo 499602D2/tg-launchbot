@@ -10,7 +10,6 @@ Misc variables:
 	None
 '''
 
-
 import os
 import time
 import sqlite3
@@ -46,8 +45,11 @@ def create_chats_db(db_path: str, cursor: sqlite3.Cursor):
 			PRIMARY KEY (chat))
 			''')
 
-		cursor.execute("CREATE INDEX chatenabled ON chats (chat, enabled_notifications)")
-		cursor.execute("CREATE INDEX chatdisabled ON chats (chat, disabled_notifications)")
+		cursor.execute(
+			"CREATE INDEX chatenabled ON chats (chat, enabled_notifications)")
+		cursor.execute(
+			"CREATE INDEX chatdisabled ON chats (chat, disabled_notifications)"
+		)
 	except sqlite3.OperationalError as error:
 		logging.exception(f'⚠️ Error creating chats table: {error}')
 
@@ -57,7 +59,8 @@ def migrate_chat(db_path: str, old_id: int, new_id: int):
 	cursor = conn.cursor()
 
 	try:
-		cursor.execute('UPDATE chats SET chat = ? WHERE chat = ?', (new_id, old_id))
+		cursor.execute('UPDATE chats SET chat = ? WHERE chat = ?',
+			(new_id, old_id))
 	except:
 		logging.exception(f'⚠️ Unable to migrate chat {old_id} to {new_id}!')
 
@@ -114,15 +117,21 @@ def create_launch_db(db_path: str, cursor: sqlite3.Cursor):
 			PRIMARY KEY (unique_id))
 		''')
 
-		cursor.execute("CREATE INDEX name_to_unique_id ON launches (name, unique_id)")
-		cursor.execute("CREATE INDEX unique_id_to_lsp_short ON launches (unique_id, lsp_short)")
-		cursor.execute("CREATE INDEX net_unix_to_lsp_short ON launches (net_unix, lsp_short)")
+		cursor.execute(
+			"CREATE INDEX name_to_unique_id ON launches (name, unique_id)")
+		cursor.execute(
+			"CREATE INDEX unique_id_to_lsp_short ON launches (unique_id, lsp_short)"
+		)
+		cursor.execute(
+			"CREATE INDEX net_unix_to_lsp_short ON launches (net_unix, lsp_short)"
+		)
 
 	except sqlite3.OperationalError as e:
 		logging.exception(f'⚠️ Error in create_launch_database: {e}')
 
 
-def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_update: int):
+def update_launch_db(
+		launch_set: set, db_path: str, bot_username: str, api_update: int):
 	'''
 	Updates the launch table with whatever data the API call provides.
 
@@ -135,8 +144,9 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 	Returns:
 		None
 	'''
-	def verify_no_net_slip(
-		launch_object: 'LaunchLibrary2Launch', cursor: sqlite3.Cursor) -> (bool, tuple):
+
+	def verify_no_net_slip(launch_object: 'LaunchLibrary2Launch',
+		cursor: sqlite3.Cursor) -> (bool, tuple):
 		'''
 		Verify the NET of the launch hasn't slipped forward: if it has, verify
 		that we haven't sent a notification: if we have, send a postpone
@@ -144,7 +154,8 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 		'''
 
 		# load launch from db
-		cursor.execute('SELECT * FROM launches WHERE unique_id = ?', (launch_object.unique_id,))
+		cursor.execute('SELECT * FROM launches WHERE unique_id = ?',
+			(launch_object.unique_id, ))
 		query_return = [dict(row) for row in cursor.fetchall()]
 		launch_db = query_return[0]
 
@@ -157,22 +168,30 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 
 		# notification states for the launch
 		notification_states = {
-			'notify_24h': launch_db['notify_24h'], 'notify_12h': launch_db['notify_12h'],
-			'notify_60min': launch_db['notify_60min'], 'notify_5min': launch_db['notify_5min']}
+			'notify_24h': launch_db['notify_24h'],
+			'notify_12h': launch_db['notify_12h'],
+			'notify_60min': launch_db['notify_60min'],
+			'notify_5min': launch_db['notify_5min']
+		}
 
 		# store a copy we don't change so we can properly send postpone notifications
 		old_notification_states = tuple(notification_states.values())
 
 		# map notification "presend" time to hour multiples (i.e. 3600 * X)
 		notif_pre_time_map = {
-			'notify_24h': 24, 'notify_12h': 12, 'notify_60min': 1, 'notify_5min': 5/60}
+			'notify_24h': 24,
+			'notify_12h': 12,
+			'notify_60min': 1,
+			'notify_5min': 5 / 60
+		}
 
 		# keep track of wheter we reset a notification state to 0
 		notification_state_reset = False
 		skipped_postpones = []
 
 		# if we have at least one sent notification, the net has slipped >5 min, and we haven't launched
-		if 1 in notification_states.values() and net_diff >= 5*60 and not launch_object.launched:
+		if 1 in notification_states.values(
+		) and net_diff >= 5 * 60 and not launch_object.launched:
 			# iterate over the notification states loaded from the database
 			for key, status in notification_states.items():
 				# reset if net_diff > the notification send period (we're outside the window again)
@@ -183,11 +202,13 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 
 				# if int(status) == 1, window_end = launch time - 3600 * multiplier
 				# should net_unix be old net? launch_db['net_unix']
-				window_end = launch_db['net_unix'] - 3600 * notif_pre_time_map[key]
+				window_end = launch_db[
+					'net_unix'] - 3600 * notif_pre_time_map[key]
 				window_diff = window_end - int(time.time()) + net_diff
 
 				# check if postpone puts us past this window: if it does, reset state
-				if int(status) == 1 and int(time.time()) - net_diff < window_end:
+				if int(
+					status) == 1 and int(time.time()) - net_diff < window_end:
 					postpone = {
 						'old net': launch_db['net_unix'],
 						'launch_obj.net_unix': launch_object.net_unix,
@@ -215,7 +236,6 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 					}
 
 					skipped_postpones.append(postpone)
-
 				'''
 				if int(status) == 1 and net_diff >= 3600 * notif_pre_time_map[key]:
 					notification_states[key] = 0
@@ -227,22 +247,28 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 				'''
 
 			if not notification_state_reset:
-				logging.warning('⚠️ No notification states were reset: exiting...')
-				logging.warning(f'📜 notification_states: {notification_states}')
+				logging.warning(
+					'⚠️ No notification states were reset: exiting...')
+				logging.warning(
+					f'📜 notification_states: {notification_states}')
 				logging.warning(f'📜 skipped_postpones: {skipped_postpones}')
 				return (False, ())
 
 			logging.warning('✅ A notification state was reset: continuing...')
 
 			# generate the postpone string
-			postpone_str = time_delta_to_legible_eta(time_delta=int(net_diff), full_accuracy=False)
+			postpone_str = time_delta_to_legible_eta(time_delta=int(net_diff),
+				full_accuracy=False)
 
 			# we've got the pretty eta: log
-			logging.info(f'⏱ ETA string generated for net_diff={net_diff}: {postpone_str}')
+			logging.info(
+				f'⏱ ETA string generated for net_diff={net_diff}: {postpone_str}'
+			)
 
 			# calculate days until next launch attempt
 			eta_sec = launch_object.net_unix - time.time()
-			next_attempt_eta_str = time_delta_to_legible_eta(time_delta=int(eta_sec), full_accuracy=False)
+			next_attempt_eta_str = time_delta_to_legible_eta(
+				time_delta=int(eta_sec), full_accuracy=False)
 
 			# launch name: handle possible IndexError as well, even while this should never happen
 			try:
@@ -273,18 +299,25 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 			insert_statement = '=?,'.join(notification_states.keys()) + '=?'
 
 			# generate tuple for values: values for states + unique ID
-			values_tuple = tuple(notification_states.values()) + (launch_object.unique_id,)
+			values_tuple = tuple(
+				notification_states.values()) + (launch_object.unique_id, )
 
 			# store updated notification states
-			cursor.execute(f'UPDATE launches SET {insert_statement} WHERE unique_id = ?', values_tuple)
+			cursor.execute(
+				f'UPDATE launches SET {insert_statement} WHERE unique_id = ?',
+				values_tuple)
 
 			# log
-			logging.info(f'🚩 Notification states reset for launch_id={launch_object.unique_id}!')
-			logging.info(f'ℹ️ Postponed by {postpone_str}. New states: {notification_states}')
-
+			logging.info(
+				f'🚩 Notification states reset for launch_id={launch_object.unique_id}!'
+			)
+			logging.info(
+				f'ℹ️ Postponed by {postpone_str}. New states: {notification_states}'
+			)
 			''' return bool + a tuple we can use to send the postpone notification easily
 			(launch_object, message, old_notif_statse) '''
-			postpone_tup = (launch_object, postpone_msg, old_notification_states)
+			postpone_tup = (launch_object, postpone_msg,
+				old_notification_states)
 
 			return (True, postpone_tup)
 
@@ -301,7 +334,9 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 	cursor = conn.cursor()
 
 	# verify table exists
-	cursor.execute('SELECT name FROM sqlite_master WHERE type = ? AND name = ?', ('table', 'launches'))
+	cursor.execute(
+		'SELECT name FROM sqlite_master WHERE type = ? AND name = ?',
+		('table', 'launches'))
 	if len(cursor.fetchall()) == 0:
 		logging.warning("⚠️ Launches table doesn't exists: creating...")
 		create_launch_db(db_path=db_path, cursor=cursor)
@@ -309,20 +344,23 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 	# loop over launch objcets in launch_set
 	slipped_launches = set()
 	for launch_object in launch_set:
-		try: # try inserting as new
+		try:  # try inserting as new
 			# set fields and values to be inserted according to available keys/values
 			insert_fields = ', '.join(vars(launch_object).keys())
 			insert_fields += ', last_updated, notify_24h, notify_12h, notify_60min, notify_5min'
-			field_values = tuple(vars(launch_object).values()) + (api_update, False, False, False, False)
+			field_values = tuple(vars(launch_object).values()) + (api_update,
+				False, False, False, False)
 
 			# set amount of value-characers (?) equal to amount of keys + 4 (notify fields)
 			values_string = '?,' * (len(vars(launch_object).keys()) + 5)
 			values_string = values_string[0:-1]
 
 			# execute SQL
-			cursor.execute(f'INSERT INTO launches ({insert_fields}) VALUES ({values_string})', field_values)
+			cursor.execute(
+				f'INSERT INTO launches ({insert_fields}) VALUES ({values_string})',
+				field_values)
 
-		except sqlite3.IntegrityError: # update, as the launch already exists
+		except sqlite3.IntegrityError:  # update, as the launch already exists
 			# if insert failed, update existing data: everything but unique ID and notification fields
 			obj_dict = vars(launch_object)
 
@@ -334,18 +372,23 @@ def update_launch_db(launch_set: set, db_path: str, bot_username: str, api_updat
 			set_str = ' = ?, '.join(update_fields) + ' = ?'
 
 			# verify launch hasn't been postponed
-			net_slipped, postpone_tuple = verify_no_net_slip(launch_object=launch_object, cursor=cursor)
+			net_slipped, postpone_tuple = verify_no_net_slip(
+				launch_object=launch_object, cursor=cursor)
 
 			if net_slipped:
 				slipped_launches.add(postpone_tuple)
 
 			try:
-				cursor.execute(f"UPDATE launches SET {set_str} WHERE unique_id = ?",
-					tuple(update_values) + (launch_object.unique_id,))
-				cursor.execute("UPDATE launches SET last_updated = ? WHERE unique_id = ?",
-					(api_update,) + (launch_object.unique_id,))
+				cursor.execute(
+					f"UPDATE launches SET {set_str} WHERE unique_id = ?",
+					tuple(update_values) + (launch_object.unique_id, ))
+				cursor.execute(
+					"UPDATE launches SET last_updated = ? WHERE unique_id = ?",
+					(api_update, ) + (launch_object.unique_id, ))
 			except Exception:
-				logging.exception(f'⚠️ Error updating field for unique_id={launch_object.unique_id}!')
+				logging.exception(
+					f'⚠️ Error updating field for unique_id={launch_object.unique_id}!'
+				)
 
 	# commit changes
 	conn.commit()
@@ -379,7 +422,8 @@ def create_stats_db(db_path: str):
 		# create table
 		cursor.execute('''CREATE TABLE stats 
 			(notifications INT, api_requests INT, db_updates INT, commands INT,
-			data INT, last_api_update INT, PRIMARY KEY (notifications, api_requests))''')
+			data INT, last_api_update INT, PRIMARY KEY (notifications, api_requests))'''
+						)
 
 		# insert first (and only) row of data
 		cursor.execute('''INSERT INTO stats 
@@ -413,7 +457,9 @@ def update_stats_db(stats_update: dict, db_path: str):
 	rd = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
 	# verify table exists
-	stats_cursor.execute('SELECT name FROM sqlite_master WHERE type = ? AND name = ?', ('table', 'stats'))
+	stats_cursor.execute(
+		'SELECT name FROM sqlite_master WHERE type = ? AND name = ?',
+		('table', 'stats'))
 	if len(stats_cursor.fetchall()) == 0:
 		logging.warning("⚠️ Statistics table doesn't exists: creating...")
 		create_stats_db(db_path)
@@ -421,7 +467,8 @@ def update_stats_db(stats_update: dict, db_path: str):
 	# verify cache exists
 	if not rd.exists('stats'):
 		# pull from disk
-		stats_conn = sqlite3.connect(os.path.join(db_path, 'launchbot-data.db'))
+		stats_conn = sqlite3.connect(os.path.join(db_path,
+			'launchbot-data.db'))
 		stats_conn.row_factory = sqlite3.Row
 		stats_cursor = stats_conn.cursor()
 
@@ -431,8 +478,13 @@ def update_stats_db(stats_update: dict, db_path: str):
 			stats = [dict(row) for row in stats_cursor.fetchall()][0]
 		except sqlite3.OperationalError:
 			stats = {
-				'notifications': 0, 'api_requests': 0, 'db_updates': 0,
-				'commands': 0, 'data': 0, 'last_api_update': 0}
+				'notifications': 0,
+				'api_requests': 0,
+				'db_updates': 0,
+				'commands': 0,
+				'data': 0,
+				'last_api_update': 0
+			}
 
 		if stats['last_api_update'] is None:
 			stats['last_api_update'] = int(time.time())
@@ -449,9 +501,13 @@ def update_stats_db(stats_update: dict, db_path: str):
 			try:
 				rd.hset('stats', stat, int(rd.hget('stats', stat)) + int(val))
 			except TypeError:
-				logging.exception(f'⚠️ Error updating stat for {stat} with ++{val}! stats_update: {stats_update}')
-				logging.warning('⚠️ Not commiting database change: closing connection and exiting...')
-				
+				logging.exception(
+					f'⚠️ Error updating stat for {stat} with ++{val}! stats_update: {stats_update}'
+				)
+				logging.warning(
+					'⚠️ Not commiting database change: closing connection and exiting...'
+				)
+
 				stats_conn.close()
 				return
 
