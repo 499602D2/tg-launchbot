@@ -218,13 +218,21 @@ class LaunchLibrary2Launch:
 
 			# landing attempt, landing location, landing type, landing count at location
 			if launcher_json['landing'] is not None:
+				# Short-hand for landing JSON
 				landing_json = launcher_json['landing']
-				self.launcher_landing_attempt = landing_json['attempt']
-				self.launcher_landing_location = landing_json['location'][
-					'abbrev']
-				self.landing_type = landing_json['type']['abbrev']
-				self.launcher_landing_location_nth_landing = landing_json[
-					'location']['successful_landings']
+
+				try:
+					self.launcher_landing_attempt = landing_json['attempt']
+					self.launcher_landing_location = landing_json['location'][
+						'abbrev']
+					self.landing_type = landing_json['type']['abbrev']
+					self.launcher_landing_location_nth_landing = landing_json[
+						'location']['successful_landings']
+				except:
+					self.launcher_landing_attempt = None
+					self.launcher_landing_location = None
+					self.landing_type = None
+					self.launcher_landing_location_nth_landing = None
 			else:
 				self.launcher_landing_attempt = None
 				self.launcher_landing_location = None
@@ -524,7 +532,10 @@ def ll2_api_call(data_dir: str, scheduler: BackgroundScheduler,
 	t0 = time.time()
 
 	for launch in api_json['results']:
-		launch_obj_set.add(LaunchLibrary2Launch(launch))
+		try:
+			launch_obj_set.add(LaunchLibrary2Launch(launch))
+		except:
+			logging.warning("Error parsing launch! Launch:", launch)
 
 	tdelta = time.time() - t0
 	logging.debug(
