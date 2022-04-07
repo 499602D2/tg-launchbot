@@ -7,7 +7,7 @@ Documentation: https://ll.thespacedevs.com/2.2.0/swagger
 */
 
 type LL2LaunchUpdate struct {
-	Count    int      `json:"count"`
+	Count    int
 	Launches []Launch `json:"results"`
 }
 
@@ -34,7 +34,9 @@ type Launch struct {
 	WebcastIsLive  bool           `json:"webcast_live"`
 
 	// Manually parsed information
-	NETUnix int
+	NETUnix     int64
+	Postponed   bool  // Toggled if the launch was postponed in the update
+	PostponedBy int64 // Seconds the launch was postponed by
 }
 
 type LaunchStatus struct {
@@ -48,7 +50,7 @@ type LaunchProvider struct {
 	// Information directly from the API
 	Id   int    `json:"id"`
 	Name string `json:"name"`
-	Type bool   `json:"type"`
+	Type string `json:"type"`
 	URL  string `json:"url"`
 
 	// Rarely given: manually parse from the URL endpoint given -> save
