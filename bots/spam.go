@@ -23,6 +23,14 @@ type ChatLog struct {
 	CommandSpamOffenses         int   // Count of spam offences (not used)
 }
 
+/* Initialize the spam struct */
+func (spam *AntiSpam) Initialize() {
+	spam.ChatBannedUntilTimestamp = make(map[users.User]int64)
+	spam.ChatLogs = make(map[users.User]ChatLog)
+	spam.ChatBanned = make(map[users.User]bool)
+	spam.Rules = make(map[string]int64)
+}
+
 func CommandPreHandler(spam *AntiSpam, user *users.User, sentAt int64) bool {
 	/* When user sends a command, verify the chat is eligible for a command parse. */
 	spam.Mutex.Lock()
@@ -33,7 +41,7 @@ func CommandPreHandler(spam *AntiSpam, user *users.User, sentAt int64) bool {
 		spam.ChatLogs[*user] = chatLog
 		spam.Mutex.Unlock()
 
-		log.Printf("Chat %s.%d now has %d spam offenses", user.Platform, user.Id, chatLog.CommandSpamOffenses)
+		log.Info().Msgf("Chat %s:%d now has %d spam offenses", user.Platform, user.Id, chatLog.CommandSpamOffenses)
 		return false
 	}
 

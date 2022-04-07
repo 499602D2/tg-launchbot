@@ -10,13 +10,13 @@ import (
 
 type LaunchCache struct {
 	Launches *[]Launch
-	Updated  time.Time
+	Updated  int64
 	Mutex    sync.Mutex
 }
 
 func (cache *LaunchCache) Update(launches *[]Launch) {
 	cache.Mutex.Lock()
 	cache.Launches = launches
-	cache.Updated = time.Now()
+	cache.Updated = time.Now().Unix()
 	cache.Mutex.Unlock()
 }

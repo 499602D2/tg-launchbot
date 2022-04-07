@@ -5,5 +5,6 @@ import (
 )
 
 type DiscordBot struct {
-	Bot *dg.Session
+	Bot   *dg.Session
+	Queue *Queue
 }

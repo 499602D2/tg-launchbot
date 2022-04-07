@@ -1,48 +1,49 @@
 package bots
 
 import (
-	"fmt"
 	"launchbot/templates"
 	"launchbot/users"
 	"sync"
+	"time"
 
+	"github.com/rs/zerolog/log"
 	tb "gopkg.in/telebot.v3"
 )
 
 type TelegramBot struct {
 	Bot          *tb.Bot
-	MessageQueue Queue
+	MessageQueue *Queue
+	HighPriority HighPriorityQueue
 }
 
-/* A single Telegram message */
-type TelegramMessage struct {
-	TextContent      *string
-	Recipient        users.User
-	TelegramSendOpts tb.SendOptions
+type HighPriorityQueue struct {
+	HasItemsInQueue bool
+	Queue           []*Sendable
+	Mutex           sync.Mutex
 }
 
-/* A queue of Telegram messages to be sent */
-type Queue struct {
-	MessagesPerSecond float32            // Messages-per-second limit
-	Messages          *[]TelegramMessage // Queue of Telegrammessages to send
-	Mutex             sync.Mutex         // Mutex to avoid concurrent writes
+func (tgBot *TelegramBot) Initialize() {
+	// Create primary Telegram message queue
+	tgQueue := Queue{MessagesPerSecond: 4}
+	tgMessages := make(map[string]*Sendable)
+	tgQueue.Messages = tgMessages
+
+	tgBot.Bot = nil
+	tgBot.MessageQueue = &tgQueue
+
+	tgBot.HighPriority = HighPriorityQueue{HasItemsInQueue: false}
 }
 
-/* TODO TODO TODO
-- implement a more generic TelegramMessage format for pushing Telegram methods,
-	i.e. in the case where we remove thousands of notifications at once.
-*/
+func SetupTelegramBot(token string, aspam *AntiSpam, queue *Queue, tg *TelegramBot) *tb.Bot {
+	var err error
+	bot, err := tb.NewBot(tb.Settings{
+		Token:  token,
+		Poller: &tb.LongPoller{Timeout: 30 * time.Second},
+	})
 
-/* Adds a message to the Telegram message queue */
-func (queue *Queue) Enqueue(message *TelegramMessage) {
-	queue.Mutex.Lock()
-	*queue.Messages = append(*queue.Messages, *message)
-	queue.Mutex.Unlock()
-}
-
-func SetupTelegramBot(bot *tb.Bot, aspam *AntiSpam, queue *Queue) {
-	// Pull pointers from session for cleaner code
-	//aspam := session.Spam
+	if err != nil {
+		log.Fatal().Err(err).Msg("Error creating Telegram bot")
+	}
 
 	// Command handler for /start
 	bot.Handle("/start", func(c tb.Context) error {
@@ -54,15 +55,24 @@ func SetupTelegramBot(bot *tb.Bot, aspam *AntiSpam, queue *Queue) {
 
 		// Construct message
 		startMessage := templates.HelpMessage()
-		msg := TelegramMessage{
-			TextContent:      &startMessage,
-			Recipient:        users.User{Platform: "tg", Id: message.Sender.ID},
-			TelegramSendOpts: tb.SendOptions{ParseMode: "Markdown"},
+		msg := Message{
+			TextContent: &startMessage,
+			SendOptions: tb.SendOptions{ParseMode: "Markdown"},
 		}
 
+		// Wrap into a sendable
+		userList := users.UserList{Platform: "tg", Users: []*users.User{}}
+		sendable := Sendable{
+			Priority: int8(3), Type: "command", RateLimit: 5.0,
+			Message: &msg, Recipients: &userList,
+		}
+
+		// Add recipient to the user-list
+		user := users.User{Platform: "tg", Id: message.Sender.ID}
+		sendable.Recipients.Add(user, false)
+
 		// Add to send queue
-		queue.Enqueue(&msg)
-		fmt.Printf("NOT IMPL: not adding message to queue! %d", msg.Recipient.Id)
+		queue.Enqueue(&sendable, tg, true)
 
 		// Check if the chat is actually new, or just calling /start again
 		//if !stats.ChatExists(&message.Sender.ID, session.Config) {
@@ -71,4 +81,7 @@ func SetupTelegramBot(bot *tb.Bot, aspam *AntiSpam, queue *Queue) {
 
 		return nil
 	})
+
+	// Return bot after setup
+	return bot
 }

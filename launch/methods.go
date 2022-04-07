@@ -10,3 +10,8 @@ func (launch *Launch) PostponeNotify(postponedTo int) {
 /**/
 func (launch *Launch) Notify() {
 }
+
+/* Returns all values for a database insert */
+func (launch *Launch) FieldValues() {
+
+}

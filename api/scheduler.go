@@ -1,8 +1,9 @@
 package api
 
 import (
-	"fmt"
 	"launchbot/launch"
+
+	"github.com/rs/zerolog/log"
 )
 
 // Schedule next API call
@@ -10,7 +11,7 @@ import (
 
 /* Schedules the next notification */
 func scheduleNotifications() {
-	fmt.Printf("Pseudo notification enqueued at api.scheduler")
+	log.Info().Msg("Pseudo notification enqueued at api.scheduler")
 }
 
 func scheduleNextUpdate(*launch.LaunchCache) {

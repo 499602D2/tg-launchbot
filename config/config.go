@@ -8,11 +8,12 @@ import (
 	"launchbot/bots"
 	"launchbot/db"
 	"launchbot/launch"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/rs/zerolog/log"
 )
 
 type Session struct {
@@ -34,9 +35,10 @@ type Session struct {
 }
 
 type Config struct {
-	Token Tokens     // API tokens
-	Owner int64      // Owner of the bot: skips logging
-	Mutex sync.Mutex // Mutex to avoid concurrent writes
+	Token    Tokens     // API tokens
+	Owner    int64      // Owner of the bot: skips logging
+	DbFolder string     // Folder path the DB lives in
+	Mutex    sync.Mutex // Mutex to avoid concurrent writes
 }
 
 type Tokens struct {
@@ -44,36 +46,36 @@ type Tokens struct {
 	Discord  string
 }
 
+/* Dumps the config to disk */
 func DumpConfig(config *Config) {
-	// Dumps config to disk
 	jsonbytes, err := json.MarshalIndent(config, "", "\t")
-
 	if err != nil {
-		log.Printf("⚠️ Error marshaling json! Err: %s\n", err)
+		log.Fatal().Err(err).Msg("Error marshaling json")
 	}
 
-	wd, _ := os.Getwd()
+	wd, err := os.Getwd()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Error getting working directory")
+	}
+
 	configf := filepath.Join(wd, "config", "bot-config.json")
 
 	file, err := os.Create(configf)
-
 	if err != nil {
-		log.Println(err)
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("Error creating config file")
 	}
 
 	// Write, close
 	_, err = file.Write(jsonbytes)
 	if err != nil {
-		log.Printf("⚠️ Error writing config to disk! Err: %s\n", err)
+		log.Fatal().Err(err).Msg("Error writing config to disk")
 	}
 
 	file.Close()
 }
 
+/* Loads the config, returns a pointer to it */
 func LoadConfig() *Config {
-	/* Loads the config, returns a pointer to it */
-
 	// Get log file's path relative to working dir
 	wd, _ := os.Getwd()
 	configPath := filepath.Join(wd, "config")
@@ -92,8 +94,9 @@ func LoadConfig() *Config {
 
 		// Create, marshal
 		config := Config{
-			Token: Tokens{Telegram: botToken},
-			Owner: 0,
+			Token:    Tokens{Telegram: botToken},
+			DbFolder: "data/launchbot.db",
+			Owner:    0,
 		}
 
 		fmt.Println("Success! Starting bot...")
@@ -105,8 +108,7 @@ func LoadConfig() *Config {
 	// Config exists: load
 	fbytes, err := ioutil.ReadFile(configf)
 	if err != nil {
-		log.Println("⚠️ Error reading config file:", err)
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("Error reading config file")
 	}
 
 	// New config struct
@@ -115,8 +117,7 @@ func LoadConfig() *Config {
 	// Unmarshal into our config struct
 	err = json.Unmarshal(fbytes, &config)
 	if err != nil {
-		log.Println("⚠️ Error unmarshaling config json: ", err)
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("Error unmarshaling config json")
 	}
 
 	return &config

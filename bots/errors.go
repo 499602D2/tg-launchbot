@@ -73,11 +73,16 @@ https://github.com/go-telebot/telebot/blob/v3.0.0/errors.go#L33
 
 /* Wrapper for warning of unhandled errors */
 func warnUnhandled(err error) {
-	log.Warn().Err(err).Msg("Unhandled Telegram error!")
+	log.Warn().Err(err).Msg("Unhandled Telegram error")
 }
 
-/* Telegram error handler */
-func handleTelegramError(err error) {
+/* Telegram error handler
+
+Returns:
+- bool: indicates if the error is recoverable, as in if the previous execution
+				can still proceed after the error.
+*/
+func handleTelegramError(err error) bool {
 	switch err {
 	// General errors (400, 401, 404, 500) [all handled]
 	case tb.ErrTooLarge:
@@ -89,7 +94,7 @@ func handleTelegramError(err error) {
 	case tb.ErrInternal:
 		warnUnhandled(err)
 
-	/* 400(bad request)
+	/* 400 (bad request)
 
 	TODO
 	- handle non-send related errors */
@@ -123,5 +128,11 @@ func handleTelegramError(err error) {
 		warnUnhandled(err)
 	case tb.ErrUserIsDeactivated:
 		warnUnhandled(err)
+
+	// If the error is not in the cases, default to unhandled
+	default:
+		warnUnhandled(err)
 	}
+
+	return false
 }
