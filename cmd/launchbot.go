@@ -10,6 +10,8 @@ import (
 	"launchbot/launch"
 	"launchbot/logs"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -19,11 +21,32 @@ import (
 // Variables injected at build-time
 var GitSHA = "0000000000"
 
+func setupSignalHandler(session *config.Session) {
+	// Listens for incoming interrupt signals
+	channel := make(chan os.Signal, 1)
+	signal.Notify(channel, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+
+	go func() {
+		<-channel
+		// Log shutdown
+		log.Info().Msg("🚦 Received interrupt signal")
+
+		// Close bot
+		session.Telegram.Bot.Close()
+
+		// Exit
+		os.Exit(0)
+	}()
+}
+
 func main() {
 	// Create session
 	session := config.Session{}
 	session.Config = config.LoadConfig()
 	session.Version = fmt.Sprintf("3.0.0-pre (%s)", GitSHA[0:7])
+
+	// Signal handler (ctrl+c, etc.)
+	setupSignalHandler(&session)
 
 	// Command line arguments
 	flag.BoolVar(&session.Debug, "debug", false, "Specify to enable debug mode")
