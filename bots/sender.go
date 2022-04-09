@@ -2,11 +2,84 @@ package bots
 
 import (
 	"launchbot/users"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
+	uuid "github.com/satori/go.uuid"
 	tb "gopkg.in/telebot.v3"
 )
+
+/* A sendable implements a "generic" type of a sendable object.
+This can be a notification or a command reply. These have a priority,
+according to which they will be sent. */
+type Sendable struct {
+	/* Priority singifies the importance of this message (0 to 3).
+	By default, sendables should be prioritized in the following order:
+	0 (backburner): old message removal, etc.
+	1 (not important): scheduled notifications
+	2 (more important): replies to commands
+	3 (send immediately): bot added to a new chat, telegram callbacks
+	*/
+	Priority int8
+
+	/* Type, in ("remove", "notification", "command", "callback")
+	Ideally, the sendable will go through a type-switch, according to which
+	the correct execution will be performed. */
+	Type string
+
+	Message    *Message        // Message (may be empty)
+	Recipients *users.UserList // Recipients of this sendable
+	RateLimit  float32         // Ratelimits this sendable should obey
+}
+
+// The message content of a sendable
+type Message struct {
+	TextContent *string
+	SendOptions tb.SendOptions
+}
+
+/* A queue of sendables to be sent */
+type Queue struct {
+	MessagesPerSecond float32              // Messages-per-second limit
+	Messages          map[string]*Sendable // Queue of sendables (uniqueHash:sendable)
+	Mutex             sync.Mutex           // Mutex to avoid concurrent writes
+}
+
+/* Adds a message to the Telegram message queue */
+func (queue *Queue) Enqueue(sendable *Sendable, tg *TelegramBot, highPriority bool) {
+	// Unique ID for this sendable
+	uuid := uuid.NewV4().String()
+
+	if highPriority {
+		tg.HighPriority.Mutex.Lock()
+		tg.HighPriority.HasItemsInQueue = true
+		tg.HighPriority.Queue = append(tg.HighPriority.Queue, sendable)
+		tg.HighPriority.Mutex.Unlock()
+		return
+	}
+
+	queue.Mutex.Lock()
+
+	// Assign a random hash to the sendable, enqueue it
+	queue.Messages[uuid] = sendable
+
+	queue.Mutex.Unlock()
+}
+
+func (sendable *Sendable) Send() {
+	/*
+		Simply add the Notification object to a sendQueue
+		- ..?
+	*/
+	// Loop over the users, distribute into appropriate send queues
+	switch sendable.Recipients.Platform {
+	case "tg":
+		log.Warn().Msg("Telegram message sender not implemented!")
+	case "dg":
+		log.Warn().Msg("Discord message sender not implemented!")
+	}
+}
 
 /* HighPrioritySender sends singular high-priority messages. */
 func highPrioritySender(tg *TelegramBot, message *Message, user *users.User) bool {
@@ -31,11 +104,15 @@ func highPrioritySender(tg *TelegramBot, message *Message, user *users.User) boo
 	return true
 }
 
-func clearPriorityQueue(tg *TelegramBot) {
+/* Clears the priority queue. */
+func clearPriorityQueue(tg *TelegramBot, sleep bool) {
 	// Lock the high-priority queue
 	tg.HighPriority.Mutex.Lock()
+
+	// TODO: sort before looping over (according to priority)
+
 	for _, prioritySendable := range tg.HighPriority.Queue {
-		for n, priorityUser := range prioritySendable.Recipients.Users {
+		for _, priorityUser := range prioritySendable.Recipients.Users {
 			log.Info().Msgf("Sending high-priority sendable for %s:%d",
 				priorityUser.Platform, priorityUser.Id,
 			)
@@ -43,7 +120,8 @@ func clearPriorityQueue(tg *TelegramBot) {
 			// Loop over users, send high-priority message
 			highPrioritySender(tg, prioritySendable.Message, priorityUser)
 
-			if n < len(prioritySendable.Recipients.Users)-1 {
+			// Stay within limits if needed
+			if sleep || len(prioritySendable.Recipients.Users) > 1 {
 				time.Sleep(time.Millisecond * time.Duration(1.0/prioritySendable.RateLimit*1000.0))
 			}
 		}
@@ -62,14 +140,6 @@ and priority queues for incoming messages and notifications. */
 func TelegramSender(tg *TelegramBot) {
 	/* TODO:
 	- use exponential back-off: https://en.wikipedia.org/wiki/Exponential_backoff
-
-	- lock notificationSender in session until sent (disallow overlapping sends)
-
-	- use a generic sendable object instead of a notification
-		- send e.g. delete requests fast
-		- how ratelimited?
-		- user Go-generics
-			- add a type field to the sendable objects...?
 	*/
 
 	for {
@@ -115,10 +185,15 @@ func TelegramSender(tg *TelegramBot) {
 
 					/* Periodically, during long sends, check if the TelegramBot.PriorityQueued is set.
 					This flag is enabled if there is one, or more, enqueued high-priority messages
-					in the high-priority queue. */
+					in the high-priority queue.
+
+					The justification for this is the fact that the main queue's mutex is locked when
+					the sending process is started, and could be locked for minutes. This alleviated
+					the issue of messages sittin in the queue for ages, sacrificing the send time of
+					mass-notifications for timely responses to e.g. callback queries and commands. */
 					if tg.HighPriority.HasItemsInQueue {
 						log.Info().Msg("High-priority messages in queue during long send")
-						clearPriorityQueue(tg)
+						clearPriorityQueue(tg, true)
 					}
 				}
 
@@ -135,7 +210,7 @@ func TelegramSender(tg *TelegramBot) {
 		// Check if priority queue is populated
 		if tg.HighPriority.HasItemsInQueue {
 			log.Info().Msg("High-priority messages in queue")
-			clearPriorityQueue(tg)
+			clearPriorityQueue(tg, false)
 		}
 
 		// Clear queue every 250 ms
