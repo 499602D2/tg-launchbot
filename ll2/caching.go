@@ -15,6 +15,7 @@ type LaunchCache struct {
 
 func (cache *LaunchCache) Update(launches []*Launch) {
 	cache.Mutex.Lock()
+	defer cache.Mutex.Unlock()
 
 	// Delete the old cache
 	cache.Launches = make(map[string]*Launch)
@@ -25,5 +26,4 @@ func (cache *LaunchCache) Update(launches []*Launch) {
 	}
 
 	cache.Updated = time.Now().Unix()
-	cache.Mutex.Unlock()
 }
