@@ -14,7 +14,7 @@ func updateLaunchDatabase(launches []*ll2.Launch) error {
 	// All fields of a launch.Launch struct
 	fields := reflect.VisibleFields(reflect.TypeOf(struct{ ll2.Launch }{}))
 
-	for _, l := range launches {
+	for _, launch := range launches {
 		// Iterate over keys...? This is one massive insert
 		// Use launchbot/db to execute the query; just construct it here?
 		// Use a const for launch update insert...?
@@ -24,7 +24,7 @@ func updateLaunchDatabase(launches []*ll2.Launch) error {
 		// FIRST: do a new schema, see what is needed and what is not
 		// If field is a sub-struct, do...
 		for _, field := range fields {
-			fmt.Printf("Key: %s\tType: %s\tValue: %v\n", field.Name, field.Type, reflect.ValueOf(l).FieldByName(field.Name))
+			fmt.Printf("Key: %s\tType: %s\tValue: %v\n", field.Name, field.Type, reflect.ValueOf(*launch).FieldByName(field.Name))
 		}
 
 		/*
