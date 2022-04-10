@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"launchbot/config"
-	"launchbot/launch"
+	"launchbot/ll2"
 	"net/http"
 	"time"
 
@@ -17,7 +17,7 @@ import (
 )
 
 /* Performs an LL2 API call */
-func apiCall(client *http.Client) (launch.LL2LaunchUpdate, error) {
+func apiCall(client *http.Client) (ll2.LaunchUpdate, error) {
 	const apiVersion = "2.2.0"
 	const apiEndpoint = "launch/upcoming"
 	const apiParams = "mode=detailed&limit=30"
@@ -36,7 +36,7 @@ func apiCall(client *http.Client) (launch.LL2LaunchUpdate, error) {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error creating request")
-		return launch.LL2LaunchUpdate{}, err
+		return ll2.LaunchUpdate{}, err
 	}
 
 	// Add user-agent headers, because we're nice TODO: pull from config
@@ -47,7 +47,7 @@ func apiCall(client *http.Client) (launch.LL2LaunchUpdate, error) {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error performing GET request")
-		return launch.LL2LaunchUpdate{}, err
+		return ll2.LaunchUpdate{}, err
 	}
 
 	// Read bytes from returned data
@@ -56,16 +56,16 @@ func apiCall(client *http.Client) (launch.LL2LaunchUpdate, error) {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error parsing resp body")
-		return launch.LL2LaunchUpdate{}, err
+		return ll2.LaunchUpdate{}, err
 	}
 
 	// Unmarshal into a launch update struct
-	var update launch.LL2LaunchUpdate
+	var update ll2.LaunchUpdate
 	err = json.Unmarshal(bytes, &update)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error unmarshaling JSON")
-		return launch.LL2LaunchUpdate{}, err
+		return ll2.LaunchUpdate{}, err
 	}
 
 	// Set update count manually
@@ -133,8 +133,8 @@ func Updater(session *config.Session) bool {
 
 	// Parse for postponed launches, now that DB has been cleaned
 	postponedLaunches := getPostponedLaunches(launches)
-	if len(*postponedLaunches) != 0 {
-		log.Info().Msgf("%d launches were postponed", len(*postponedLaunches))
+	if len(postponedLaunches) != 0 {
+		log.Info().Msgf("%d launches were postponed", len(postponedLaunches))
 	} else {
 		log.Info().Msg("No launches were postponed")
 	}

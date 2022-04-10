@@ -2,7 +2,7 @@ package api
 
 import (
 	"fmt"
-	"launchbot/launch"
+	"launchbot/ll2"
 	"reflect"
 	"time"
 
@@ -10,11 +10,11 @@ import (
 )
 
 /* Inserts the parsed launches into the database */
-func updateLaunchDatabase(launches *[]launch.Launch) error {
+func updateLaunchDatabase(launches []*ll2.Launch) error {
 	// All fields of a launch.Launch struct
-	fields := reflect.VisibleFields(reflect.TypeOf(struct{ launch.Launch }{}))
+	fields := reflect.VisibleFields(reflect.TypeOf(struct{ ll2.Launch }{}))
 
-	for _, l := range *launches {
+	for _, l := range launches {
 		// Iterate over keys...? This is one massive insert
 		// Use launchbot/db to execute the query; just construct it here?
 		// Use a const for launch update insert...?
@@ -44,13 +44,13 @@ func updateLaunchDatabase(launches *[]launch.Launch) error {
 }
 
 /* Checks if a launch was postponed */
-func getPostponedLaunches(launches *[]launch.Launch) *[]launch.Launch {
-	postponedLaunches := []launch.Launch{}
+func getPostponedLaunches(launches []*ll2.Launch) []*ll2.Launch {
+	postponedLaunches := []*ll2.Launch{}
 
-	return &postponedLaunches
+	return postponedLaunches
 }
 
-func netSlipped(cache *launch.LaunchCache, ll2launch *launch.Launch) (bool, int64) {
+func netSlipped(cache *ll2.LaunchCache, ll2launch *ll2.Launch) (bool, int64) {
 	// If cache exists, use it
 	if cache.Updated != 0 {
 		// Find launch
@@ -69,7 +69,7 @@ func netSlipped(cache *launch.LaunchCache, ll2launch *launch.Launch) (bool, int6
 }
 
 /* Parses the LL2 launch update */
-func parseLaunchUpdate(cache *launch.LaunchCache, update *launch.LL2LaunchUpdate) (*[]launch.Launch, error) {
+func parseLaunchUpdate(cache *ll2.LaunchCache, update *ll2.LaunchUpdate) ([]*ll2.Launch, error) {
 	var utcTime time.Time
 	var err error
 
@@ -86,7 +86,7 @@ func parseLaunchUpdate(cache *launch.LaunchCache, update *launch.LL2LaunchUpdate
 		ll2launch.NETUnix = time.Time.Unix(utcTime)
 
 		// If launch slipped, set postponed flag
-		postponed, by := netSlipped(cache, &ll2launch)
+		postponed, by := netSlipped(cache, ll2launch)
 		if postponed {
 			ll2launch.Postponed = true
 			ll2launch.PostponedBy = by
@@ -97,5 +97,5 @@ func parseLaunchUpdate(cache *launch.LaunchCache, update *launch.LL2LaunchUpdate
 		log.Debug().Msgf("[%2d] launch %s processed", i, ll2launch.Slug)
 	}
 
-	return &update.Launches, nil
+	return update.Launches, nil
 }

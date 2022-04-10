@@ -1,7 +1,7 @@
 package api
 
 import (
-	"launchbot/launch"
+	"launchbot/ll2"
 
 	"github.com/rs/zerolog/log"
 )
@@ -14,7 +14,7 @@ func scheduleNotifications() {
 	log.Info().Msg("Pseudo notification enqueued at api.scheduler")
 }
 
-func scheduleNextUpdate(*launch.LaunchCache) {
+func scheduleNextUpdate(*ll2.LaunchCache) {
 	// Check if we have pending notifications
 	scheduleNotifications()
 }

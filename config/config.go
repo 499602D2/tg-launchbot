@@ -7,7 +7,7 @@ import (
 	"io/ioutil"
 	"launchbot/bots"
 	"launchbot/db"
-	"launchbot/launch"
+	"launchbot/ll2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,7 +24,7 @@ type Session struct {
 	Config   *Config           // Configuration for session
 
 	// Caching and database
-	LaunchCache *launch.LaunchCache
+	LaunchCache *ll2.LaunchCache
 	Db          *db.Database
 
 	// Boring configuration stuff
@@ -95,8 +95,8 @@ func LoadConfig() *Config {
 		// Create, marshal
 		config := Config{
 			Token:    Tokens{Telegram: botToken},
-			DbFolder: "data/launchbot.db",
 			Owner:    0,
+			DbFolder: "data/launchbot.db",
 		}
 
 		fmt.Println("Success! Starting bot...")

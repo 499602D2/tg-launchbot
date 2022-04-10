@@ -7,7 +7,7 @@ import (
 	"launchbot/bots"
 	"launchbot/config"
 	"launchbot/db"
-	"launchbot/launch"
+	"launchbot/ll2"
 	"launchbot/logs"
 	"os"
 	"os/signal"
@@ -86,7 +86,7 @@ func main() {
 	session.Db.Open(session.Config.DbFolder)
 
 	// Initialize cache
-	session.LaunchCache = &launch.LaunchCache{}
+	session.LaunchCache = &ll2.LaunchCache{Launches: make(map[string]*ll2.Launch)}
 
 	// Start notification scheduler in a new thread
 	api.Updater(&session) // TODO: don't run updater directly (gocron setup)

@@ -1,4 +1,4 @@
-package launch
+package ll2
 
 /* Implements an incomplete LL2 API type wrapper, meant for
 consuming mainly the /launch endpoint.
@@ -6,9 +6,9 @@ consuming mainly the /launch endpoint.
 Documentation: https://ll.thespacedevs.com/2.2.0/swagger
 */
 
-type LL2LaunchUpdate struct {
+type LaunchUpdate struct {
 	Count    int
-	Launches []Launch `json:"results"`
+	Launches []*Launch `json:"results"`
 }
 
 type Launch struct {
@@ -61,7 +61,7 @@ type Rocket struct {
 	Id     int                 `json:"id"`
 	Config RocketConfiguration `json:"configuration"`
 
-	/* TODO:
+	/* TODO: add missing properties
 	- add launcher_stage
 	- add spacecraft_stage
 	*/
