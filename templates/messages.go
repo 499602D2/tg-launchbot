@@ -4,6 +4,7 @@ the appropriate functions some output.
 */
 package templates
 
-func HelpMessage() string {
-	return "LaunchBot 3.0.0-pre"
+func HelpMessage() *string {
+	msg := "Pong"
+	return &msg
 }
