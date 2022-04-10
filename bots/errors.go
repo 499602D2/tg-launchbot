@@ -96,8 +96,7 @@ func handleTelegramError(err error) bool {
 
 	/* 400 (bad request)
 
-	TODO
-	- handle non-send related errors */
+	TODO: handle non-send related errors */
 	case tb.ErrChatNotFound:
 		warnUnhandled(err)
 	case tb.ErrEmptyChatID:

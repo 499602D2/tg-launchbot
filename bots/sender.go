@@ -19,8 +19,7 @@ type Sendable struct {
 	0 (backburner): old message removal, etc.
 	1 (not important): scheduled notifications
 	2 (more important): replies to commands
-	3 (send immediately): bot added to a new chat, telegram callbacks
-	*/
+	3 (send immediately): bot added to a new chat, telegram callbacks */
 	Priority int8
 
 	/* Type, in ("remove", "notification", "command", "callback")
@@ -67,15 +66,13 @@ func (queue *Queue) Enqueue(sendable *Sendable, tg *TelegramBot, highPriority bo
 	queue.Mutex.Unlock()
 }
 
+/* Switches according to the recipient platform and the sendable type. */
 func (sendable *Sendable) Send() {
-	/*
-		Simply add the Notification object to a sendQueue
-		- ..?
-	*/
 	// Loop over the users, distribute into appropriate send queues
 	switch sendable.Recipients.Platform {
 	case "tg":
 		log.Warn().Msg("Telegram message sender not implemented!")
+
 	case "dg":
 		log.Warn().Msg("Discord message sender not implemented!")
 	}
@@ -83,6 +80,7 @@ func (sendable *Sendable) Send() {
 
 /* HighPrioritySender sends singular high-priority messages. */
 func highPrioritySender(tg *TelegramBot, message *Message, user *users.User) bool {
+	// TODO: use sendable.Send()
 	_, err := tg.Bot.Send(
 		tb.ChatID(int64(user.Id)),
 		*message.TextContent,
@@ -138,10 +136,6 @@ func clearPriorityQueue(tg *TelegramBot, sleep bool) {
 /* TelegramSender is a daemon-like function that listens to the notification
 and priority queues for incoming messages and notifications. */
 func TelegramSender(tg *TelegramBot) {
-	/* TODO:
-	- use exponential back-off: https://en.wikipedia.org/wiki/Exponential_backoff
-	*/
-
 	for {
 		// Check notification queue
 		if len(tg.MessageQueue.Messages) != 0 {
@@ -153,6 +147,7 @@ func TelegramSender(tg *TelegramBot) {
 
 				for i, user := range sendable.Recipients.Users {
 					// Send message
+					// TODO: use sendable.Send()
 					sent, err := tg.Bot.Send(
 						tb.ChatID(int64(user.Id)),
 						*sendable.Message.TextContent,
@@ -180,6 +175,7 @@ func TelegramSender(tg *TelegramBot) {
 
 					// Sleep long enough to stay within API limits: convert messagesPerSecond to ms
 					if i < len(sendable.Recipients.Users)-1 {
+						// TODO: replace with a sleep function, with fail counter, back-off, etc.
 						time.Sleep(time.Millisecond * time.Duration(1.0/sendable.RateLimit*1000.0))
 					}
 
@@ -188,8 +184,8 @@ func TelegramSender(tg *TelegramBot) {
 					in the high-priority queue.
 
 					The justification for this is the fact that the main queue's mutex is locked when
-					the sending process is started, and could be locked for minutes. This alleviated
-					the issue of messages sittin in the queue for ages, sacrificing the send time of
+					the sending process is started, and could be locked for minutes. This alleviates
+					the issue of messages sitting in the queue for ages, sacrificing the send time of
 					mass-notifications for timely responses to e.g. callback queries and commands. */
 					if tg.HighPriority.HasItemsInQueue {
 						log.Info().Msg("High-priority messages in queue during long send")
@@ -203,11 +199,10 @@ func TelegramSender(tg *TelegramBot) {
 				}
 			}
 
-			// TODO: allow re-unlock if high priority sendable enqueued
 			tg.MessageQueue.Mutex.Unlock()
 		}
 
-		// Check if priority queue is populated
+		// Check if priority queue is populated (and skip sleeping if one entry)
 		if tg.HighPriority.HasItemsInQueue {
 			log.Info().Msg("High-priority messages in queue")
 			clearPriorityQueue(tg, false)
