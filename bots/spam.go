@@ -10,11 +10,11 @@ import (
 
 type AntiSpam struct {
 	/* In-memory struct keeping track of banned chats and per-chat activity */
-	ChatBanned               map[users.User]bool    // Simple "if ChatBanned[chat] { do }" checks
-	ChatBannedUntilTimestamp map[users.User]int64   // How long banned chats are banned for
-	ChatLogs                 map[users.User]ChatLog // Map chat ID to a ChatLog struct
-	Rules                    map[string]int64       // Arbitrary rules for code flexibility
-	Mutex                    sync.Mutex             // Mutex to avoid concurrent map writes
+	ChatBanned               map[users.User]bool     // Simple "if ChatBanned[chat] { do }" checks
+	ChatBannedUntilTimestamp map[users.User]int64    // How long banned chats are banned for
+	ChatLogs                 map[users.User]*ChatLog // Map chat ID to a ChatLog struct
+	Rules                    map[string]int64        // Arbitrary rules for code flexibility
+	Mutex                    sync.Mutex              // Mutex to avoid concurrent map writes
 }
 
 type ChatLog struct {
@@ -26,7 +26,7 @@ type ChatLog struct {
 /* Initialize the spam struct */
 func (spam *AntiSpam) Initialize() {
 	spam.ChatBannedUntilTimestamp = make(map[users.User]int64)
-	spam.ChatLogs = make(map[users.User]ChatLog)
+	spam.ChatLogs = make(map[users.User]*ChatLog)
 	spam.ChatBanned = make(map[users.User]bool)
 	spam.Rules = make(map[string]int64)
 }
