@@ -48,8 +48,12 @@ func main() {
 	// Signal handler (ctrl+c, etc.)
 	setupSignalHandler(&session)
 
+	// Flag to disable API updates
+	noApiUpdates := true
+
 	// Command line arguments
 	flag.BoolVar(&session.Debug, "debug", false, "Specify to enable debug mode")
+	flag.BoolVar(&noApiUpdates, "no-api-updates", true, "Specify to disable API updates")
 	flag.Parse()
 
 	// Set-up logging
@@ -89,23 +93,24 @@ func main() {
 	session.LaunchCache = &ll2.LaunchCache{Launches: make(map[string]*ll2.Launch)}
 
 	// Start notification scheduler in a new thread
-	api.Updater(&session) // TODO: don't run updater directly (gocron setup)
+	if !noApiUpdates {
+		api.Updater(&session) // TODO: don't run updater directly (gocron setup)
+	} else {
+		log.Warn().Msg("API updates disabled")
+	}
 
 	// Create and initialize the anti-spam system
 	session.Spam = &bots.AntiSpam{}
 	session.Spam.Initialize()
 
-	// Init the bot object with the queues
+	// Initialize the Telegram bot
 	session.Telegram = &bots.TelegramBot{}
-	session.Telegram.Initialize()
-	session.Telegram.Bot = bots.SetupTelegramBot(
-		session.Config.Token.Telegram, session.Spam,
-		session.Telegram.MessageQueue, session.Telegram,
-	)
+	session.Telegram.Spam = session.Spam
+	session.Telegram.Initialize(session.Config.Token.Telegram)
 
 	// Start the sender in a go-routine
 	go bots.TelegramSender(session.Telegram)
 
-	log.Info().Msg("Starting Telegram bot...")
+	log.Debug().Msg("Starting Telegram bot...")
 	session.Telegram.Bot.Start()
 }
