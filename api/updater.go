@@ -74,26 +74,36 @@ func apiCall(client *http.Client) (ll2.LaunchUpdate, error) {
 	return update, nil
 }
 
-/*
-	Updater handles the update flow, scheduling new updates for when
-	they are required.
+/* Updater handles the update flow, scheduling new updates for when
+they are required.
 
-	Returns:
-		bool: true/false, indicating update success
-*/
+Flow:
+1. Verify the database needs to be updated
+2. Perform the API call
+3. Parse the data we got
+4. Update hot cache
+5. Update on-disk database
+6. Clean the on-disk database
+7. Get launches that were postponed
+	7.1. Notify of postponed launches
+8. Schedule next API update and notifications
+
+Returns:
+	bool: true/false, indicating update success */
 func Updater(session *config.Session) bool {
 	log.Info().Msg("Starting LL2 API updater...")
-
-	// Create http-client
-	client := http.Client{
-		Timeout: 15 * time.Second,
-	}
 
 	// Before doing API call, check if we need to do one (e.g. restart)
 	if !session.Db.RequireImmediateUpdate() {
 		log.Info().Msg("Database does not require an immediate update: loading cache")
-		log.Warn().Msg("TODO: init cache")
+
+		// TODO: init cache if db doe not require an update
 		return true
+	}
+
+	// Create http-client
+	client := http.Client{
+		Timeout: 15 * time.Second,
 	}
 
 	// Do API call
@@ -102,6 +112,7 @@ func Updater(session *config.Session) bool {
 
 	if err != nil {
 		log.Error().Msg("Error performing API update")
+		return false
 	}
 
 	// Parse any relevant data before dumping to disk
@@ -110,6 +121,7 @@ func Updater(session *config.Session) bool {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error parsing launch update")
+		return false
 	}
 
 	// Update launch cache (launch.cache)
@@ -122,6 +134,7 @@ func Updater(session *config.Session) bool {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error inserting launches to database")
+		return false
 	}
 
 	// Clean the launch database
@@ -129,11 +142,14 @@ func Updater(session *config.Session) bool {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error cleaning launch database")
+		return false
 	}
 
 	// Parse for postponed launches, now that DB has been cleaned
 	postponedLaunches := getPostponedLaunches(launches)
+
 	if len(postponedLaunches) != 0 {
+		// TODO send notifications for postponed launches
 		log.Info().Msgf("%d launches were postponed", len(postponedLaunches))
 	} else {
 		log.Info().Msg("No launches were postponed")
