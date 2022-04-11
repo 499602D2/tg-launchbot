@@ -34,10 +34,17 @@ type Launch struct {
 	WebcastIsLive  bool           `json:"webcast_live"`
 
 	// Manually parsed information
-	NETUnix     int64
-	Postponed   bool  // Toggled if the launch was postponed in the update
-	PostponedBy int64 // Seconds the launch was postponed by
+	NETUnix       int64
+	Postponed     bool               // Toggled if the launch was postponed in the update
+	PostponedBy   int64              // Seconds the launch was postponed by
+	Notifications NotificationStates // Status of notification sends (e.g. "24hour": false)
 }
+
+/* Maps the send times to send states.
+
+Keys: (24hour, 12hour, 1hour, 5min)
+Value: bool, indicating sent status */
+type NotificationStates map[string]bool
 
 type LaunchStatus struct {
 	Id          int    `json:"id"`

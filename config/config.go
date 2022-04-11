@@ -13,21 +13,23 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/procyon-projects/chrono"
 	"github.com/rs/zerolog/log"
 )
 
+/* Session is a superstruct to simplify passing around other structs */
 type Session struct {
-	/* A superstruct to simplify passing around other structs */
 	Telegram *bots.TelegramBot // Telegram bot this session runs
 	Discord  *bots.DiscordBot  // Discord bot this session runs
 	Spam     *bots.AntiSpam    // Anti-spam struct for session
 	Config   *Config           // Configuration for session
 
-	// Caching and database
-	LaunchCache *ll2.LaunchCache
-	Db          *db.Database
+	LaunchCache *ll2.LaunchCache // Launch cache
+	Db          *db.Database     // Pointer to the database object
 
-	// Boring configuration stuff
+	Scheduler chrono.TaskScheduler   // Chrono scheduler
+	Tasks     []chrono.ScheduledTask // List of tasks pending
+
 	Version string     // Version number
 	Started int64      // Unix timestamp of startup time
 	Debug   bool       // Debugging?
@@ -36,7 +38,6 @@ type Session struct {
 
 type Config struct {
 	Token    Tokens     // API tokens
-	Owner    int64      // Owner of the bot: skips logging
 	DbFolder string     // Folder path the DB lives in
 	Mutex    sync.Mutex // Mutex to avoid concurrent writes
 }
@@ -95,7 +96,6 @@ func LoadConfig() *Config {
 		// Create, marshal
 		config := Config{
 			Token:    Tokens{Telegram: botToken},
-			Owner:    0,
 			DbFolder: "data/launchbot.db",
 		}
 

@@ -27,3 +27,18 @@ func (cache *LaunchCache) Update(launches []*Launch) {
 
 	cache.Updated = time.Now().Unix()
 }
+
+// Populates the cache from database
+func (cache *LaunchCache) Populate() {
+	cache.Mutex.Lock()
+	defer cache.Mutex.Unlock()
+
+	/* TODO implement
+	- select all launches that have not launched
+	- create a list of launch objects from the returned rows
+	- do a cache.Update()
+	*/
+
+	// TODO load notification states from the database for all launches
+	// (launch.Notifications)
+}

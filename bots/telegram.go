@@ -15,6 +15,7 @@ type TelegramBot struct {
 	Spam         *AntiSpam
 	Queue        *Queue
 	HighPriority *HighPriorityQueue
+	Owner        int64
 }
 
 type HighPriorityQueue struct {

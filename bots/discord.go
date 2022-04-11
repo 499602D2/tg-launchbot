@@ -7,4 +7,5 @@ import (
 type DiscordBot struct {
 	Bot   *dg.Session
 	Queue *Queue
+	Owner string
 }

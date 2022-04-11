@@ -74,7 +74,8 @@ func apiCall(client *http.Client) (ll2.LaunchUpdate, error) {
 	return update, nil
 }
 
-/* Updater handles the update flow, scheduling new updates for when
+/*
+Updater handles the update flow, scheduling new updates for when
 they are required.
 
 Flow:
@@ -93,17 +94,9 @@ Returns:
 func Updater(session *config.Session) bool {
 	log.Info().Msg("Starting LL2 API updater...")
 
-	// Before doing API call, check if we need to do one (e.g. restart)
-	if !session.Db.RequireImmediateUpdate() {
-		log.Info().Msg("Database does not require an immediate update: loading cache")
-
-		// TODO: init cache if db doe not require an update
-		return true
-	}
-
 	// Create http-client
 	client := http.Client{
-		Timeout: 15 * time.Second,
+		Timeout: time.Minute,
 	}
 
 	// Do API call
@@ -133,6 +126,7 @@ func Updater(session *config.Session) bool {
 	log.Info().Msg("Launch database updated")
 
 	if err != nil {
+		// TODO can we continue without a database insert?
 		log.Error().Err(err).Msg("Error inserting launches to database")
 		return false
 	}
@@ -156,7 +150,5 @@ func Updater(session *config.Session) bool {
 	}
 
 	// Schedule API update + notifications
-	scheduleNextUpdate(session.LaunchCache)
-
-	return true
+	return Scheduler(session)
 }
