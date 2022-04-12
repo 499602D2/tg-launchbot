@@ -14,6 +14,7 @@ type Database struct {
 	Connection *sql.DB
 	Updated    time.Time
 	Size       float32
+	Owner      int64
 }
 
 func (db *Database) Open(dbFolder string) bool {

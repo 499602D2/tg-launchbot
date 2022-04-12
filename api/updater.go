@@ -19,16 +19,26 @@ import (
 /* Performs an LL2 API call */
 func apiCall(client *http.Client) (ll2.LaunchUpdate, error) {
 	const apiVersion = "2.2.0"
-	const apiEndpoint = "launch/upcoming"
+	const requestPath = "launch/upcoming"
 	const apiParams = "mode=detailed&limit=30"
 
 	/*
 		Prod URL: https://ll.thespacedevs.com
 		Dev URL: https://lldev.thespacedevs.com
 	*/
+
+	var endpoint string
+	useProdUrl := false
+
+	if useProdUrl {
+		endpoint = "https://ll.thespacedevs.com"
+	} else {
+		endpoint = "https://lldev.thespacedevs.com"
+	}
+
 	// Construct the URL
 	url := fmt.Sprintf(
-		"https://lldev.thespacedevs.com/%s/%s?%s", apiVersion, apiEndpoint, apiParams,
+		"%s/%s/%s?%s", endpoint, apiVersion, requestPath, apiParams,
 	)
 
 	// Create request
@@ -91,8 +101,8 @@ Flow:
 
 Returns:
 	bool: true/false, indicating update success */
-func Updater(session *config.Session) bool {
-	log.Info().Msg("Starting LL2 API updater...")
+func Updater(session *config.Session, scheduleNext bool) bool {
+	log.Debug().Msg("Starting LL2 API updater...")
 
 	// Create http-client
 	client := http.Client{
@@ -101,7 +111,7 @@ func Updater(session *config.Session) bool {
 
 	// Do API call
 	update, err := apiCall(&client)
-	log.Info().Msgf("Got %d launches", update.Count)
+	log.Debug().Msgf("Got %d launches", update.Count)
 
 	if err != nil {
 		log.Error().Msg("Error performing API update")
@@ -110,16 +120,27 @@ func Updater(session *config.Session) bool {
 
 	// Parse any relevant data before dumping to disk
 	launches, err := parseLaunchUpdate(session.LaunchCache, &update)
-	log.Info().Msg("Launch update parsed")
+	log.Debug().Msg("Launch update parsed")
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error parsing launch update")
 		return false
 	}
 
+	// Uncomment to force-send notifications
+	/*
+		for _, launch := range launches {
+			if launch.Status.Abbrev == "Go" {
+				launch.NETUnix = time.Now().Unix() + 6*60
+				log.Warn().Msgf("Launch=%s modified to launch 6 minutes from now", launch.Id)
+				break
+			}
+		}*/
+
 	// Update launch cache (launch.cache)
 	session.LaunchCache.Update(launches)
-	log.Info().Msg("Hot launch cache updated")
+	log.Warn().Msg("USING FORCED NOTIFICATION STATES: remove from cache.Update()")
+	log.Debug().Msg("Hot launch cache updated")
 
 	// Dump launches to disk
 	err = updateLaunchDatabase(launches)
@@ -144,11 +165,16 @@ func Updater(session *config.Session) bool {
 
 	if len(postponedLaunches) != 0 {
 		// TODO send notifications for postponed launches
+		// TODO how to handle notification flow? just return false and abort?
 		log.Info().Msgf("%d launches were postponed", len(postponedLaunches))
 	} else {
-		log.Info().Msg("No launches were postponed")
+		log.Debug().Msg("No launches were postponed")
 	}
 
-	// Schedule API update + notifications
-	return Scheduler(session)
+	// Schedule next API update, if configured
+	if scheduleNext {
+		return Scheduler(session)
+	}
+
+	return true
 }

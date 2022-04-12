@@ -22,7 +22,26 @@ func (cache *LaunchCache) Update(launches []*Launch) {
 
 	// Re-insert all launches into the map
 	for _, launch := range launches {
+		// Pull old launch
+		oldLaunch, ok := cache.Launches[launch.Id]
+
+		// Copy notification states, if old launch exists
+		if ok {
+			launch.Notifications = oldLaunch.Notifications
+		}
+
+		// Swap old launch for new launch
 		cache.Launches[launch.Id] = launch
+
+		if !ok {
+			// TODO REMOVE ONCE PARSING IMPLEMENTED
+			testNotifs := NotificationStates{
+				"24hour": false, "12hour": false,
+				"1hour": false, "5min": false,
+			}
+
+			cache.Launches[launch.Id].Notifications = testNotifs
+		}
 	}
 
 	cache.Updated = time.Now().Unix()

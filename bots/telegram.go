@@ -3,6 +3,7 @@ package bots
 import (
 	"launchbot/templates"
 	"launchbot/users"
+	"net/http"
 	"sync"
 	"time"
 
@@ -38,7 +39,8 @@ func (tg *TelegramBot) Initialize(token string) {
 	// Create the tb.Bot object
 	bot, err := tb.NewBot(tb.Settings{
 		Token:  token,
-		Poller: &tb.LongPoller{Timeout: 30 * time.Second},
+		Poller: &tb.LongPoller{Timeout: time.Second * 60},
+		Client: &http.Client{Timeout: time.Second * 60},
 	})
 
 	if err != nil {
@@ -46,11 +48,44 @@ func (tg *TelegramBot) Initialize(token string) {
 	}
 
 	// Set-up command handlers
+	// TODO add middle-ware for spam
+	bot.Handle("/ping", tg.pingHandler)
 	bot.Handle("/start", tg.startHandler)
 	bot.Handle("/schedule", tg.scheduleHandler)
 
 	// Assign
 	tg.Bot = bot
+}
+
+func (tg *TelegramBot) pingHandler(c tb.Context) error {
+	// Anti-spam
+	message := c.Message()
+	if !CommandPreHandler(tg.Spam, &users.User{Platform: "tg", Id: message.Sender.ID}, message.Unixtime) {
+		return nil
+	}
+
+	// Construct message
+	text := "pong"
+	msg := Message{
+		TextContent: &text,
+		SendOptions: tb.SendOptions{ParseMode: "Markdown"},
+	}
+
+	// Wrap into a sendable
+	sendable := Sendable{
+		Priority: int8(3), Type: "command", RateLimit: 5.0,
+		Message:    &msg,
+		Recipients: &users.UserList{Platform: "tg", Users: []*users.User{}},
+	}
+
+	// Add recipient to the user-list
+	user := users.User{Platform: "tg", Id: message.Sender.ID}
+	sendable.Recipients.Add(user, false)
+
+	// Add to send queue
+	go tg.Queue.Enqueue(&sendable, tg, true)
+
+	return nil
 }
 
 func (tg *TelegramBot) startHandler(c tb.Context) error {

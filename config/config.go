@@ -39,6 +39,7 @@ type Session struct {
 type Config struct {
 	Token    Tokens     // API tokens
 	DbFolder string     // Folder path the DB lives in
+	Owner    int64      // Telegram owner id
 	Mutex    sync.Mutex // Mutex to avoid concurrent writes
 }
 

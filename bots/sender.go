@@ -45,6 +45,19 @@ type Queue struct {
 	Mutex             sync.Mutex           // Mutex to avoid concurrent writes
 }
 
+/*
+TODO: the unwrap method would be used to unwrap a sendable into discrete
+objects that are sent, per-chat.
+
+Cons: memory usage
+
+Alternatively: convert recipients to a map[*users.UserList]bool so that
+recipients can be marked as having received the message. This would make
+queueing cheap, and minimize queue inserts and shuffling. */
+func (sendable *Sendable) Unwrap() {
+
+}
+
 /* Adds a message to the Telegram message queue */
 func (queue *Queue) Enqueue(sendable *Sendable, tg *TelegramBot, highPriority bool) {
 	// Unique ID for this sendable
@@ -141,6 +154,19 @@ func TelegramSender(tg *TelegramBot) {
 		priorityQueueClearInterval = 3
 	)
 
+	/*
+		TODO: alternatively use a job queue + dispatcher (V3.1+)
+		- should feature priority tags
+
+		Alternatively: implement Sendables so that they are unwrapped into distinct
+		objects, that can then be queued. Then, implement a simple, linked priority-
+		weighed queue and a dequeuer + all the related queue/dequeue/insert methods.
+
+		This could replace the priority queue, as the head of the queue would be the
+		one that's always deleted.
+
+		- Mutexes? Constant locking + unlocking (which may be fine)
+	*/
 	for {
 		// Check notification queue
 		if len(tg.Queue.Sendables) != 0 {
@@ -178,7 +204,11 @@ func TelegramSender(tg *TelegramBot) {
 
 					// Sleep long enough to stay within API limits: convert messagesPerSecond to ms
 					if i < len(sendable.Recipients.Users)-1 {
-						// TODO: replace with a sleep function, with fail counter, back-off, etc.
+						/* TODO: replace with a sleep function, with fail counter, back-off, etc.
+						- start with a fixed value
+						- tune the value as send progresses
+						- ready libraries?
+						*/
 						time.Sleep(time.Millisecond * time.Duration(1.0/sendable.RateLimit*1000.0))
 					}
 
@@ -191,7 +221,7 @@ func TelegramSender(tg *TelegramBot) {
 					the sending process is started, and could be locked for minutes. This alleviates
 					the issue of messages sitting in the queue for ages, sacrificing the send time of
 					mass-notifications for timely responses to e.g. callback queries and commands. */
-					if tg.HighPriority.HasItemsInQueue && i%priorityQueueClearInterval == 0 {
+					if (tg.HighPriority.HasItemsInQueue) && (i%priorityQueueClearInterval == 0) {
 						log.Debug().Msg("High-priority messages in queue during long send")
 						clearPriorityQueue(tg, true)
 					}
@@ -199,11 +229,11 @@ func TelegramSender(tg *TelegramBot) {
 
 				// db.SaveSentNotificationIds()
 				if sendable.Type == "notification" {
-					log.Warn().Msg("Not implemented: sent notification IDs will not be saved!")
+					// TODO implement
 				}
 
 				// Send done, log
-				log.Info().Msgf("Sent %d notifications for sendable=%s", i, hash)
+				log.Info().Msgf("Sent %d notification(s) for sendable=%s", i+1, hash)
 			}
 
 			tg.Queue.Mutex.Unlock()

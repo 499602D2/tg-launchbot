@@ -53,20 +53,6 @@ func main() {
 		Version: fmt.Sprintf("3.0.0-pre (%s)", GitSHA[0:7]),
 	}
 
-	/*
-		asciiArt := `
-		888                                          888      888888b.            888          .d8888b.
-		888                                          888      888  "88b           888         d88P  Y88b
-		888                                          888      888  .88P           888         888    888
-		888       8888b.  888  888 88888b.   .d8888b 88888b.  8888888K.   .d88b.  888888      888         .d88b.
-		888          "88b 888  888 888 "88b d88P"    888 "88b 888  "Y88b d88""88b 888         888  88888 d88""88b
-		888      .d888888 888  888 888  888 888      888  888 888    888 888  888 888  888888 888    888 888  888
-		888      888  888 Y88b 888 888  888 Y88b.    888  888 888   d88P Y88..88P Y88b.       Y88b  d88P Y88..88P
-		88888888 "Y888888  "Y88888 888  888  "Y8888P 888  888 8888888P"   "Y88P"   "Y888       "Y8888P88  "Y88P"`
-
-	log.Info().Msg(strings.Replace(asciiArt, "	", "", -1)) */
-	log.Info().Msgf("🤖 LaunchBot-Go %s started", session.Version)
-
 	// Signal handler (ctrl+c, etc.)
 	setupSignalHandler(&session)
 
@@ -90,11 +76,25 @@ func main() {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC822Z})
 	}
 
+	/*
+		asciiArt := `
+		888                                          888      888888b.            888          .d8888b.
+		888                                          888      888  "88b           888         d88P  Y88b
+		888                                          888      888  .88P           888         888    888
+		888       8888b.  888  888 88888b.   .d8888b 88888b.  8888888K.   .d88b.  888888      888         .d88b.
+		888          "88b 888  888 888 "88b d88P"    888 "88b 888  "Y88b d88""88b 888         888  88888 d88""88b
+		888      .d888888 888  888 888  888 888      888  888 888    888 888  888 888  888888 888    888 888  888
+		888      888  888 Y88b 888 888  888 Y88b.    888  888 888   d88P Y88..88P Y88b.       Y88b  d88P Y88..88P
+		88888888 "Y888888  "Y88888 888  888  "Y8888P 888  888 8888888P"   "Y88P"   "Y888       "Y8888P88  "Y88P"`
+
+	log.Info().Msg(strings.Replace(asciiArt, "	", "", -1)) */
+	log.Info().Msgf("🤖 LaunchBot-Go %s started", session.Version)
+
 	// Load config
 	session.Config = config.LoadConfig()
 
-	// Open database
-	session.Db = &db.Database{}
+	// Open database (TODO remove owner tag)
+	session.Db = &db.Database{Owner: session.Config.Owner}
 	session.Db.Open(session.Config.DbFolder)
 
 	// Initialize cache
@@ -110,8 +110,8 @@ func main() {
 		if session.Db.RequireImmediateUpdate() {
 			log.Info().Msg("Database requires an immediate update: updating now...")
 
-			// Run API update manually
-			go api.Updater(&session)
+			// Run API update manually and enable auto-scheduler
+			go api.Updater(&session, true)
 		} else {
 			// No need to update: schedule next call
 			log.Info().Msg("Database does not require an immediate update")

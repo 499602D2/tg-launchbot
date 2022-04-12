@@ -28,7 +28,7 @@ func (db *Database) createChatsTable() {
 	// Create chats table
 	_, err := db.Connection.Exec(`CREATE TABLE chats
 		(chat TEXT, subscribed_since INT, member_count INT,
-		time_zone TEXT, time_zone_str TEXT, command_permissions TEXT, postpone_notify BOOLEAN,
+		time_zone TEXT, command_permissions TEXT, postpone_notify BOOLEAN,
 		notify_time_pref TEXT, enabled_notifications TEXT, disabled_notifications TEXT,
 		PRIMARY KEY (chat))`)
 
