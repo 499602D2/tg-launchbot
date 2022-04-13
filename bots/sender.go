@@ -10,21 +10,27 @@ import (
 	tb "gopkg.in/telebot.v3"
 )
 
-/* A sendable implements a "generic" type of a sendable object.
-This can be a notification or a command reply. These have a priority,
-according to which they will be sent. */
+/*
+A sendable implements a "generic" type of a sendable object. This can be a
+notification or a command reply. These have a priority, according to which
+they will be sent.
+*/
 type Sendable struct {
-	/* Priority singifies the importance of this message (0 to 3).
-	By default, sendables should be prioritized in the following order:
-	0 (backburner): old message removal, etc.
-	1 (not important): scheduled notifications
-	2 (more important): replies to commands
-	3 (send immediately): bot added to a new chat, telegram callbacks */
+	/*
+		Priority singifies the importance of this message (0 to 3).
+		By default, sendables should be prioritized in the following order:
+		0 (backburner): old message removal, etc.
+		1 (not important): scheduled notifications
+		2 (more important): replies to commands
+		3 (send immediately): bot added to a new chat, telegram callbacks
+	*/
 	Priority int8
 
-	/* Type, in ("remove", "notification", "command", "callback")
-	Ideally, the sendable will go through a type-switch, according to which
-	the correct execution will be performed. */
+	/*
+		Type, in ("remove", "notification", "command", "callback")
+		Ideally, the sendable will go through a type-switch, according to which
+		the correct execution will be performed.
+	*/
 	Type string
 
 	Message    *Message        // Message (may be empty)
@@ -32,7 +38,7 @@ type Sendable struct {
 	RateLimit  float32         // Ratelimits this sendable should obey
 }
 
-// The message content of a sendable
+/* The message content of a sendable */
 type Message struct {
 	TextContent *string
 	SendOptions tb.SendOptions
@@ -53,7 +59,8 @@ Cons: memory usage
 
 Alternatively: convert recipients to a map[*users.UserList]bool so that
 recipients can be marked as having received the message. This would make
-queueing cheap, and minimize queue inserts and shuffling. */
+queueing cheap, and minimize queue inserts and shuffling.
+*/
 func (sendable *Sendable) Unwrap() {
 
 }
@@ -147,8 +154,10 @@ func clearPriorityQueue(tg *TelegramBot, sleep bool) {
 	tg.HighPriority.Mutex.Unlock()
 }
 
-/* TelegramSender is a daemon-like function that listens to the notification
-and priority queues for incoming messages and notifications. */
+/*
+TelegramSender is a daemon-like function that listens to the notification
+and priority queues for incoming messages and notifications.
+*/
 func TelegramSender(tg *TelegramBot) {
 	const (
 		priorityQueueClearInterval = 3
@@ -204,23 +213,26 @@ func TelegramSender(tg *TelegramBot) {
 
 					// Sleep long enough to stay within API limits: convert messagesPerSecond to ms
 					if i < len(sendable.Recipients.Users)-1 {
-						/* TODO: replace with a sleep function, with fail counter, back-off, etc.
-						- start with a fixed value
-						- tune the value as send progresses
-						- ready libraries?
+						/*
+							TODO: replace with a sleep function, with fail counter, back-off, etc.
+							- start with a fixed value
+							- tune the value as send progresses
+							- ready libraries?
 						*/
 						time.Sleep(time.Millisecond * time.Duration(1.0/sendable.RateLimit*1000.0))
 					}
 
-					/* Periodically, during long sends, check if the TelegramBot.PriorityQueued is set.
-					This flag is enabled if there is one, or more, enqueued high-priority messages
-					in the high-priority queue. Vary the priorityQueueClearInterval variable to tune
-					how often to check for pending messages.
+					/*
+						Periodically, during long sends, check if the TelegramBot.PriorityQueued is set.
+						This flag is enabled if there is one, or more, enqueued high-priority messages
+						in the high-priority queue. Vary the priorityQueueClearInterval variable to tune
+						how often to check for pending messages.
 
-					The justification for this is the fact that the main queue's mutex is locked when
-					the sending process is started, and could be locked for minutes. This alleviates
-					the issue of messages sitting in the queue for ages, sacrificing the send time of
-					mass-notifications for timely responses to e.g. callback queries and commands. */
+						The justification for this is the fact that the main queue's mutex is locked when
+						the sending process is started, and could be locked for minutes. This alleviates
+						the issue of messages sitting in the queue for ages, sacrificing the send time of
+						mass-notifications for timely responses to e.g. callback queries and commands.
+					*/
 					if (tg.HighPriority.HasItemsInQueue) && (i%priorityQueueClearInterval == 0) {
 						log.Debug().Msg("High-priority messages in queue during long send")
 						clearPriorityQueue(tg, true)

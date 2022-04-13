@@ -18,8 +18,8 @@ type AntiSpam struct {
 	Mutex                    sync.Mutex             // Mutex to avoid concurrent map writes
 }
 
+/* Per-chat struct keeping track of activity for spam management */
 type ChatLog struct {
-	/* Per-chat struct keeping track of activity for spam management */
 	NextAllowedCommandTimestamp int64 // Next time the chat is allowed to call a command
 	CommandSpamOffenses         int   // Count of spam offences (not used)
 }
@@ -32,8 +32,8 @@ func (spam *AntiSpam) Initialize() {
 	spam.Rules = make(map[string]int64)
 }
 
+/* When user sends a command, verify the chat is eligible for a command parse. */
 func CommandPreHandler(spam *AntiSpam, user *users.User, sentAt int64) bool {
-	/* When user sends a command, verify the chat is eligible for a command parse. */
 	spam.Mutex.Lock()
 	chatLog := spam.ChatLogs[*user]
 

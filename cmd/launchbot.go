@@ -22,8 +22,8 @@ import (
 // Variables injected at build-time
 var GitSHA = "0000000000"
 
+// Listens for incoming interrupt signals
 func setupSignalHandler(session *config.Session) {
-	// Listens for incoming interrupt signals
 	channel := make(chan os.Signal, 1)
 	signal.Notify(channel, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 

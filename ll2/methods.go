@@ -255,7 +255,47 @@ func (launch *Launch) Notify(db *db.Database) *bots.Sendable {
 		name = strings.Trim(strings.Split(launch.Name, "|")[0], " ")
 	}
 
-	// Do a simple notification string
+	/*
+		Do a simple, low-data notification string. Example:
+
+		T-5 minutes: JWST 🚀
+		Provider SpaceX 🇺🇸
+		From Cape Canaveral LC-39A 🇺🇸
+
+		Mission information 🌍
+		Type Tourism
+		Orbit Low-Earth orbit
+		Lift-off at 18:17 UTC+3
+
+		🔴 Watch live
+		🔕 Stop with /notify@rocketrybot
+
+		btn[🔇 Mute launch]
+		btn[ℹ️ Extend description]
+
+		===========================
+
+		-> [ℹ️ Extend description]:
+
+		T-5 minutes: JWST 🚀
+		Provider SpaceX 🇺🇸
+		From Cape Canaveral LC-39A 🇺🇸
+
+		Mission information 🌍
+		Type Tourism
+		Orbit Low-Earth orbit
+		Lift-off at 18:17 UTC+3
+
+		Vehicle information 🚀
+		Falcon 9 B1062.5 (♻️x4)
+		Landing on ASOG (ASDS)
+
+		ℹ️ The James Webb Space Telescope is a space
+		telescope developed by NASA, ESA and CSA to
+		succeed the Hubble Space Telescope as NASA's
+		flagship astrophysics mission.
+
+	*/
 	text := fmt.Sprintf(
 		`🚀 %s is launching in %s
 		Launch ID: %s`,

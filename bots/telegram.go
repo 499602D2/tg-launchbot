@@ -58,7 +58,6 @@ func (tg *TelegramBot) Initialize(token string) {
 }
 
 func (tg *TelegramBot) pingHandler(c tb.Context) error {
-	// Anti-spam
 	message := c.Message()
 	if !CommandPreHandler(tg.Spam, &users.User{Platform: "tg", Id: message.Sender.ID}, message.Unixtime) {
 		return nil
@@ -89,7 +88,6 @@ func (tg *TelegramBot) pingHandler(c tb.Context) error {
 }
 
 func (tg *TelegramBot) startHandler(c tb.Context) error {
-	// Anti-spam
 	message := c.Message()
 	if !CommandPreHandler(tg.Spam, &users.User{Platform: "tg", Id: message.Sender.ID}, message.Unixtime) {
 		return nil

@@ -22,11 +22,6 @@ func apiCall(client *http.Client) (ll2.LaunchUpdate, error) {
 	const requestPath = "launch/upcoming"
 	const apiParams = "mode=detailed&limit=30"
 
-	/*
-		Prod URL: https://ll.thespacedevs.com
-		Dev URL: https://lldev.thespacedevs.com
-	*/
-
 	var endpoint string
 	useProdUrl := false
 
@@ -49,7 +44,8 @@ func apiCall(client *http.Client) (ll2.LaunchUpdate, error) {
 		return ll2.LaunchUpdate{}, err
 	}
 
-	// Add user-agent headers, because we're nice TODO: pull from config
+	// Add user-agent headers, because we're nice
+	// TODO: pull from config
 	request.Header.Add("user-agent", "github.com/499602D2/tg-launchbot")
 
 	// Do request
@@ -85,22 +81,9 @@ func apiCall(client *http.Client) (ll2.LaunchUpdate, error) {
 }
 
 /*
-Updater handles the update flow, scheduling new updates for when
-they are required.
-
-Flow:
-1. Verify the database needs to be updated
-2. Perform the API call
-3. Parse the data we got
-4. Update hot cache
-5. Update on-disk database
-6. Clean the on-disk database
-7. Get launches that were postponed
-	7.1. Notify of postponed launches
-8. Schedule next API update and notifications
-
-Returns:
-	bool: true/false, indicating update success */
+Handles the API request flow, requesting new data and updating
+the cached and on-disk data.
+*/
 func Updater(session *config.Session, scheduleNext bool) bool {
 	log.Debug().Msg("Starting LL2 API updater...")
 
@@ -127,7 +110,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 		return false
 	}
 
-	// Uncomment to force-send notifications
+	// Uncomment to send notifications
 	/*
 		for _, launch := range launches {
 			if launch.Status.Abbrev == "Go" {
@@ -177,4 +160,32 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	}
 
 	return true
+}
+
+/* Function that chrono calls when a scheduled API update runs. */
+func updateWrapper(session *config.Session) {
+	log.Info().Msgf("Running scheduled update...")
+
+	// Check return value of updater
+	success := Updater(session, true)
+
+	if !success {
+		// TODO define retry time-limit based on error codes (api/errors.go)
+		log.Warn().Msg("Running updater failed: retrying in 60 seconds...")
+
+		// Retry twice
+		// TODO use expontential back-off?)
+		for i := 1; i <= 3; i++ {
+			success = Updater(session, true)
+			if !success {
+				log.Warn().Msgf("Re-try number %d failed, trying again in %d seconds", i, 60)
+				time.Sleep(time.Second * 60)
+			} else {
+				log.Info().Msgf("Success after %d retries", i)
+				break
+			}
+		}
+
+		// TODO if failed, notify admin + logs
+	}
 }

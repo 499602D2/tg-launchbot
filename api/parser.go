@@ -7,7 +7,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-/* Inserts the parsed launches into the database */
+/* Inserts the parsed launches into the database. */
 func updateLaunchDatabase(launches []*ll2.Launch) error {
 	// All fields of a launch.Launch struct
 	//fields := reflect.VisibleFields(reflect.TypeOf(struct{ ll2.Launch }{}))
@@ -42,13 +42,14 @@ func updateLaunchDatabase(launches []*ll2.Launch) error {
 	return nil
 }
 
-/* Checks if a launch was postponed */
+/* Checks if any launches were postponed */
 func getPostponedLaunches(launches []*ll2.Launch) []*ll2.Launch {
 	postponedLaunches := []*ll2.Launch{}
 
 	return postponedLaunches
 }
 
+/* Checks if the NET of a launch slipped from one update to another. */
 func netSlipped(cache *ll2.LaunchCache, ll2launch *ll2.Launch) (bool, int64) {
 	// If cache exists, use it
 	// TODO implement
@@ -68,7 +69,7 @@ func netSlipped(cache *ll2.LaunchCache, ll2launch *ll2.Launch) (bool, int64) {
 	return false, 0
 }
 
-/* Parses the LL2 launch update */
+/* Parses the LL2 launch update. */
 func parseLaunchUpdate(cache *ll2.LaunchCache, update *ll2.LaunchUpdate) ([]*ll2.Launch, error) {
 	var utcTime time.Time
 	var err error
@@ -92,7 +93,7 @@ func parseLaunchUpdate(cache *ll2.LaunchCache, update *ll2.LaunchUpdate) ([]*ll2
 			ll2launch.PostponedBy = by
 		}
 
-		// If reused stage information, parse
+		// TODO If reused stage information, parse...
 
 		//log.Debug().Msgf("[%2d] launch %s processed", i+1, ll2launch.Slug)
 	}

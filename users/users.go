@@ -13,16 +13,18 @@ type User struct {
 	TimeZone *time.Location
 }
 
-/* Extends the User type by creating a list of users.
-This can be userful for e.g. sending notifications to one platform. */
+/*
+Extends the User type by creating a list of users.
+This can be userful for e.g. sending notifications to one platform.
+*/
 type UserList struct {
 	Platform string
 	Users    []*User
 	Mutex    sync.Mutex
 }
 
+/* Loads the user's time zone information from cache/disk */
 func (user *User) LoadTimeZone() {
-	// Loads the user's time zone information from cache/disk
 	tz, err := time.LoadLocation("UTC")
 	if err != nil {
 		log.Error().Err(err).Msg("Error loading time zone for user")

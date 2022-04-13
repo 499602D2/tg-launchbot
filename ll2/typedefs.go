@@ -1,6 +1,7 @@
 package ll2
 
-/* Implements an incomplete LL2 API type wrapper, meant for
+/*
+Implements an incomplete LL2 API type wrapper, meant for
 consuming mainly the /launch endpoint.
 
 Documentation: https://ll.thespacedevs.com/2.2.0/swagger
@@ -40,10 +41,12 @@ type Launch struct {
 	Notifications NotificationStates // Status of notification sends (e.g. "24hour": false)
 }
 
-/* Maps the send times to send states.
+/*
+Maps the send times to send states.
 
 Keys: (24hour, 12hour, 1hour, 5min)
-Value: bool, indicating sent status */
+Value: bool, indicating sent status
+*/
 type NotificationStates map[string]bool
 
 type LaunchStatus struct {
@@ -60,7 +63,7 @@ type LaunchProvider struct {
 	Type string `json:"type"`
 	URL  string `json:"url"`
 
-	// Rarely given: manually parse from the URL endpoint given -> save
+	// TODO Rarely given: manually parse from the URL endpoint given -> save
 	CountryCode string `json:"country_code"`
 }
 
@@ -68,9 +71,10 @@ type Rocket struct {
 	Id     int                 `json:"id"`
 	Config RocketConfiguration `json:"configuration"`
 
-	/* TODO: add missing properties
-	- add launcher_stage
-	- add spacecraft_stage
+	/*
+		TODO: add missing properties
+		- add launcher_stage
+		- add spacecraft_stage
 	*/
 }
 

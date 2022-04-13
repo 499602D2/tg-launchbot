@@ -5,7 +5,9 @@ import (
 	"time"
 )
 
-/* Caching.go implements a hot, in-memory launch cache for LaunchBot */
+/*
+Caching.go implements a hot, in-memory launch cache for LaunchBot
+*/
 
 type LaunchCache struct {
 	Launches map[string]*Launch // Maps the launch ID to the launch object

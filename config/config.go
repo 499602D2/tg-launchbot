@@ -19,21 +19,18 @@ import (
 
 /* Session is a superstruct to simplify passing around other structs */
 type Session struct {
-	Telegram *bots.TelegramBot // Telegram bot this session runs
-	Discord  *bots.DiscordBot  // Discord bot this session runs
-	Spam     *bots.AntiSpam    // Anti-spam struct for session
-	Config   *Config           // Configuration for session
-
-	LaunchCache *ll2.LaunchCache // Launch cache
-	Db          *db.Database     // Pointer to the database object
-
-	Scheduler chrono.TaskScheduler   // Chrono scheduler
-	Tasks     []chrono.ScheduledTask // List of tasks pending
-
-	Version string     // Version number
-	Started int64      // Unix timestamp of startup time
-	Debug   bool       // Debugging?
-	Mutex   sync.Mutex // Avoid concurrent writes
+	Telegram    *bots.TelegramBot      // Telegram bot this session runs
+	Discord     *bots.DiscordBot       // Discord bot this session runs
+	Spam        *bots.AntiSpam         // Anti-spam struct for session
+	Config      *Config                // Configuration for session
+	LaunchCache *ll2.LaunchCache       // Launch cache
+	Db          *db.Database           // Pointer to the database object
+	Scheduler   chrono.TaskScheduler   // Chrono scheduler
+	Tasks       []chrono.ScheduledTask // List of tasks pending
+	Version     string                 // Version number
+	Started     int64                  // Unix timestamp of startup time
+	Debug       bool                   // Debugging?
+	Mutex       sync.Mutex             // Avoid concurrent writes
 }
 
 type Config struct {

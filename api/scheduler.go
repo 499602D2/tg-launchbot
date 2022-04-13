@@ -10,7 +10,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-/* notificationWrapper is called when a scheduled notification is sent. */
+/*
+NotificationWrapper is called when scheduled notifications
+are prepared for sending.
+*/
 func notificationWrapper(session *config.Session, launchIds []string, refreshData bool) {
 	// TODO compare NETs here after update (this is currently useless)
 	refreshData = false
@@ -48,29 +51,19 @@ Schedules a chrono job for when the notification should be sent, with some
 margin for one extra API update before the sending process starts.
 */
 func NotificationScheduler(session *config.Session, notifTime *ll2.NotificationTime) bool {
-	// Schedule a launch.Notify() job
-	// launch.Notify() should run a pre-notify stage that runs an API update
-	// --> throw a flag at updater to disable automatic scheduling
-	// if successful and data matches, schedule a post-launch API update (manual)
-	// -> returns to normal operation automatically
-
-	// Select all launches with matching NET -> schedule all
 	// TODO update job queue with tags (e.g. "notification", "api") for removal
 	// TODO when sending a 5-minute notification, schedule a post-launch check
-
-	// TODO how to handle pre-notify?
-	// more than one notification -> avoid double API update (pass flag to notif?)
-	// scheduled notifications done through a single function call? (list of IDs)
-
 	// TODO explore issues caused by using sendTime = time.Now()
 
 	log.Debug().Msgf("Creating scheduled jobs for %d launch(es)", len(notifTime.IDs))
 
+	// Create task
 	task, err := session.Scheduler.Schedule(func(ctx context.Context) {
 		// Run notification sender
 		notificationWrapper(session, notifTime.IDs, true)
 
-		// Schedule next API update
+		// Schedule next API update with some margin for an API call
+		// TODO determine margin
 		Scheduler(session)
 	}, chrono.WithTime(time.Unix(notifTime.SendTime, 0)))
 
@@ -84,48 +77,25 @@ func NotificationScheduler(session *config.Session, notifTime *ll2.NotificationT
 	session.Tasks = append(session.Tasks, task)
 	session.Mutex.Unlock()
 
-	until := notifTime.SendTime - time.Now().Unix()
-	log.Debug().Msgf("Notifications scheduled for %d launch(es), in %d seconds",
-		len(notifTime.IDs), until)
+	until := time.Until(time.Unix(notifTime.SendTime, 0))
+	log.Debug().Msgf("Notifications scheduled for %d launch(es), in %s",
+		len(notifTime.IDs), until.String())
 
 	return true
 }
 
-/* Function that chrono calls when a scheduled API update runs. */
-func updateWrapper(session *config.Session) {
-	log.Info().Msgf("Running scheduled update...")
-
-	// Check return value of updater
-	success := Updater(session, true)
-
-	if !success {
-		// TODO define retry time-limit based on error codes (api/errors.go)
-		log.Warn().Msg("Running updater failed: retrying in 60 seconds...")
-
-		// Retry twice
-		// TODO use expontential back-off?)
-		for i := 1; i <= 3; i++ {
-			success = Updater(session, true)
-			if !success {
-				log.Warn().Msgf("Re-try number %d failed, trying again in %d seconds", i, 60)
-				time.Sleep(time.Second * 60)
-			} else {
-				log.Info().Msgf("Success after %d retries", i)
-				break
-			}
-		}
-	}
-}
-
+/*
+Schedules the next API call through Chrono, and delegates calls to
+the notification scheduler.
+*/
 func Scheduler(session *config.Session) bool {
 	/* Get time of the next notification. This will be used to
 	determine the time of the next API update, as in how far we
-	can push the next update. LL2 has rather strict API limits,
-	and we'd rather not waste our calls. */
+	can push it. */
 	nextNotif := session.LaunchCache.NextNotificationTime()
 	timeUntilNotif := time.Until(time.Unix(nextNotif.SendTime, 0))
 
-	// Time of next scheduled update
+	// Time of next scheduled API update
 	var autoUpdateTime time.Time
 
 	/* Decide next update time based on the notification's type, and based on

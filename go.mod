@@ -13,6 +13,6 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.12
 	github.com/procyon-projects/chrono v1.1.0
 	github.com/satori/go.uuid v1.2.0
-	golang.org/x/crypto v0.0.0-20220331220935-ae2d96664a29 // indirect
-	golang.org/x/sys v0.0.0-20220406163625-3f8b81556e12 // indirect
+	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4 // indirect
+	golang.org/x/sys v0.0.0-20220412211240-33da011f77ad // indirect
 )
