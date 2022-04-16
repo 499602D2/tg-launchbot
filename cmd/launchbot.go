@@ -57,11 +57,11 @@ func main() {
 	setupSignalHandler(&session)
 
 	// Flag to disable API updates
-	var updateApi bool
+	var noUpdates bool
 
 	// Command line arguments
 	flag.BoolVar(&session.Debug, "debug", false, "Specify to enable debug mode")
-	flag.BoolVar(&updateApi, "no-api-updates", true, "Specify to disable API updates")
+	flag.BoolVar(&noUpdates, "no-api-updates", false, "Specify to disable API updates")
 	flag.Parse()
 
 	// Set-up logging
@@ -101,25 +101,29 @@ func main() {
 	session.LaunchCache = &ll2.LaunchCache{Launches: make(map[string]*ll2.Launch)}
 
 	// Start notification scheduler in a new thread
-	if updateApi {
+	if !noUpdates {
 		// Create a new task scheduler, assign to session
-		taskScheduler := chrono.NewDefaultTaskScheduler()
-		session.Scheduler = taskScheduler
+		session.Scheduler = chrono.NewDefaultTaskScheduler()
 
 		// Before doing finer scheduling, check if we need to update immediately
 		if session.Db.RequireImmediateUpdate() {
-			log.Info().Msg("Database requires an immediate update: updating now...")
+			log.Info().Msg("Db requires an immediate update: updating now...")
 
-			// Run API update manually and enable auto-scheduler
-			go api.Updater(&session, true)
+			/*
+				Run API update manually and enable auto-scheduler
+				Running this in a go-routine might cause the cache to not be initialized,
+				so we're doing this synchronously.
+			*/
+			api.Updater(&session, true)
 		} else {
 			// No need to update: schedule next call
 			log.Info().Msg("Database does not require an immediate update")
 
 			// Since db won't be immediately updated, we will still need to load the cache
+			// TODO implement
 			session.LaunchCache.Populate()
 
-			// Schedule next call normally
+			// Schedule next call normally: cache is now populated
 			go api.Scheduler(&session)
 		}
 	} else {

@@ -1,6 +1,7 @@
 package bots
 
 import (
+	"context"
 	"launchbot/users"
 	"sync"
 	"time"
@@ -35,7 +36,7 @@ type Sendable struct {
 
 	Message    *Message        // Message (may be empty)
 	Recipients *users.UserList // Recipients of this sendable
-	RateLimit  float32         // Ratelimits this sendable should obey
+	RateLimit  int             // Ratelimits this sendable should obey
 }
 
 /* The message content of a sendable */
@@ -129,9 +130,17 @@ func clearPriorityQueue(tg *TelegramBot, sleep bool) {
 	// TODO: sort before looping over (according to priority)
 	for _, prioritySendable := range tg.HighPriority.Queue {
 		for _, priorityUser := range prioritySendable.Recipients.Users {
-			log.Info().Msgf("Sending high-priority sendable for %s:%d",
+			/*log.Info().Msgf("Sending high-priority sendable for %s:%d",
 				priorityUser.Platform, priorityUser.Id,
-			)
+			)*/
+
+			if tg.Spam.Limiter.Allow() == false {
+				err := tg.Spam.Limiter.Wait(context.Background())
+
+				if err != nil {
+					log.Error().Err(err).Msgf("Error using Limiter.Wait()")
+				}
+			}
 
 			// Loop over users, send high-priority message
 			highPrioritySender(tg, prioritySendable.Message, priorityUser)
@@ -144,7 +153,7 @@ func clearPriorityQueue(tg *TelegramBot, sleep bool) {
 		}
 	}
 
-	log.Debug().Msg("High-priority message queue cleared")
+	//log.Debug().Msg("High-priority message queue cleared")
 
 	// Reset high-priority queue
 	tg.HighPriority.HasItemsInQueue = false
@@ -157,25 +166,27 @@ func clearPriorityQueue(tg *TelegramBot, sleep bool) {
 /*
 TelegramSender is a daemon-like function that listens to the notification
 and priority queues for incoming messages and notifications.
+
+TODO: alternatively use a job queue + dispatcher (V3.1+)
+- should feature priority tags
+
+Alternatively: implement Sendables so that they are unwrapped into distinct
+objects, that can then be queued. Then, implement a simple, linked priority-
+weighed queue and a dequeuer + all the related queue/dequeue/insert methods.
+
+This could replace the priority queue, as the head of the queue would be the
+one that's always deleted.
+
+- Mutexes? Constant locking + unlocking (which may be fine)
 */
 func TelegramSender(tg *TelegramBot) {
 	const (
 		priorityQueueClearInterval = 3
 	)
 
-	/*
-		TODO: alternatively use a job queue + dispatcher (V3.1+)
-		- should feature priority tags
+	// Dummy context for ratelimiting
+	dummyCtx := context.Background()
 
-		Alternatively: implement Sendables so that they are unwrapped into distinct
-		objects, that can then be queued. Then, implement a simple, linked priority-
-		weighed queue and a dequeuer + all the related queue/dequeue/insert methods.
-
-		This could replace the priority queue, as the head of the queue would be the
-		one that's always deleted.
-
-		- Mutexes? Constant locking + unlocking (which may be fine)
-	*/
 	for {
 		// Check notification queue
 		if len(tg.Queue.Sendables) != 0 {
@@ -187,7 +198,19 @@ func TelegramSender(tg *TelegramBot) {
 
 				var i uint32
 				for i, user := range sendable.Recipients.Users {
+					// Rate-limiter: check if we have tokens to proceed
+					if tg.Spam.Limiter.Allow() == false {
+						// No tokens: sleep until we can proceed
+						err := tg.Spam.Limiter.Wait(dummyCtx)
+
+						if err != nil {
+							log.Error().Err(err).Msgf("Error using Limiter.Wait()")
+						}
+					}
+
 					// TODO: use sendable.Send()
+					// Use the tb.Sendable interface?
+					// https://pkg.go.dev/gopkg.in/telebot.v3@v3.0.0?utm_source=gopls#Sendable
 					sent, err := tg.Bot.Send(tb.ChatID(user.Id),
 						*sendable.Message.TextContent, &sendable.Message.SendOptions,
 					)
@@ -211,17 +234,6 @@ func TelegramSender(tg *TelegramBot) {
 						}
 					}
 
-					// Sleep long enough to stay within API limits: convert messagesPerSecond to ms
-					if i < len(sendable.Recipients.Users)-1 {
-						/*
-							TODO: replace with a sleep function, with fail counter, back-off, etc.
-							- start with a fixed value
-							- tune the value as send progresses
-							- ready libraries?
-						*/
-						time.Sleep(time.Millisecond * time.Duration(1.0/sendable.RateLimit*1000.0))
-					}
-
 					/*
 						Periodically, during long sends, check if the TelegramBot.PriorityQueued is set.
 						This flag is enabled if there is one, or more, enqueued high-priority messages
@@ -241,7 +253,7 @@ func TelegramSender(tg *TelegramBot) {
 
 				// db.SaveSentNotificationIds()
 				if sendable.Type == "notification" {
-					// TODO implement
+					// TODO save notification IDs to database
 				}
 
 				// Send done, log
@@ -253,11 +265,11 @@ func TelegramSender(tg *TelegramBot) {
 
 		// Check if priority queue is populated (and skip sleeping if one entry)
 		if tg.HighPriority.HasItemsInQueue {
-			log.Debug().Msg("High-priority messages in queue")
+			//log.Debug().Msg("High-priority messages in queue")
 			clearPriorityQueue(tg, false)
 		}
 
-		// Clear queue every 250 ms
-		time.Sleep(time.Duration(time.Millisecond * 100))
+		// Clear queue every 50 ms
+		time.Sleep(time.Duration(time.Millisecond * 50))
 	}
 }

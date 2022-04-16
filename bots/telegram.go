@@ -13,9 +13,9 @@ import (
 
 type TelegramBot struct {
 	Bot          *tb.Bot
-	Spam         *AntiSpam
 	Queue        *Queue
 	HighPriority *HighPriorityQueue
+	Spam         *AntiSpam
 	Owner        int64
 }
 
