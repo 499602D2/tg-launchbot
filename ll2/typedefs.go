@@ -7,6 +7,10 @@ consuming mainly the /launch endpoint.
 Documentation: https://ll.thespacedevs.com/2.2.0/swagger
 */
 
+var LSPShorthands = map[string]string{
+	"China Aerospace Science and Technology Corporation": "CASC",
+}
+
 type LaunchUpdate struct {
 	Count    int
 	Launches []*Launch `json:"results"`
