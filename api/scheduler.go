@@ -129,8 +129,6 @@ func Scheduler(session *config.Session) bool {
 		autoUpdateTime = time.Now().Add(time.Hour * 6)
 	}
 
-	log.Debug().Msgf("autoUpdateTime set to %s (type=%s)", autoUpdateTime.String(), nextNotif.Type)
-
 	/* Compare the scheduled update to the notification send-time, and use
 	whichever comes first.
 
@@ -141,8 +139,12 @@ func Scheduler(session *config.Session) bool {
 	This is due to the fact that the notification sender needs to check that the
 	data is still up to date, and has not changed from the last update. */
 	if (time.Until(autoUpdateTime) > timeUntilNotif) && (timeUntilNotif.Minutes() > -5.0) {
-		log.Info().Msgf("A notification is coming up before next API update: scheduling")
+		log.Info().Msgf("A notification (type=%s) is coming up before next API update: scheduling",
+			nextNotif.Type,
+		)
 		return NotificationScheduler(session, nextNotif)
+	} else {
+		log.Debug().Msgf("autoUpdateTime set to %s (type=%s)", autoUpdateTime.String(), nextNotif.Type)
 	}
 
 	// Schedule next auto-update, since no notifications are incoming soon

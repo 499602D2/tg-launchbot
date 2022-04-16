@@ -22,8 +22,9 @@ func apiCall(client *http.Client) (ll2.LaunchUpdate, error) {
 	const requestPath = "launch/upcoming"
 	const apiParams = "mode=detailed&limit=30"
 
-	var endpoint string
+	// Set to true to use the ratelimited production end-point
 	useProdUrl := false
+	var endpoint string
 
 	if useProdUrl {
 		endpoint = "https://ll.thespacedevs.com"
@@ -110,15 +111,16 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 		return false
 	}
 
-	// Uncomment to send notifications
+	// Uncomment to force-send notifications
 	/*
 		for _, launch := range launches {
 			if launch.Status.Abbrev == "Go" {
-				launch.NETUnix = time.Now().Unix() + 6*60
-				log.Warn().Msgf("Launch=%s modified to launch 6 minutes from now", launch.Id)
+				launch.NETUnix = time.Now().Unix() + 30
+				log.Warn().Msgf("Launch=%s modified to launch 30 seconds from now", launch.Id)
 				break
 			}
-		}*/
+		}
+	*/
 
 	// Update launch cache (launch.cache)
 	session.LaunchCache.Update(launches)
