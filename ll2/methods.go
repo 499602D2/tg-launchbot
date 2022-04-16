@@ -8,8 +8,11 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	emoji "github.com/jayco/go-emoji-flag"
 	"github.com/rs/zerolog/log"
+	tb "gopkg.in/telebot.v3"
 )
 
 type NotificationTime struct {
@@ -63,31 +66,30 @@ func (launch *Launch) NextNotification() NotificationTime {
 				missedBy := time.Duration(math.Abs(float64(time.Now().Unix()-sendTime))) * time.Second
 
 				// TODO implement launch.ClearMissedNotifications + database update
-				log.Warn().Msgf("[%s] Send-time is in the past by %.2f minutes", launch.Id, missedBy.Minutes())
+				log.Warn().Msgf("[%s] %s send-time is in the past by %.2f minutes", launch.Id, notifType, missedBy.Minutes())
 
-				if notifType == "5min" {
-					if missedBy > time.Minute*time.Duration(5) {
-						log.Warn().Msgf("Missed notifications for id=%s", launch.Id)
-						return NotificationTime{AllSent: true, LaunchId: launch.Id, LaunchName: launch.Name, Count: 0}
-					} else {
-						log.Info().Msgf("[%s] Launch time less than 5 min in the past: modifying send-time", launch.Id)
+				if missedBy > time.Minute*time.Duration(5) {
+					log.Warn().Msgf("Missed type=%s notification for id=%s", notifType, launch.Id)
+					// TODO set as missed in database
+					return NotificationTime{AllSent: true, LaunchId: launch.Id, LaunchName: launch.Name, Count: 0}
+				} else {
+					log.Info().Msgf("[%s] %s send-time less than 5 min in the past: modifying send-time", launch.Id, notifType)
 
-						// Modify to send in 15 seconds
-						sendTime = time.Now().Unix() + 15
+					// Modify to send in 5 seconds
+					sendTime = time.Now().Unix() + 5
 
-						return NotificationTime{Type: notifType, SendTime: sendTime,
-							LaunchId: launch.Id, LaunchName: launch.Name, Count: 1}
-					}
+					return NotificationTime{Type: notifType, SendTime: sendTime,
+						LaunchId: launch.Id, LaunchName: launch.Name, Count: 1}
 				}
-
-				continue
 			}
 
+			// Sent is false and has not been missed: return type
 			return NotificationTime{Type: notifType, SendTime: sendTime,
 				LaunchId: launch.Id, LaunchName: launch.Name, Count: 1}
 		}
 	}
 
+	// No unsent notifications: return with AllSent=true
 	return NotificationTime{AllSent: true, LaunchId: launch.Id, LaunchName: launch.Name, Count: 0}
 }
 
@@ -244,11 +246,30 @@ func (launch *Launch) Notify(db *db.Database) *bots.Sendable {
 
 	// Map notification type to a header
 	header := map[string]string{
-		"24hour": "24 hours",
-		"12hour": "12 hours",
-		"1hour":  "60 minutes",
-		"5min":   "5 minutes",
+		"24hour": "in 24 hours",
+		"12hour": "in 12 hours",
+		"1hour":  "in 60 minutes",
+		"5min":   "in 5 minutes",
 	}[notification.Type]
+
+	// If notification type is 5-minute, use real launch time for clarity
+	if notification.Type == "5min" {
+		untilNet := time.Until(time.Unix(launch.NETUnix, 0))
+
+		// If we're seconds away, use seconds
+		if untilNet.Minutes() < 1.0 {
+			log.Warn().Msgf("Launch less than 1 minute away, formatting as seconds")
+
+			// If less than 0 seconds, set to "now"
+			if untilNet.Seconds() < 0 {
+				header = "now"
+			} else {
+				header = fmt.Sprintf("in %d seconds", int(untilNet.Seconds()))
+			}
+		} else {
+			header = fmt.Sprintf("in %d minutes", int(untilNet.Minutes()))
+		}
+	}
 
 	name := launch.Mission.Name
 	if name == "" {
@@ -258,7 +279,7 @@ func (launch *Launch) Notify(db *db.Database) *bots.Sendable {
 	/*
 		Do a simple, low-data notification string. Example:
 
-		T-5 minutes: JWST 🚀
+		Crew-4 is launching in 5 minutes 🚀
 		Provider SpaceX 🇺🇸
 		From Cape Canaveral LC-39A 🇺🇸
 
@@ -296,49 +317,158 @@ func (launch *Launch) Notify(db *db.Database) *bots.Sendable {
 		flagship astrophysics mission.
 
 	*/
+
+	// Shorten long LSP names
+	providerName := launch.LaunchProvider.Name
+	if len(providerName) > len("Virgin Galactic") {
+		short, ok := LSPShorthands[providerName]
+		if ok {
+			providerName = short
+		} else {
+			log.Warn().Msgf("Provider name '%s' is long, but not found in LSPShorthands", providerName)
+		}
+	}
+
+	// Get country-flag
+	flag := ""
+	if launch.LaunchProvider.CountryCode != "" {
+		flag = " " + emoji.GetFlag(launch.LaunchProvider.CountryCode)
+	}
+
+	// Convert to a nice, legible time
+	liftOffTime := time.Unix(launch.NETUnix, 0)
+	liftOffStr := fmt.Sprintf("%02d:%02d UTC+0", liftOffTime.Hour(), liftOffTime.Minute())
+
+	/* Ideas
+	- modify mission information header according to type
+		- comms is a satellite, crew is an astronaut, etc.
+	*/
+
+	// TODO add markdown pre-format + monospaced text (check order from lb.py)
+
 	text := fmt.Sprintf(
-		`🚀 %s is launching in %s
-		Launch ID: %s`,
-		name, header, launch.Id,
+		"🚀 *%s* is launching %s\n"+
+			"*Provider* %s%s\n"+
+			"*From* %s\n\n"+
+
+			"*Mission information*\n"+
+			"*Type* %s\n"+
+			"*Orbit* Low-Earth orbit\n"+
+			"*Lift-off* at %s",
+
+		name, header, providerName, flag, launch.LaunchPad.Name,
+		launch.Mission.Type, liftOffStr,
 	)
 
-	// Trim whitespace
-	text = strings.TrimSpace(text)
+	log.Debug().Msgf("Notification created: %d runes, %d bytes",
+		utf8.RuneCountInString(text), len(text))
+
+	// Trim whitespace and all the other funny stuff that comes with multi-lining
+	// https://stackoverflow.com/questions/37290693/how-to-remove-redundant-spaces-whitespace-from-a-string-in-golang
+
+	// Send silently if not a 1-hour or 5-minute notification
+	sendSilently := true
+	if notification.Type == "1hour" || notification.Type == "5min" {
+		sendSilently = false
+	}
+
+	// TODO: implement callback handling
+	muteBtn := tb.InlineButton{
+		Text: "🔇 Mute launch",
+		Data: fmt.Sprintf("mute/%s", launch.Id),
+	}
+
+	// TODO: implement callback handling
+	expandBtn := tb.InlineButton{
+		Text: "ℹ️ Expand description",
+		Data: fmt.Sprintf("exp/%s", launch.Id),
+	}
+
+	// Construct the keeb
+	kb := [][]tb.InlineButton{
+		{muteBtn}, {expandBtn},
+	}
 
 	// Message
-	msg := bots.Message{TextContent: &text}
+	// TODO user MarkdownV2 once parser in use
+	msg := bots.Message{
+		TextContent: &text,
+		SendOptions: tb.SendOptions{
+			ParseMode:           "Markdown",
+			DisableNotification: sendSilently,
+			ReplyMarkup:         &tb.ReplyMarkup{InlineKeyboard: kb},
+		},
+	}
 
 	// TODO Get recipients
 	recipients := launch.GetRecipients(db, notification)
 
+	/*
+		Some notes on just _how_ fast we can send stuff at Telegram's API
+
+		- link tags []() do _not_ count towards the perceived byte-size of
+			the message.
+		- new-lines are counted as 5 bytes (!)
+			- some other symbols, such as '&' or '"" may also count as 5 B
+
+		https://telegra.ph/So-your-bot-is-rate-limited-01-26
+	*/
+
+	/* Set rate-limit based on text length
+	TODO count markdown, ignore links (insert link later?)
+	- does markdown formatting count? */
+	perceivedByteLen := len(text)
+	perceivedByteLen += strings.Count(text, "\n") * 4 // Additional 4 B per newline
+
+	rateLimit := 30
+	if perceivedByteLen >= 512 {
+		// TODO update bot's limiter...?
+		log.Warn().Msgf("Large message (%d bytes): lowering send-rate to 6 msg/s", perceivedByteLen)
+		rateLimit = rateLimit / 5
+	}
+
 	// Create sendable
 	sendable := bots.Sendable{
 		Priority: 1, Type: "notification", Message: &msg, Recipients: recipients,
-		RateLimit: 4.0,
+		RateLimit: rateLimit,
 	}
 
-	// Set as sent
-	// TODO set earlier ones as sent, too, if they were missed
+	/*
+		Loop over the sent-flags, and ensure every previous state is flagged.
+		This is important for launches that come out of the blue, namely launches
+		by e.g. China/Chinese companies, where the exact NET may only appear less
+		than 24 hours before lift-off.
+
+		As an example, the first notification we send might be the 1-hour notification.
+		In this case, we will need to flag the 12-hour and 24-hour notification types
+		as sent, as they are no-longer relevant. This is done below.
+	*/
+
 	iterMap := map[string]string{
 		"5min":   "1hour",
 		"1hour":  "12hour",
 		"12hour": "24hour",
 	}
 
+	// Toggle the current state as sent, after which all flags will be toggled
 	passed := false
 	for curr, next := range iterMap {
 		if !passed && curr == notification.Type {
+			// This notification was sent: set state
 			launch.Notifications[curr] = true
 			passed = true
 		}
 
 		if passed {
+			// If flag has been set, and last type is flagged as unsent, update flag
 			if launch.Notifications[next] == false {
 				log.Debug().Msgf("Set %s to true for launch=%s", next, launch.Id)
 				launch.Notifications[next] = true
 			}
 		}
 	}
+
+	// TODO do database update...?
 
 	return &sendable
 }
