@@ -14,3 +14,7 @@
 ### Nice-to-haves
 - Notify on fail/success
 - Weekly summary messages
+
+### Future: 3.1 -->
+Web-app based set-up screen, notification info..?
+https://core.telegram.org/bots/webapps
