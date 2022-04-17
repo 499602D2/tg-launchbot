@@ -110,7 +110,7 @@ func highPrioritySender(tg *TelegramBot, message *Message, user *users.User) boo
 	if err != nil {
 		if !handleTelegramError(err) {
 			// If error is non-recoverable, continue the loop
-			log.Warn().Msg("Non-recoverable error in high-priority sender")
+			log.Warn().Msg("Unrecoverable error in high-priority sender")
 			return false
 		} else {
 			// Error is recoverable: try sending again

@@ -31,7 +31,7 @@ func TestMarkdownEscaper(t *testing.T) {
 	}
 
 	for _, testStr := range testMonospaceStrs {
-		ret := MonospacedText(testStr)
+		ret := Monospaced(testStr)
 		fmt.Printf("Parsed: %s\n\t--> %s\n\n", testStr, ret)
 	}
 }

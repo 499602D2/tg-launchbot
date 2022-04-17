@@ -5,6 +5,7 @@ import (
 	"launchbot/bots"
 	"launchbot/db"
 	"launchbot/users"
+	"launchbot/utils"
 	"math"
 	"strings"
 	"time"
@@ -34,7 +35,7 @@ type NotificationTime struct {
 // 	}
 // }
 
-/* Returns the first unsent notification type for the launch. */
+/* Returns the first unsent notification type for a launch. */
 func (launch *Launch) NextNotification() NotificationTime {
 	// TODO do this smarter instead of re-declaring a billion times
 	NotificationSendTimes := map[string]time.Duration{
@@ -43,6 +44,9 @@ func (launch *Launch) NextNotification() NotificationTime {
 		"1hour":  time.Duration(1) * time.Hour,
 		"5min":   time.Duration(5) * time.Minute,
 	}
+
+	// Minutes the send-time is allowed to slip by
+	allowedSlipMins := 5
 
 	for notifType, sent := range launch.Notifications {
 		// Map starts from 24hour, goes down to 5min
@@ -66,14 +70,14 @@ func (launch *Launch) NextNotification() NotificationTime {
 				missedBy := time.Duration(math.Abs(float64(time.Now().Unix()-sendTime))) * time.Second
 
 				// TODO implement launch.ClearMissedNotifications + database update
-				log.Warn().Msgf("[%s] %s send-time is in the past by %.2f minutes", launch.Id, notifType, missedBy.Minutes())
-
-				if missedBy > time.Minute*time.Duration(5) {
-					log.Warn().Msgf("Missed type=%s notification for id=%s", notifType, launch.Id)
+				if missedBy > time.Minute*time.Duration(allowedSlipMins) {
 					// TODO set as missed in database
-					return NotificationTime{AllSent: true, LaunchId: launch.Id, LaunchName: launch.Name, Count: 0}
+					log.Warn().Msgf("[%s] Missed type=%s notification (by %.2f minutes)",
+						launch.Slug, notifType, missedBy.Minutes())
+					continue
 				} else {
-					log.Info().Msgf("[%s] %s send-time less than 5 min in the past: modifying send-time", launch.Id, notifType)
+					log.Info().Msgf("[%s] Missed type=%s by under %d min (%.2f min): modifying send-time",
+						launch.Slug, notifType, allowedSlipMins, missedBy.Minutes())
 
 					// Modify to send in 5 seconds
 					sendTime = time.Now().Unix() + 5
@@ -94,11 +98,12 @@ func (launch *Launch) NextNotification() NotificationTime {
 }
 
 /*
-Finds the next notification time from the launch cache.
+Finds the next notification send-time from the launch cache.
 
 Function goes over the notification states and finds the next notification
-to send, returning a NotificationTime type with the send time and ID. */
-func (cache *LaunchCache) NextNotificationTime() *NotificationTime {
+to send, returning a NotificationTime type with the send-time and all launch
+IDs associated with this send-time. */
+func (cache *LaunchCache) FindNext() *NotificationTime {
 	// Find first send-time from the launch cache
 	earliestTime := int64(0)
 	tbdLaunchCount := 0
@@ -344,21 +349,40 @@ func (launch *Launch) Notify(db *db.Database) *bots.Sendable {
 		- comms is a satellite, crew is an astronaut, etc.
 	*/
 
-	// TODO add markdown pre-format + monospaced text (check order from lb.py)
+	// TODO create a copy of the launch -> monospace all relevant fields?
+	// TODO set bot username dynamically (throw a tb.bot object at ll2.notify?)
 
 	text := fmt.Sprintf(
 		"🚀 *%s* is launching %s\n"+
 			"*Provider* %s%s\n"+
+			"*Rocket* %s\n"+
 			"*From* %s\n\n"+
 
-			"*Mission information*\n"+
+			"🌍 *Mission information*\n"+
 			"*Type* %s\n"+
-			"*Orbit* Low-Earth orbit\n"+
-			"*Lift-off* at %s",
+			"*Orbit* %s\n"+
+			"*Lift-off* at %s\n\n"+
 
-		name, header, providerName, flag, launch.LaunchPad.Name,
-		launch.Mission.Type, liftOffStr,
+			"🔴 *LAUNCHLINKGOESHERE*\n"+
+			"🔕 *Stop with* /notify@tglaunchbot",
+
+		name, header,
+
+		utils.Monospaced(providerName), flag, utils.Monospaced(launch.Rocket.Config.FullName),
+		utils.Monospaced(launch.LaunchPad.Name),
+
+		utils.Monospaced(launch.Mission.Type), utils.Monospaced("Low-Earth orbit"),
+		utils.Monospaced(liftOffStr),
 	)
+
+	// Prepare message for Telegram's MarkdownV2 parser
+	text = utils.PrepareInputForMarkdown(text, "text")
+
+	// TODO set link properly (parse by importance and set no-vid-available)
+	linkText := utils.PrepareInputForMarkdown("Watch launch live!", "text")
+	link := utils.PrepareInputForMarkdown("https://www.youtube.com/watch?v=5nLk_Vqp7nw", "link")
+	launchLink := fmt.Sprintf("[%s](%s)", linkText, link)
+	text = strings.Replace(text, "LAUNCHLINKGOESHERE", launchLink, 1)
 
 	log.Debug().Msgf("Notification created: %d runes, %d bytes",
 		utf8.RuneCountInString(text), len(text))
@@ -394,7 +418,7 @@ func (launch *Launch) Notify(db *db.Database) *bots.Sendable {
 	msg := bots.Message{
 		TextContent: &text,
 		SendOptions: tb.SendOptions{
-			ParseMode:           "Markdown",
+			ParseMode:           "MarkdownV2",
 			DisableNotification: sendSilently,
 			ReplyMarkup:         &tb.ReplyMarkup{InlineKeyboard: kb},
 		},

@@ -73,7 +73,7 @@ https://github.com/go-telebot/telebot/blob/v3.0.0/errors.go#L33
 
 /* Wrapper for warning of unhandled errors */
 func warnUnhandled(err error) {
-	log.Warn().Err(err).Msg("Unhandled Telegram error")
+	log.Error().Err(err).Msg("Unhandled Telegram error")
 }
 
 /* Telegram error handler

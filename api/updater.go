@@ -112,15 +112,14 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	}
 
 	// Uncomment to force-send notifications
-	/*
-		for _, launch := range launches {
-			if launch.Status.Abbrev == "Go" {
-				launch.NETUnix = time.Now().Unix() + 30
-				log.Warn().Msgf("Launch=%s modified to launch 30 seconds from now", launch.Id)
-				break
-			}
+	for _, launch := range launches {
+		if launch.Status.Abbrev == "Go" || launch.Status.Abbrev == "TBC" {
+			launch.NETUnix = time.Now().Unix() + 30
+			launch.Status.Abbrev = "Go"
+			log.Warn().Msgf("Launch=%s modified to launch 30 seconds from now", launch.Slug)
+			break
 		}
-	*/
+	}
 
 	// Update launch cache (launch.cache)
 	session.LaunchCache.Update(launches)

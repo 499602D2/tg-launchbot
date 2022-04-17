@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/rs/zerolog/log"
 	"golang.org/x/exp/slices"
 )
 
 /*
 Prepares textual input for Telegram's Markdown parser.
+
+Mode is "text" or "link".
 
 Ref: https://core.telegram.org/bots/api#markdownv2-style
 */
@@ -20,9 +23,11 @@ func PrepareInputForMarkdown(input string, mode string) string {
 		escapedChars = []rune{')', '\\'}
 	case "text":
 		escapedChars = []rune{
-			'_', '*', '[', ']', '(', ')', '~', '`', '>',
-			'#', '+', '-', '=', '|', '{', '}', '.', '!',
+			'[', ']', '(', ')', '~', '>', '#', '+',
+			'-', '=', '|', '{', '}', '.', '!',
 		}
+	default:
+		log.Fatal().Msgf("Invalid mode in PrepareInputForMarkdown (mode=%s)", mode)
 	}
 
 	var escapableIdx int
@@ -44,7 +49,7 @@ func PrepareInputForMarkdown(input string, mode string) string {
 }
 
 /* Converts text to back-ticked, code-formatted text for improved density. */
-func MonospacedText(input string) string {
+func Monospaced(input string) string {
 	output := []string{}
 
 	// Enclose each word in backticks
