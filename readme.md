@@ -2,10 +2,15 @@
 
 ### Goals of the rework
 🌟 Massively improve code quality and project layout
+
 🌟 Improve robustness and error recoverability of the backend
+
 🌟 Intelligently dequeue messages to stay within API limits
+
 🌟 Remove excessive complexity in storage and caching
+
 🌟 Enable extending the bot to other platforms through modularity
+
 🌟 Reuse proven Python code where possible with direct translation
 
 ### Must-haves before 3.0.0
