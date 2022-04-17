@@ -1,20 +1,24 @@
 ## LaunchBot rework in Go
 
-### Goals
-1. Massively refactor the code and improve code quality
-2. Improve the robustness of the backend
-3. Remove excessive complexity in both storage and caching
-3. Make extending the bot onto other platforms trivial (modularity)
+### Goals of the rework
+🌟 Massively improve code quality and project layout
+🌟 Improve robustness and error recoverability of the backend
+🌟 Intelligently dequeue messages to stay within API limits
+🌟 Remove excessive complexity in storage and caching
+🌟 Enable extending the bot to other platforms through modularity
+🌟 Reuse proven Python code where possible with direct translation
 
-### Before 3.0.0
-- Compress messages to improve send-rates
+### Must-haves before 3.0.0
+- "Compress" messages to improve send-rates
 	- Add "More info" button
-- Remove manual time zones
+- Remove manual time zone feature to reduce complexity
 
-### Nice-to-haves
-- Notify on fail/success
+### Nice-to-haves before 3.0.0
+- Notify admin on any processing failure
+
+### Future: 3.1 and onwards
 - Weekly summary messages
-
-### Future: 3.1 -->
-Web-app based set-up screen, notification info..?
-https://core.telegram.org/bots/webapps
+- Web-app based set-up screen, notification info..?
+	- https://core.telegram.org/bots/webapps
+	- Privacy implications
+- Discord support
