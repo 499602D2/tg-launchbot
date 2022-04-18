@@ -2,7 +2,10 @@ package bots
 
 import (
 	"context"
+	"fmt"
 	"launchbot/users"
+	"launchbot/utils"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,13 +42,53 @@ type Sendable struct {
 	RateLimit  int             // Ratelimits this sendable should obey
 }
 
-/* The message content of a sendable */
+// The message content of a sendable
 type Message struct {
 	TextContent *string
+	AddUserTime bool  // If flipped to true, TextContent contains "$USERTIME"
+	RefTime     int64 // Reference time to use for replacing $USERTIME with
 	SendOptions tb.SendOptions
 }
 
-/* A queue of sendables to be sent */
+// Set time field in the message
+func (msg *Message) SetTime(user *users.User) *string {
+	// Load user's time zone, if not already loaded
+	if user.TimeZone == nil {
+		user.LoadTimeZone()
+	}
+
+	// Convert unix time to local time in user's time zone
+	userTime := time.Unix(msg.RefTime, 0).In(user.TimeZone)
+
+	// Pull offset from time zone
+	_, offset := userTime.Zone()
+
+	// Add a plus if the offset is positive
+	offsetSign := map[bool]string{true: "+", false: ""}[offset >= 0]
+
+	// Convert the offset in seconds to offset in hours
+	offsetString := ""
+
+	// If offset is not divisible by 3600, it is not whole hours
+	if offset%3600 != 0 {
+		hours := (offset - (offset % 3600)) / 3600
+		mins := (offset % 3600) / 60
+		offsetString = fmt.Sprintf("%d:%2d", hours, mins)
+	} else {
+		offsetString = fmt.Sprintf("%d", offset/3600)
+	}
+
+	// Create time string, escape it
+	timeString := fmt.Sprintf("%02d:%02d UTC%s%s",
+		userTime.Hour(), userTime.Minute(), offsetSign, offsetString)
+	timeString = utils.PrepareInputForMarkdown(timeString, "text")
+
+	// Set time, return
+	txt := strings.ReplaceAll(*msg.TextContent, "$USERTIME", timeString)
+	return &txt
+}
+
+//  A queue of sendables to be sent
 type Queue struct {
 	MessagesPerSecond float32              // Messages-per-second limit
 	Sendables         map[string]*Sendable // Queue of sendables (uniqueHash:sendable)
@@ -66,7 +109,7 @@ func (sendable *Sendable) Unwrap() {
 
 }
 
-/* Adds a message to the Telegram message queue */
+// Adds a message to the Telegram message queue
 func (queue *Queue) Enqueue(sendable *Sendable, tg *TelegramBot, highPriority bool) {
 	// Unique ID for this sendable
 	uuid := uuid.NewV4().String()
@@ -102,13 +145,19 @@ func (sendable *Sendable) Send() {
 
 /* HighPrioritySender sends singular high-priority messages. */
 func highPrioritySender(tg *TelegramBot, message *Message, user *users.User) bool {
+	// If message needs to have its time set properly, do it now
+	text := message.TextContent
+	if message.AddUserTime {
+		text = message.SetTime(user)
+	}
+
 	// TODO: use sendable.Send()
 	_, err := tg.Bot.Send(tb.ChatID(user.Id),
-		*message.TextContent, &message.SendOptions,
+		*text, &message.SendOptions,
 	)
 
 	if err != nil {
-		if !handleTelegramError(err) {
+		if !handleTelegramError(err, tg) {
 			// If error is non-recoverable, continue the loop
 			log.Warn().Msg("Unrecoverable error in high-priority sender")
 			return false
@@ -196,6 +245,10 @@ func TelegramSender(tg *TelegramBot) {
 				log.Info().Msgf("Sending sendable with hash=%s", hash)
 				sentIds := make(map[users.User]int)
 
+				// Keep pointer, simplifies handling if time needs to be set in message
+				defaultText := sendable.Message.TextContent
+				var text *string
+
 				var i uint32
 				for i, user := range sendable.Recipients.Users {
 					// Rate-limiter: check if we have tokens to proceed
@@ -208,15 +261,23 @@ func TelegramSender(tg *TelegramBot) {
 						}
 					}
 
+					// If message needs to have its time set properly, do it now
+					if sendable.Message.AddUserTime {
+						text = sendable.Message.SetTime(user)
+					} else {
+						text = defaultText
+					}
+
 					// TODO: use sendable.Send()
 					// Use the tb.Sendable interface?
 					// https://pkg.go.dev/gopkg.in/telebot.v3@v3.0.0?utm_source=gopls#Sendable
-					sent, err := tg.Bot.Send(tb.ChatID(user.Id),
-						*sendable.Message.TextContent, &sendable.Message.SendOptions,
+					sent, err := tg.Bot.Send(
+						tb.ChatID(user.Id), *text,
+						&sendable.Message.SendOptions,
 					)
 
 					if err != nil {
-						if !handleTelegramError(err) {
+						if !handleTelegramError(err, tg) {
 							// If error is non-recoverable, continue the loop
 							log.Warn().Msg("Non-recoverable error in sender, continuing loop")
 							delete(tg.Queue.Sendables, hash)

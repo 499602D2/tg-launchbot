@@ -340,10 +340,6 @@ func (launch *Launch) Notify(db *db.Database) *bots.Sendable {
 		flag = " " + emoji.GetFlag(launch.LaunchProvider.CountryCode)
 	}
 
-	// Convert to a nice, legible time
-	liftOffTime := time.Unix(launch.NETUnix, 0)
-	liftOffStr := fmt.Sprintf("%02d:%02d UTC+0", liftOffTime.Hour(), liftOffTime.Minute())
-
 	/* Ideas
 	- modify mission information header according to type
 		- comms is a satellite, crew is an astronaut, etc.
@@ -353,26 +349,25 @@ func (launch *Launch) Notify(db *db.Database) *bots.Sendable {
 	// TODO set bot username dynamically (throw a tb.bot object at ll2.notify?)
 
 	text := fmt.Sprintf(
-		"🚀 *%s* is launching %s\n"+
+		"🚀 *%s is launching %s*\n"+
 			"*Provider* %s%s\n"+
 			"*Rocket* %s\n"+
 			"*From* %s\n\n"+
 
 			"🌍 *Mission information*\n"+
 			"*Type* %s\n"+
-			"*Orbit* %s\n"+
-			"*Lift-off* at %s\n\n"+
+			"*Orbit* %s\n\n"+
 
+			"🕑 *Lift-off at $USERTIME*\n"+
 			"🔴 *LAUNCHLINKGOESHERE*\n"+
-			"🔕 *Stop with* /notify@tglaunchbot",
+			"🔕 *Stop with /notify@tglaunchbot*",
 
 		name, header,
 
 		utils.Monospaced(providerName), flag, utils.Monospaced(launch.Rocket.Config.FullName),
 		utils.Monospaced(launch.LaunchPad.Name),
 
-		utils.Monospaced(launch.Mission.Type), utils.Monospaced("Low-Earth orbit"),
-		utils.Monospaced(liftOffStr),
+		utils.Monospaced(launch.Mission.Type), utils.Monospaced(launch.Mission.Orbit.Name),
 	)
 
 	// Prepare message for Telegram's MarkdownV2 parser
@@ -414,9 +409,10 @@ func (launch *Launch) Notify(db *db.Database) *bots.Sendable {
 	}
 
 	// Message
-	// TODO user MarkdownV2 once parser in use
 	msg := bots.Message{
 		TextContent: &text,
+		AddUserTime: true,
+		RefTime:     launch.NETUnix,
 		SendOptions: tb.SendOptions{
 			ParseMode:           "MarkdownV2",
 			DisableNotification: sendSilently,
