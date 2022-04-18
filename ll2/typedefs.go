@@ -7,6 +7,16 @@ consuming mainly the /launch endpoint.
 Documentation: https://ll.thespacedevs.com/2.2.0/swagger
 */
 
+/*
+TODO replace with something more sustainable
+- Maps a long LSP name to a short, friendly name
+
+Alternatively:
+- map ID to a short name
+	- cheap callbacks (/notify/enable/73)
+	- IDs don't change
+	- if ID not in list of shorthands, use abbreviation
+*/
 var LSPShorthands = map[string]string{
 	"China Aerospace Science and Technology Corporation": "CASC",
 }
@@ -62,6 +72,7 @@ type LaunchStatus struct {
 
 type LaunchProvider struct {
 	// Information directly from the API
+	// TODO use ID to find more info from API -> store in DB -> re-use
 	Id   int    `json:"id"`
 	Name string `json:"name"`
 	Type string `json:"type"`
