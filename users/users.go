@@ -25,7 +25,9 @@ type UserList struct {
 
 /* Loads the user's time zone information from cache/disk */
 func (user *User) LoadTimeZone() {
+	// TODO do properly
 	tz, err := time.LoadLocation("UTC")
+
 	if err != nil {
 		log.Error().Err(err).Msg("Error loading time zone for user")
 		return
@@ -48,4 +50,17 @@ func (userList *UserList) Add(user User, addTimeZone bool) {
 	userList.Users = append(userList.Users, &user)
 
 	userList.Mutex.Unlock()
+}
+
+// Reduce boilterplate by creating a user-list with a single user
+func SingleUserList(id int64, addTimeZone bool, platform string) *UserList {
+	// Create list
+	list := UserList{Platform: platform}
+
+	// Create user
+	user := User{Platform: platform, Id: id}
+
+	// Add user, return
+	list.Add(user, addTimeZone)
+	return &list
 }
