@@ -1,6 +1,9 @@
 package bots
 
 import (
+	"fmt"
+	"launchbot/users"
+
 	"github.com/rs/zerolog/log"
 	tb "gopkg.in/telebot.v3"
 )
@@ -71,6 +74,21 @@ var (
 https://github.com/go-telebot/telebot/blob/v3.0.0/errors.go#L33
 */
 
+func errorMonitor(err error, tg *TelegramBot) {
+	// Create a simple error message
+	errMsg := fmt.Sprintf("Processing failure: %#v", err.Error())
+	msg := Message{TextContent: &errMsg, SendOptions: tb.SendOptions{}}
+	recipients := users.SingleUserList(tg.Owner, false, "tg")
+
+	// Wrap in a sendable
+	sendable := Sendable{
+		Priority: 3, Message: &msg, Recipients: recipients, RateLimit: 30,
+	}
+
+	// Enqueue message
+	tg.Queue.Enqueue(&sendable, tg, true)
+}
+
 /* Wrapper for warning of unhandled errors */
 func warnUnhandled(err error) {
 	log.Error().Err(err).Msg("Unhandled Telegram error")
@@ -82,8 +100,12 @@ Returns:
 - bool: indicates if the error is recoverable, as in if the previous execution
 				can still proceed after the error.
 */
-func handleTelegramError(err error) bool {
+func handleTelegramError(err error, tg *TelegramBot) bool {
 	switch err {
+	case nil:
+		log.Warn().Msg("handleTelegramError called with nil error")
+		return true
+
 	// General errors (400, 401, 404, 500) [all handled]
 	case tb.ErrTooLarge:
 		warnUnhandled(err)
@@ -100,21 +122,22 @@ func handleTelegramError(err error) bool {
 	case tb.ErrChatNotFound:
 		warnUnhandled(err)
 	case tb.ErrEmptyChatID:
-		warnUnhandled(err)
+		log.Trace().Err(err).Msg("Empty chat ID in message")
 	case tb.ErrEmptyMessage:
-		warnUnhandled(err)
+		log.Trace().Err(err).Msg("Empty message")
 	case tb.ErrEmptyText:
-		warnUnhandled(err)
+		log.Trace().Err(err).Msg("Empty text in message")
 	case tb.ErrGroupMigrated:
-		warnUnhandled(err)
+		// TODO implement handler
+		log.Error().Err(err).Msg("GROUP MIGRATION NOT IMPLEMENTED")
 	case tb.ErrNoRightsToSend:
-		warnUnhandled(err)
+		log.Trace().Err(err).Msg("No rights to send message to chat")
 	case tb.ErrTooLongMarkup:
-		warnUnhandled(err)
+		log.Trace().Err(err).Msg("Markup is too long")
 	case tb.ErrTooLongMessage:
-		warnUnhandled(err)
+		log.Trace().Err(err).Msg("Message is too long")
 	case tb.ErrWrongURL:
-		warnUnhandled(err)
+		log.Trace().Err(err).Msg("Wrong URL")
 
 	// Error 403 (forbidden) [all handled]
 	case tb.ErrBlockedByUser:
@@ -124,14 +147,19 @@ func handleTelegramError(err error) bool {
 	case tb.ErrKickedFromSuperGroup:
 		warnUnhandled(err)
 	case tb.ErrNotStartedByUser:
+		// TODO clean database
 		warnUnhandled(err)
 	case tb.ErrUserIsDeactivated:
+		// TODO clean database
 		warnUnhandled(err)
 
 	// If the error is not in the cases, default to unhandled
 	default:
+		log.Trace().Msg("Error case fell through (defaulted)")
 		warnUnhandled(err)
 	}
 
+	// Default to returning false, but first notify admin
+	errorMonitor(err, tg)
 	return false
 }
