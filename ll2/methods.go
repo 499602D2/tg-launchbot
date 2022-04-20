@@ -2,251 +2,26 @@ package ll2
 
 import (
 	"fmt"
-	"launchbot/bots"
 	"launchbot/db"
+	"launchbot/messages"
 	"launchbot/users"
 	"launchbot/utils"
-	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/dustin/go-humanize"
 	emoji "github.com/jayco/go-emoji-flag"
 	"github.com/rs/zerolog/log"
 	tb "gopkg.in/telebot.v3"
 )
 
-type NotificationTime struct {
-	Type       string // In (24hour, 12hour, 1hour, 5min)
-	SendTime   int64  // Unix-time of the notification
-	AllSent    bool   // All notifications sent already?
-	LaunchId   string
-	LaunchName string
+// TODO
+// - move notification functions to their own package?
+// - move db.NotificationTime to notifications package?
 
-	Count int      // If more than one, list their count
-	IDs   []string // If more than one, include their IDs here
-}
-
-// func (cache *LaunchCache) FindAllWithNet(net int64) []*Launch {
-// 	launches := []*Launch{}
-
-// 	for _, launch := range cache.Launches {
-
-// 	}
-// }
-
-/* Returns the first unsent notification type for a launch. */
-func (launch *Launch) NextNotification() NotificationTime {
-	// TODO do this smarter instead of re-declaring a billion times
-	NotificationSendTimes := map[string]time.Duration{
-		"24hour": time.Duration(24) * time.Hour,
-		"12hour": time.Duration(12) * time.Hour,
-		"1hour":  time.Duration(1) * time.Hour,
-		"5min":   time.Duration(5) * time.Minute,
-	}
-
-	// Minutes the send-time is allowed to slip by
-	allowedSlipMins := 5
-
-	for notifType, sent := range launch.Notifications {
-		// Map starts from 24hour, goes down to 5min
-		if sent == false {
-			// How many seconds before NET the notification is sent
-			secBeforeNet, ok := NotificationSendTimes[notifType]
-
-			if !ok {
-				log.Error().Msgf("Error parsing notificationType for %s: %s",
-					launch.Id, notifType)
-				continue
-			}
-
-			// Calculate send-time from NET
-			// log.Debug().Msgf("type: %s, secBeforeNet: %s", notifType, secBeforeNet.String())
-			// log.Debug().Msgf("NET time: %s", time.Unix(launch.NETUnix, 0).String())
-			sendTime := launch.NETUnix - int64(secBeforeNet.Seconds())
-
-			if sendTime-time.Now().Unix() < 0 {
-				// Calculate how many minutes the notification was missed by
-				missedBy := time.Duration(math.Abs(float64(time.Now().Unix()-sendTime))) * time.Second
-
-				// TODO implement launch.ClearMissedNotifications + database update
-				if missedBy > time.Minute*time.Duration(allowedSlipMins) {
-					// TODO set as missed in database
-					log.Warn().Msgf("[%s] Missed type=%s notification (by %.2f minutes)",
-						launch.Slug, notifType, missedBy.Minutes())
-					continue
-				} else {
-					log.Info().Msgf("[%s] Missed type=%s by under %d min (%.2f min): modifying send-time",
-						launch.Slug, notifType, allowedSlipMins, missedBy.Minutes())
-
-					// Modify to send in 5 seconds
-					sendTime = time.Now().Unix() + 5
-
-					return NotificationTime{Type: notifType, SendTime: sendTime,
-						LaunchId: launch.Id, LaunchName: launch.Name, Count: 1}
-				}
-			}
-
-			// Sent is false and has not been missed: return type
-			return NotificationTime{Type: notifType, SendTime: sendTime,
-				LaunchId: launch.Id, LaunchName: launch.Name, Count: 1}
-		}
-	}
-
-	// No unsent notifications: return with AllSent=true
-	return NotificationTime{AllSent: true, LaunchId: launch.Id, LaunchName: launch.Name, Count: 0}
-}
-
-/*
-Finds the next notification send-time from the launch cache.
-
-Function goes over the notification states and finds the next notification
-to send, returning a NotificationTime type with the send-time and all launch
-IDs associated with this send-time. */
-func (cache *LaunchCache) FindNext() *NotificationTime {
-	// Find first send-time from the launch cache
-	earliestTime := int64(0)
-	tbdLaunchCount := 0
-
-	/* Returns a list of notification times
-	(only more than one if two+ notifs share the same send time) */
-	notificationTimes := make(map[int64][]NotificationTime)
-
-	// How much the send time is allowed to slip, in minutes
-	allowedNetSlip := time.Duration(-5) * time.Minute
-
-	for _, launch := range cache.Launches {
-		// If launch time is TBD/TBC or in the past, don't notify
-		if launch.Status.Abbrev == "Go" {
-			// Calculate the next upcoming send time for this launch
-			next := launch.NextNotification()
-
-			if next.AllSent {
-				// If all notifications have already been sent, ignore
-				// log.Warn().Msgf("All notifications have been sent for launch=%s", launch.Id)
-				continue
-			}
-
-			// Verify the launch-time is not in the past by more than the allowed slip window
-			if allowedNetSlip.Seconds() > time.Until(time.Unix(next.SendTime, 0)).Seconds() {
-				log.Warn().Msgf("Launch %s is more than 5 minutes into the past",
-					next.LaunchName)
-				continue
-			}
-
-			if (next.SendTime < earliestTime) || (earliestTime == 0) {
-				// If time is smaller than last earliestTime, delete old key and insert
-				delete(notificationTimes, earliestTime)
-				earliestTime = next.SendTime
-
-				// Insert into the map's list
-				notificationTimes[next.SendTime] = append(notificationTimes[next.SendTime], next)
-			} else if next.SendTime == earliestTime {
-				// Alternatively, if the time is equal, we have two launches overlapping
-				notificationTimes[next.SendTime] = append(notificationTimes[next.SendTime], next)
-			}
-		} else {
-			tbdLaunchCount++
-		}
-	}
-
-	// If time is non-zero, there's at least one non-TBD launch
-	if earliestTime != 0 {
-		// Calculate time until notification(s)
-		toNotif := time.Until(time.Unix(earliestTime, 0))
-
-		log.Debug().Msgf("Got next notification send time (%s from now), %d launches)",
-			toNotif.String(), len(notificationTimes[earliestTime]))
-
-		// Print launch names in logs
-		for n, l := range notificationTimes[earliestTime] {
-			log.Debug().Msgf("[%d] %s (%s)", n+1, l.LaunchName, l.LaunchId)
-		}
-	} else {
-		log.Warn().Msgf("Could not find next notification send time. No-Go launches: %d out of %d",
-			tbdLaunchCount, len(cache.Launches))
-
-		return &NotificationTime{SendTime: 0, Count: 0}
-	}
-
-	// Select the list of launches for the earliest timestamp
-	notificationList := notificationTimes[earliestTime]
-
-	// If more then one, prioritize them
-	if len(notificationList) > 1 {
-		// Add more weight to the latest notifications
-		timeWeights := map[string]int{
-			"24hour": 1, "12hour": 2,
-			"1hour": 3, "5min": 4,
-		}
-
-		// Keep track of largest encountered key (timeWeight)
-		maxTimeWeight := 0
-
-		// Map the weights to a single NotificationTime type
-		weighedNotifs := make(map[int]NotificationTime)
-
-		// Loop over the launches we found at this timestamp
-		for _, notifTime := range notificationList {
-			// Add to the weighed map
-			weighedNotifs[timeWeights[notifTime.Type]] = notifTime
-
-			// If weight is greater than the largest encountered, update
-			if timeWeights[notifTime.Type] > maxTimeWeight {
-				maxTimeWeight = timeWeights[notifTime.Type]
-			}
-		}
-
-		// Assign highest-value key found as the primary notification
-		firstNotif := weighedNotifs[maxTimeWeight]
-		firstNotif.Count = len(notificationList)
-		firstNotif.IDs = append(firstNotif.IDs, firstNotif.LaunchId)
-
-		// Add other launches to the list
-		for _, notifTime := range notificationList {
-			if notifTime.LaunchId != firstNotif.LaunchId {
-				firstNotif.IDs = append(firstNotif.IDs, notifTime.LaunchId)
-			}
-		}
-
-		log.Debug().Msgf("Total of %d launches in the notification list after parsing:",
-			len(firstNotif.IDs))
-
-		for i, id := range firstNotif.IDs {
-			log.Debug().Msgf("[%d] %s", i+1, id)
-		}
-
-		return &firstNotif
-	}
-
-	// Otherwise, we only have one notification: return it
-	onlyNotif := notificationList[0]
-	onlyNotif.IDs = append(onlyNotif.IDs, onlyNotif.LaunchId)
-	return &onlyNotif
-}
-
-/*
-Extends the Launch struct to add a .PostponeNotify() method.
-This allows us to write cleaner code.
-*/
-func (launch *Launch) PostponeNotify(postponedTo int) {
-}
-
-/* Pulls recipients for this notification type from the DB */
-func (launch *Launch) GetRecipients(db *db.Database, notifType NotificationTime) *users.UserList {
-	// TODO Implement
-	recipients := users.UserList{Platform: "tg", Users: []*users.User{}}
-	user := users.User{Platform: recipients.Platform, Id: db.Owner}
-
-	recipients.Add(user, true)
-
-	return &recipients
-}
-
-/* Creates and queues a notification */
-func (launch *Launch) Notify(db *db.Database) *bots.Sendable {
-	// TODO for the message construction: use "real ETA" for 5 min notification
-
+// Creates and queues a notification
+func Notify(launch *db.Launch, db *db.Database) *messages.Sendable {
 	notification := launch.NextNotification()
 
 	// Map notification type to a header
@@ -281,58 +56,8 @@ func (launch *Launch) Notify(db *db.Database) *bots.Sendable {
 		name = strings.Trim(strings.Split(launch.Name, "|")[0], " ")
 	}
 
-	/*
-		Do a simple, low-data notification string. Example:
-
-		Crew-4 is launching in 5 minutes 🚀
-		Provider SpaceX 🇺🇸
-		From Cape Canaveral LC-39A 🇺🇸
-
-		Mission information 🌍
-		Type Tourism
-		Orbit Low-Earth orbit
-		Lift-off at 18:17 UTC+3
-
-		🔴 Watch live
-		🔕 Stop with /notify@rocketrybot
-
-		btn[🔇 Mute launch]
-		btn[ℹ️ Extend description]
-
-		===========================
-
-		-> [ℹ️ Extend description]:
-
-		T-5 minutes: JWST 🚀
-		Provider SpaceX 🇺🇸
-		From Cape Canaveral LC-39A 🇺🇸
-
-		Mission information 🌍
-		Type Tourism
-		Orbit Low-Earth orbit
-		Lift-off at 18:17 UTC+3
-
-		Vehicle information 🚀
-		Falcon 9 B1062.5 (♻️x4)
-		Landing on ASOG (ASDS)
-
-		ℹ️ The James Webb Space Telescope is a space
-		telescope developed by NASA, ESA and CSA to
-		succeed the Hubble Space Telescope as NASA's
-		flagship astrophysics mission.
-
-	*/
-
 	// Shorten long LSP names
-	providerName := launch.LaunchProvider.Name
-	if len(providerName) > len("Virgin Galactic") {
-		short, ok := LSPShorthands[providerName]
-		if ok {
-			providerName = short
-		} else {
-			log.Warn().Msgf("Provider name '%s' is long, but not found in LSPShorthands", providerName)
-		}
-	}
+	providerName := launch.LaunchProvider.ShortName()
 
 	// Get country-flag
 	flag := ""
@@ -409,7 +134,7 @@ func (launch *Launch) Notify(db *db.Database) *bots.Sendable {
 	}
 
 	// Message
-	msg := bots.Message{
+	msg := messages.Message{
 		TextContent: &text,
 		AddUserTime: true,
 		RefTime:     launch.NETUnix,
@@ -448,8 +173,8 @@ func (launch *Launch) Notify(db *db.Database) *bots.Sendable {
 	}
 
 	// Create sendable
-	sendable := bots.Sendable{
-		Priority: 1, Type: "notification", Message: &msg, Recipients: recipients,
+	sendable := messages.Sendable{
+		Type: "notification", Message: &msg, Recipients: recipients,
 		RateLimit: rateLimit,
 	}
 
@@ -493,7 +218,145 @@ func (launch *Launch) Notify(db *db.Database) *bots.Sendable {
 	return &sendable
 }
 
-/* Returns all values for a database insert */
-func (launch *Launch) FieldValues() {
-	// TODO complete
+// Creates a schedule message from the launch cache
+// TODO simplify, now that launch cache is truly ordered (do in one loop)
+func ScheduleMessage(cache *db.Cache, user *users.User, showMissions bool) string {
+	if user.Time == (users.UserTime{}) {
+		user.LoadTimeZone()
+	}
+
+	// List of launch-lists, one per launch date
+	schedule := [][]*db.Launch{}
+
+	// Maps in Go don't preserve order on iteration: stash the indices of each date
+	dateToIndex := make(map[string]int)
+
+	// The launch cache is always ordered (sorted when API update is parsed)
+	freeIdx := 0
+	for _, launch := range cache.Launches {
+		// Get launch date in user's time zone
+		yy, mm, dd := time.Unix(launch.NETUnix, 0).In(user.Time.Location).Date()
+		dateStr := fmt.Sprintf("%d-%d-%d", yy, mm, dd)
+
+		idx, ok := dateToIndex[dateStr]
+		if ok {
+			// If index exists, use it
+			schedule[idx] = append(schedule[idx], launch)
+		} else {
+			// If 5 dates, don't add a new one
+			if len(schedule) == 5 {
+				continue
+			}
+
+			// Index does not exist, use first free index
+			schedule = append(schedule, []*db.Launch{launch})
+
+			// Keep track of the index we added the launch to
+			dateToIndex[dateStr] = freeIdx
+			freeIdx++
+		}
+	}
+
+	// Map launch status to an indicator
+	// https://ll.thespacedevs.com/2.2.0/config/launchstatus/
+	statusToIndicator := map[string]string{
+		"Partial Failure": "💥",
+		"Failure":         "💥",
+		"Success":         "🚀",
+		"In Flight":       "🚀",
+		"Hold":            "⏸️",
+		"Go":              "🟢", // Go, as in a verified launch time
+		"TBC":             "🟡", // Unconfirmed launch time
+		"TBD":             "🔴", // Unverified launch time
+	}
+
+	// Loop over the schedule map and create the message
+	msg := "📅 *5-day flight schedule*\n" +
+		fmt.Sprintf("_Dates are relative to UTC%s. ", user.Time.UtcOffset) +
+		"For detailed flight information, use /next@rocketrybot._\n\n"
+
+	i := 0
+	for _, launchList := range schedule {
+		// Add date header
+		userLaunchTime := time.Unix(launchList[0].NETUnix, 0).In(user.Time.Location)
+
+		// Time until launch date, relative to user's time zone
+		userNow := time.Now().In(user.Time.Location)
+		timeToLaunch := userLaunchTime.Sub(userNow)
+
+		// ETA string, e.g. "today", "tomorrow", or "in 5 days"
+		etaString := ""
+
+		// See if eta + userNow is still the same day
+		if userNow.Add(timeToLaunch).Day() == userNow.Day() {
+			// Same day: launch is today
+			etaString = "today"
+		} else {
+			// If the day is not the same, do simple subtraction
+			// Remove 24-hour modulo from the time: this leaves us with whole days,
+			// and since the day _has_ to be at least one day from now, the rest is trivial
+			// humanize.Ordinal(...)
+			secUntil := int64(timeToLaunch.Seconds()) - int64(timeToLaunch.Seconds())%(3600*24)
+			daysUntil := secUntil / (3600 * 24) // 0 == tomorrow, 1 == 2 days from now, etc.
+
+			// TODO fix
+			//log.Debug().Msgf("secUntil: %d | daysUntil: %d", secUntil, daysUntil)
+
+			if daysUntil == 0 {
+				etaString = "tomorrow"
+			} else {
+				etaString = fmt.Sprintf("in %d days", daysUntil+1)
+			}
+		}
+
+		// The header of the date, e.g. "June 1st in 7 days"
+		header := fmt.Sprintf("*%s %s* %s\n",
+			userLaunchTime.Month().String(),
+			humanize.Ordinal(userLaunchTime.Day()),
+			etaString,
+		)
+
+		// Add header
+		msg += header
+
+		// Loop over launches, add
+		var row string
+		for i, launch := range launchList {
+			if i == 3 {
+				msg += fmt.Sprintf("*+ %d more flights*\n", len(launchList)-i)
+				break
+			}
+
+			if !showMissions {
+				row = fmt.Sprintf("%s%s %s %s",
+					emoji.GetFlag(launch.LaunchProvider.CountryCode),
+					statusToIndicator[launch.Status.Abbrev],
+					launch.LaunchProvider.ShortName(),
+					launch.Rocket.Config.Name)
+			} else {
+				missionName := launch.Mission.Name
+				if missionName == "" {
+					missionName = "Unknown payload"
+				}
+
+				row = fmt.Sprintf("%s%s %s",
+					emoji.GetFlag(launch.LaunchProvider.CountryCode),
+					statusToIndicator[launch.Status.Abbrev], missionName)
+			}
+
+			msg += row + "\n"
+		}
+
+		i += 1
+		if i != len(schedule) {
+			msg += "\n"
+		}
+	}
+
+	// Add the footer
+	msg += "\n" + "🟢🟡🔴 *Launch-time accuracy*"
+
+	// Escape the message, return
+	msg = utils.PrepareInputForMarkdown(msg, "text")
+	return msg
 }

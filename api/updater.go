@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"launchbot/config"
-	"launchbot/ll2"
+	"launchbot/db"
 	"net/http"
 	"time"
 
@@ -17,7 +17,7 @@ import (
 )
 
 /* Performs an LL2 API call */
-func apiCall(client *http.Client) (ll2.LaunchUpdate, error) {
+func apiCall(client *http.Client) (db.LaunchUpdate, error) {
 	const apiVersion = "2.2.0"
 	const requestPath = "launch/upcoming"
 	const apiParams = "mode=detailed&limit=30"
@@ -42,7 +42,7 @@ func apiCall(client *http.Client) (ll2.LaunchUpdate, error) {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error creating request")
-		return ll2.LaunchUpdate{}, err
+		return db.LaunchUpdate{}, err
 	}
 
 	// Add user-agent headers, because we're nice
@@ -54,7 +54,7 @@ func apiCall(client *http.Client) (ll2.LaunchUpdate, error) {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error performing GET request")
-		return ll2.LaunchUpdate{}, err
+		return db.LaunchUpdate{}, err
 	}
 
 	// Read bytes from returned data
@@ -63,16 +63,16 @@ func apiCall(client *http.Client) (ll2.LaunchUpdate, error) {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error parsing resp body")
-		return ll2.LaunchUpdate{}, err
+		return db.LaunchUpdate{}, err
 	}
 
 	// Unmarshal into a launch update struct
-	var update ll2.LaunchUpdate
+	var update db.LaunchUpdate
 	err = json.Unmarshal(bytes, &update)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error unmarshaling JSON")
-		return ll2.LaunchUpdate{}, err
+		return db.LaunchUpdate{}, err
 	}
 
 	// Set update count manually
@@ -112,14 +112,16 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	}
 
 	// Uncomment to force-send notifications
-	for _, launch := range launches {
-		if launch.Status.Abbrev == "Go" || launch.Status.Abbrev == "TBC" {
-			launch.NETUnix = time.Now().Unix() + 30
-			launch.Status.Abbrev = "Go"
-			log.Warn().Msgf("Launch=%s modified to launch 30 seconds from now", launch.Slug)
-			break
+	/*
+		for _, launch := range launches {
+			if launch.Status.Abbrev == "Go" || launch.Status.Abbrev == "TBC" {
+				launch.NETUnix = time.Now().Unix() + 4*60
+				launch.Status.Abbrev = "Go"
+				log.Warn().Msgf("Launch=%s modified to launch 30 seconds from now", launch.Slug)
+				break
+			}
 		}
-	}
+	*/
 
 	// Update launch cache (launch.cache)
 	session.LaunchCache.Update(launches)
@@ -127,7 +129,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	log.Debug().Msg("Hot launch cache updated")
 
 	// Dump launches to disk
-	err = updateLaunchDatabase(launches)
+	err = updateLaunchDatabase(session.Db, launches)
 	log.Info().Msg("Launch database updated")
 
 	if err != nil {

@@ -1,14 +1,21 @@
 package api
 
 import (
-	"launchbot/ll2"
+	"launchbot/db"
+	"sort"
 	"time"
 
 	"github.com/rs/zerolog/log"
 )
 
+// Finds the highest-priority link for the launch
+func GetHighestPriorityVideoLink(links *[]db.ContentURL) db.ContentURL {
+
+	return db.ContentURL{}
+}
+
 /* Inserts the parsed launches into the database. */
-func updateLaunchDatabase(launches []*ll2.Launch) error {
+func updateLaunchDatabase(db *db.Database, launches []*db.Launch) error {
 	// All fields of a launch.Launch struct
 	//fields := reflect.VisibleFields(reflect.TypeOf(struct{ ll2.Launch }{}))
 
@@ -39,21 +46,23 @@ func updateLaunchDatabase(launches []*ll2.Launch) error {
 	//query := fmt.Sprintf("INSERT INTO launches (%s) VALUES (%s)", fields, values)
 	//}
 
+	db.LaunchTableUpdated = time.Now()
+
 	return nil
 }
 
 /* Checks if any launches were postponed */
-func getPostponedLaunches(launches []*ll2.Launch) []*ll2.Launch {
-	postponedLaunches := []*ll2.Launch{}
+func getPostponedLaunches(launches []*db.Launch) []*db.Launch {
+	postponedLaunches := []*db.Launch{}
 
 	return postponedLaunches
 }
 
 /* Checks if the NET of a launch slipped from one update to another. */
-func netSlipped(cache *ll2.LaunchCache, ll2launch *ll2.Launch) (bool, int64) {
+func netSlipped(cache *db.Cache, ll2launch *db.Launch) (bool, int64) {
 	// If cache exists, use it
 	// TODO implement
-	if cache.Updated != 0 {
+	if cache.Updated != (time.Time{}) {
 		// Find launch
 		//log.Info().Msg("[netSlipped()] cache exists")
 
@@ -70,33 +79,42 @@ func netSlipped(cache *ll2.LaunchCache, ll2launch *ll2.Launch) (bool, int64) {
 }
 
 /* Parses the LL2 launch update. */
-func parseLaunchUpdate(cache *ll2.LaunchCache, update *ll2.LaunchUpdate) ([]*ll2.Launch, error) {
+func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, error) {
 	var utcTime time.Time
 	var err error
 
 	// Loop over launches and do any required operations
-	for _, ll2launch := range update.Launches {
+	for _, launch := range update.Launches {
 		// Parse the datetime string as RFC3339 into a time.Time object in UTC
-		utcTime, err = time.ParseInLocation(time.RFC3339, ll2launch.NET, time.UTC)
+		utcTime, err = time.ParseInLocation(time.RFC3339, launch.NET, time.UTC)
 
 		if err != nil {
 			log.Error().Err(err).Msg("Error parsing RFC3339 launch time")
 		}
 
 		// Convert to unix time, store
-		ll2launch.NETUnix = time.Time.Unix(utcTime)
+		launch.NETUnix = time.Time.Unix(utcTime)
 
 		// If launch slipped, set postponed flag
-		postponed, by := netSlipped(cache, ll2launch)
-		if postponed {
-			ll2launch.Postponed = true
-			ll2launch.PostponedBy = by
-		}
+		// TODO implement
+		postponed, by := netSlipped(cache, launch)
+		log.Info().Msgf("Launch postponed (%s): %s", postponed, by)
+
+		/*
+			if postponed {
+				launch.Postponed = true
+				launch.PostponedBy = by
+			}*/
 
 		// TODO If reused stage information, parse...
 
 		//log.Debug().Msgf("[%2d] launch %s processed", i+1, ll2launch.Slug)
 	}
+
+	// Sort launches so they are ordered by NET
+	sort.Slice(update.Launches, func(i, j int) bool {
+		return update.Launches[i].NETUnix < update.Launches[j].NETUnix
+	})
 
 	return update.Launches, nil
 }

@@ -32,7 +32,7 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 
 	for i, launchId := range launchIds {
 		// Pull launch from the cache
-		launch, ok := session.LaunchCache.Launches[launchId]
+		launch, ok := session.LaunchCache.LaunchMap[launchId]
 
 		if !ok {
 			log.Error().Msgf("[notificationWrapper] Launch with id=%s not found in cache", launchId)
