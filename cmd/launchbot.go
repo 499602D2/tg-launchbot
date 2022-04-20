@@ -7,7 +7,6 @@ import (
 	"launchbot/bots"
 	"launchbot/config"
 	"launchbot/db"
-	"launchbot/ll2"
 	"launchbot/logs"
 	"os"
 	"os/signal"
@@ -32,7 +31,7 @@ func setupSignalHandler(session *config.Session) {
 		// Log shutdown
 		log.Info().Msg("🚦 Received interrupt signal: stopping updaters...")
 
-		/* TODO uncomment
+		/* TODO uncomment in production
 		if session.Telegram != nil {
 			session.Telegram.Bot.Stop()
 		}
@@ -46,26 +45,56 @@ func setupSignalHandler(session *config.Session) {
 	}()
 }
 
-func main() {
-	// Create session (TODO init everything in the session at once?)
+func initSession(version string) *config.Session {
+	// Create session
 	session := config.Session{
 		Started: time.Now().Unix(),
-		Version: fmt.Sprintf("3.0.0-pre (%s)", GitSHA[0:7]),
+		Version: fmt.Sprintf("%s (%s)", version, GitSHA[0:7]),
 	}
 
 	// Signal handler (ctrl+c, etc.)
 	setupSignalHandler(&session)
 
-	// Flag to disable API updates
+	// Load config
+	session.Config = config.LoadConfig()
+
+	// Open database (TODO remove owner tag)
+	session.Db = &db.Database{Owner: session.Config.Owner}
+	session.Db.Open(session.Config.DbFolder)
+
+	// Initialize cache
+	session.LaunchCache = &db.Cache{
+		Launches:  []*db.Launch{},
+		LaunchMap: make(map[string]*db.Launch),
+	}
+
+	// Create and initialize the anti-spam system
+	session.Spam = &bots.AntiSpam{}
+	session.Spam.Initialize()
+
+	// Initialize the Telegram bot
+	session.Telegram = &bots.TelegramBot{}
+	session.Telegram.Spam = session.Spam
+	session.Telegram.Cache = session.LaunchCache
+	session.Telegram.Initialize(session.Config.Token.Telegram)
+
+	return &session
+}
+
+func main() {
+	const version = "3.0.0-pre"
+
+	// CLI flags
+	var debug bool
 	var noUpdates bool
 
 	// Command line arguments
-	flag.BoolVar(&session.Debug, "debug", false, "Specify to enable debug mode")
+	flag.BoolVar(&debug, "debug", false, "Specify to enable debug mode")
 	flag.BoolVar(&noUpdates, "no-api-updates", false, "Specify to disable API updates")
 	flag.Parse()
 
 	// Set-up logging
-	if !session.Debug {
+	if !debug {
 		// If not debugging, log to file
 		logf := logs.SetupLogFile("logs")
 		defer logf.Close()
@@ -88,17 +117,10 @@ func main() {
 		88888888 "Y888888  "Y88888 888  888  "Y8888P 888  888 8888888P"   "Y88P"   "Y888       "Y8888P88  "Y88P"`
 
 	log.Info().Msg(strings.Replace(asciiArt, "	", "", -1)) */
-	log.Info().Msgf("🤖 LaunchBot-Go %s started", session.Version)
+	log.Info().Msgf("🤖 LaunchBot-Go %s started", version)
 
-	// Load config
-	session.Config = config.LoadConfig()
-
-	// Open database (TODO remove owner tag)
-	session.Db = &db.Database{Owner: session.Config.Owner}
-	session.Db.Open(session.Config.DbFolder)
-
-	// Initialize cache
-	session.LaunchCache = &ll2.LaunchCache{Launches: make(map[string]*ll2.Launch)}
+	// Create session
+	session := initSession(version)
 
 	// Start notification scheduler in a new thread
 	if !noUpdates {
@@ -109,35 +131,24 @@ func main() {
 		if session.Db.RequireImmediateUpdate() {
 			log.Info().Msg("Db requires an immediate update: updating now...")
 
-			/*
-				Run API update manually and enable auto-scheduler
-				Running this in a go-routine might cause the cache to not be initialized,
-				so we're doing this synchronously.
-			*/
-			api.Updater(&session, true)
+			// Run API update manually and enable auto-scheduler
+			// Running this in a go-routine might cause the cache to not be initialized,
+			// so we're doing this synchronously.
+			api.Updater(session, true)
 		} else {
 			// No need to update: schedule next call
 			log.Info().Msg("Database does not require an immediate update")
 
 			// Since db won't be immediately updated, we will still need to load the cache
 			// TODO implement
-			session.LaunchCache.Populate()
+			// session.LaunchCache.Populate()
 
 			// Schedule next call normally: cache is now populated
-			go api.Scheduler(&session)
+			go api.Scheduler(session)
 		}
 	} else {
 		log.Warn().Msg("API updates disabled")
 	}
-
-	// Create and initialize the anti-spam system
-	session.Spam = &bots.AntiSpam{}
-	session.Spam.Initialize()
-
-	// Initialize the Telegram bot
-	session.Telegram = &bots.TelegramBot{}
-	session.Telegram.Spam = session.Spam
-	session.Telegram.Initialize(session.Config.Token.Telegram)
 
 	// Start the sender in a go-routine
 	go bots.TelegramSender(session.Telegram)
