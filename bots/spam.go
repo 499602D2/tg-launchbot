@@ -48,7 +48,7 @@ func (spam *AntiSpam) Initialize() {
 }
 
 /* When user sends a command, verify the chat is eligible for a command parse. */
-func CommandPreHandler(spam *AntiSpam, user *users.User, sentAt int64) bool {
+func PreHandler(spam *AntiSpam, user *users.User, sentAt int64) bool {
 	spam.Mutex.Lock()
 	chatLog := spam.ChatLogs[*user]
 

@@ -2,6 +2,7 @@ package bots
 
 import (
 	"fmt"
+	"launchbot/messages"
 	"launchbot/users"
 	"testing"
 	"time"
@@ -9,38 +10,26 @@ import (
 
 func TestSetTime(t *testing.T) {
 	txt := "$USERTIME"
-	msg := Message{
+	msg := messages.Message{
 		TextContent: &txt, AddUserTime: true, RefTime: time.Now().Unix(),
 	}
 
 	// Positive offset
-	loc, _ := time.LoadLocation("Europe/Berlin")
-	user1 := users.User{TimeZone: loc}
+	user1 := users.User{}
+	user1.LoadTimeZone()
 	newText := msg.SetTime(&user1)
 	fmt.Println(*newText)
 
 	// Local offset
-	loc, _ = time.LoadLocation("Europe/Helsinki")
-	user1 = users.User{TimeZone: loc}
-	newText = msg.SetTime(&user1)
-	fmt.Println(*newText)
+	// "Europe/Helsinki"
 
 	// Negative offset
-	loc, _ = time.LoadLocation("America/Los_Angeles")
-	user1 = users.User{TimeZone: loc}
-	newText = msg.SetTime(&user1)
-	fmt.Println(*newText)
+	// "America/Los_Angeles"
 
 	// Non-integer offset
-	loc, _ = time.LoadLocation("Australia/Eucla")
-	user1 = users.User{TimeZone: loc}
-	newText = msg.SetTime(&user1)
-	fmt.Println(*newText)
+	// "Australia/Eucla"
 
 	// UTC
-	loc, _ = time.LoadLocation("UTC")
-	user1 = users.User{TimeZone: loc}
-	newText = msg.SetTime(&user1)
-	fmt.Println(*newText)
+	// "UTC"
 
 }

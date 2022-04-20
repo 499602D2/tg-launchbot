@@ -2,6 +2,7 @@ package bots
 
 import (
 	"fmt"
+	"launchbot/messages"
 	"launchbot/users"
 
 	"github.com/rs/zerolog/log"
@@ -77,12 +78,12 @@ https://github.com/go-telebot/telebot/blob/v3.0.0/errors.go#L33
 func errorMonitor(err error, tg *TelegramBot) {
 	// Create a simple error message
 	errMsg := fmt.Sprintf("Processing failure: %#v", err.Error())
-	msg := Message{TextContent: &errMsg, SendOptions: tb.SendOptions{}}
+	msg := messages.Message{TextContent: &errMsg, SendOptions: tb.SendOptions{}}
 	recipients := users.SingleUserList(tg.Owner, false, "tg")
 
 	// Wrap in a sendable
-	sendable := Sendable{
-		Priority: 3, Message: &msg, Recipients: recipients, RateLimit: 30,
+	sendable := messages.Sendable{
+		Message: &msg, Recipients: recipients, RateLimit: 30,
 	}
 
 	// Enqueue message
@@ -119,6 +120,10 @@ func handleTelegramError(err error, tg *TelegramBot) bool {
 	/* 400 (bad request)
 
 	TODO: handle non-send related errors */
+	case tb.ErrMessageNotModified:
+		return true
+	case tb.ErrSameMessageContent:
+		return true
 	case tb.ErrChatNotFound:
 		warnUnhandled(err)
 	case tb.ErrEmptyChatID:

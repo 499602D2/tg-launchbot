@@ -2,10 +2,8 @@ package bots
 
 import (
 	"context"
-	"fmt"
+	"launchbot/messages"
 	"launchbot/users"
-	"launchbot/utils"
-	"strings"
 	"sync"
 	"time"
 
@@ -14,103 +12,15 @@ import (
 	tb "gopkg.in/telebot.v3"
 )
 
-/*
-A sendable implements a "generic" type of a sendable object. This can be a
-notification or a command reply. These have a priority, according to which
-they will be sent.
-*/
-type Sendable struct {
-	/*
-		Priority singifies the importance of this message (0 to 3).
-		By default, sendables should be prioritized in the following order:
-		0 (backburner): old message removal, etc.
-		1 (not important): scheduled notifications
-		2 (more important): replies to commands
-		3 (send immediately): bot added to a new chat, telegram callbacks
-	*/
-	Priority int8
-
-	/*
-		Type, in ("remove", "notification", "command", "callback")
-		Ideally, the sendable will go through a type-switch, according to which
-		the correct execution will be performed.
-	*/
-	Type string
-
-	Message    *Message        // Message (may be empty)
-	Recipients *users.UserList // Recipients of this sendable
-	RateLimit  int             // Ratelimits this sendable should obey
-}
-
-// The message content of a sendable
-type Message struct {
-	TextContent *string
-	AddUserTime bool  // If flipped to true, TextContent contains "$USERTIME"
-	RefTime     int64 // Reference time to use for replacing $USERTIME with
-	SendOptions tb.SendOptions
-}
-
-// Set time field in the message
-func (msg *Message) SetTime(user *users.User) *string {
-	// Load user's time zone, if not already loaded
-	if user.TimeZone == nil {
-		user.LoadTimeZone()
-	}
-
-	// Convert unix time to local time in user's time zone
-	userTime := time.Unix(msg.RefTime, 0).In(user.TimeZone)
-
-	// Pull offset from time zone
-	_, offset := userTime.Zone()
-
-	// Add a plus if the offset is positive
-	offsetSign := map[bool]string{true: "+", false: ""}[offset >= 0]
-
-	// Convert the offset in seconds to offset in hours
-	offsetString := ""
-
-	// If offset is not divisible by 3600, it is not whole hours
-	if offset%3600 != 0 {
-		hours := (offset - (offset % 3600)) / 3600
-		mins := (offset % 3600) / 60
-		offsetString = fmt.Sprintf("%d:%2d", hours, mins)
-	} else {
-		offsetString = fmt.Sprintf("%d", offset/3600)
-	}
-
-	// Create time string, escape it
-	timeString := fmt.Sprintf("%02d:%02d UTC%s%s",
-		userTime.Hour(), userTime.Minute(), offsetSign, offsetString)
-	timeString = utils.PrepareInputForMarkdown(timeString, "text")
-
-	// Set time, return
-	txt := strings.ReplaceAll(*msg.TextContent, "$USERTIME", timeString)
-	return &txt
-}
-
 //  A queue of sendables to be sent
 type Queue struct {
-	MessagesPerSecond float32              // Messages-per-second limit
-	Sendables         map[string]*Sendable // Queue of sendables (uniqueHash:sendable)
-	Mutex             sync.Mutex           // Mutex to avoid concurrent writes
-}
-
-/*
-TODO: the unwrap method would be used to unwrap a sendable into discrete
-objects that are sent, per-chat.
-
-Cons: memory usage
-
-Alternatively: convert recipients to a map[*users.UserList]bool so that
-recipients can be marked as having received the message. This would make
-queueing cheap, and minimize queue inserts and shuffling.
-*/
-func (sendable *Sendable) Unwrap() {
-
+	MessagesPerSecond float32                       // Messages-per-second limit
+	Sendables         map[string]*messages.Sendable // Queue of sendables (uniqueHash:sendable)
+	Mutex             sync.Mutex                    // Mutex to avoid concurrent writes
 }
 
 // Adds a message to the Telegram message queue
-func (queue *Queue) Enqueue(sendable *Sendable, tg *TelegramBot, highPriority bool) {
+func (queue *Queue) Enqueue(sendable *messages.Sendable, tg *TelegramBot, highPriority bool) {
 	// Unique ID for this sendable
 	uuid := uuid.NewV4().String()
 
@@ -132,19 +42,8 @@ func (queue *Queue) Enqueue(sendable *Sendable, tg *TelegramBot, highPriority bo
 	queue.Mutex.Unlock()
 }
 
-/* Switches according to the recipient platform and the sendable type. */
-func (sendable *Sendable) Send() {
-	// Loop over the users, distribute into appropriate send queues
-	switch sendable.Recipients.Platform {
-	case "tg":
-		log.Warn().Msg("Telegram message sender not implemented!")
-	case "dg":
-		log.Warn().Msg("Discord message sender not implemented!")
-	}
-}
-
 /* HighPrioritySender sends singular high-priority messages. */
-func highPrioritySender(tg *TelegramBot, message *Message, user *users.User) bool {
+func highPrioritySender(tg *TelegramBot, message *messages.Message, user *users.User) bool {
 	// If message needs to have its time set properly, do it now
 	text := message.TextContent
 	if message.AddUserTime {
@@ -206,7 +105,7 @@ func clearPriorityQueue(tg *TelegramBot, sleep bool) {
 
 	// Reset high-priority queue
 	tg.HighPriority.HasItemsInQueue = false
-	tg.HighPriority.Queue = []*Sendable{}
+	tg.HighPriority.Queue = []*messages.Sendable{}
 
 	// Unlock high-priority queue
 	tg.HighPriority.Mutex.Unlock()
