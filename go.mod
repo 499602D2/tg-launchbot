@@ -11,10 +11,12 @@ require (
 require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
+	golang.org/x/net v0.0.0-20220420153159-1850ba15e1be // indirect
 )
 
 require (
 	github.com/dustin/go-humanize v1.0.0
+	github.com/go-resty/resty/v2 v2.7.0
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/jayco/go-emoji-flag v0.0.0-20190810054606-01604da018da
 	github.com/mattn/go-sqlite3 v1.14.12 // indirect
