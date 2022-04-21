@@ -72,14 +72,14 @@ func (cache *Cache) Populate(update *LaunchUpdate) {
 // Function goes over the notification states and finds the next notification
 // to send, returning a NotificationTime type with the send-time and all launch
 // IDs associated with this send-time.
-func (cache *Cache) FindNext() *NotificationTime {
+func (cache *Cache) FindNext() *Notification {
 	// Find first send-time from the launch cache
 	earliestTime := int64(0)
 	tbdLaunchCount := 0
 
 	/* Returns a list of notification times
 	(only more than one if two+ notifs share the same send time) */
-	notificationTimes := make(map[int64][]NotificationTime)
+	notificationTimes := make(map[int64][]Notification)
 
 	// How much the send time is allowed to slip, in minutes
 	allowedNetSlip := time.Duration(-5) * time.Minute
@@ -135,7 +135,7 @@ func (cache *Cache) FindNext() *NotificationTime {
 		log.Warn().Msgf("Could not find next notification send time. No-Go launches: %d out of %d",
 			tbdLaunchCount, len(cache.Launches))
 
-		return &NotificationTime{SendTime: 0, Count: 0}
+		return &Notification{SendTime: 0, Count: 0}
 	}
 
 	// Select the list of launches for the earliest timestamp
@@ -153,7 +153,7 @@ func (cache *Cache) FindNext() *NotificationTime {
 		maxTimeWeight := 0
 
 		// Map the weights to a single NotificationTime type
-		weighedNotifs := make(map[int]NotificationTime)
+		weighedNotifs := make(map[int]Notification)
 
 		// Loop over the launches we found at this timestamp
 		for _, notifTime := range notificationList {
