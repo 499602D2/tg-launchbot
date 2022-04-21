@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"launchbot/config"
 	"launchbot/db"
-	"launchbot/messages"
+	"launchbot/sendables"
 	"strings"
 	"time"
 
@@ -15,7 +15,7 @@ import (
 )
 
 // Creates and queues a notification
-func Notify(launch *db.Launch, db *db.Database) *messages.Sendable {
+func Notify(launch *db.Launch, db *db.Database) *sendables.Sendable {
 	// Create message, get notification type
 	text, notification := launch.NotificationMessage()
 
@@ -46,7 +46,7 @@ func Notify(launch *db.Launch, db *db.Database) *messages.Sendable {
 	}
 
 	// Message
-	msg := messages.Message{
+	msg := sendables.Message{
 		TextContent: &text,
 		AddUserTime: true,
 		RefTime:     launch.NETUnix,
@@ -85,7 +85,7 @@ func Notify(launch *db.Launch, db *db.Database) *messages.Sendable {
 	}
 
 	// Create sendable
-	sendable := messages.Sendable{
+	sendable := sendables.Sendable{
 		Type: "notification", Message: &msg, Recipients: recipients,
 		RateLimit: rateLimit,
 	}

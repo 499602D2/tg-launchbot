@@ -1,4 +1,4 @@
-package messages
+package sendables
 
 import (
 	"fmt"
@@ -22,6 +22,7 @@ type Sendable struct {
 }
 
 // The message content of a sendable
+// TODO implement an interface for messages -> TgMessage and DscMessage
 type Message struct {
 	TextContent *string
 	AddUserTime bool  // If flipped to true, TextContent contains "$USERTIME"

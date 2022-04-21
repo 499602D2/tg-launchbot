@@ -2,7 +2,7 @@ package bots
 
 import (
 	"fmt"
-	"launchbot/messages"
+	"launchbot/sendables"
 	"launchbot/users"
 
 	"github.com/rs/zerolog/log"
@@ -78,11 +78,11 @@ https://github.com/go-telebot/telebot/blob/v3.0.0/errors.go#L33
 func errorMonitor(err error, tg *TelegramBot) {
 	// Create a simple error message
 	errMsg := fmt.Sprintf("Processing failure: %#v", err.Error())
-	msg := messages.Message{TextContent: &errMsg, SendOptions: tb.SendOptions{}}
+	msg := sendables.Message{TextContent: &errMsg, SendOptions: tb.SendOptions{}}
 	recipients := users.SingleUserList(tg.Owner, false, "tg")
 
 	// Wrap in a sendable
-	sendable := messages.Sendable{
+	sendable := sendables.Sendable{
 		Message: &msg, Recipients: recipients, RateLimit: 30,
 	}
 

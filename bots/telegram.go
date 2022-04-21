@@ -3,7 +3,7 @@ package bots
 import (
 	"fmt"
 	"launchbot/db"
-	"launchbot/messages"
+	"launchbot/sendables"
 	"launchbot/users"
 	"net/http"
 	"strings"
@@ -25,7 +25,7 @@ type TelegramBot struct {
 
 type HighPriorityQueue struct {
 	HasItemsInQueue bool
-	Queue           []*messages.Sendable
+	Queue           []*sendables.Sendable
 	Mutex           sync.Mutex
 }
 
@@ -34,7 +34,7 @@ func (tg *TelegramBot) Initialize(token string) {
 	// Create primary Telegram queue
 	tg.Queue = &Queue{
 		MessagesPerSecond: 4,
-		Sendables:         make(map[string]*messages.Sendable),
+		Sendables:         make(map[string]*sendables.Sendable),
 	}
 
 	// Create the high-priority queue
@@ -70,13 +70,13 @@ func (tg *TelegramBot) pingHandler(c tb.Context) error {
 
 	// Construct message
 	text := "pong"
-	msg := messages.Message{
+	msg := sendables.Message{
 		TextContent: &text,
 		SendOptions: tb.SendOptions{ParseMode: "Markdown"},
 	}
 
 	// Wrap into a sendable
-	sendable := messages.Sendable{
+	sendable := sendables.Sendable{
 		Type: "command", RateLimit: 5.0,
 		Message:    &msg,
 		Recipients: users.SingleUserList(message.Sender.ID, false, "tg"),
@@ -97,13 +97,13 @@ func (tg *TelegramBot) startHandler(c tb.Context) error {
 	txt := "pong"
 
 	// Construct message
-	msg := messages.Message{
+	msg := sendables.Message{
 		TextContent: &txt,
 		SendOptions: tb.SendOptions{ParseMode: "Markdown"},
 	}
 
 	// Wrap into a sendable
-	sendable := messages.Sendable{
+	sendable := sendables.Sendable{
 		Type: "command", RateLimit: 5.0,
 		Message:    &msg,
 		Recipients: users.SingleUserList(message.Sender.ID, false, "tg"),
@@ -148,7 +148,7 @@ func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
 	kb := [][]tb.InlineButton{{updateBtn, modeBtn}}
 
 	// Construct message
-	msg := messages.Message{
+	msg := sendables.Message{
 		TextContent: &scheduleMsg,
 		SendOptions: tb.SendOptions{
 			ParseMode:   "MarkdownV2",
@@ -157,7 +157,7 @@ func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
 	}
 
 	// Wrap into a sendable
-	sendable := messages.Sendable{
+	sendable := sendables.Sendable{
 		Type: "command", RateLimit: 5.0,
 		Message:    &msg,
 		Recipients: &users.UserList{},

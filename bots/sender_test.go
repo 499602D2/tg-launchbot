@@ -2,7 +2,7 @@ package bots
 
 import (
 	"fmt"
-	"launchbot/messages"
+	"launchbot/sendables"
 	"launchbot/users"
 	"testing"
 	"time"
@@ -10,7 +10,7 @@ import (
 
 func TestSetTime(t *testing.T) {
 	txt := "$USERTIME"
-	msg := messages.Message{
+	msg := sendables.Message{
 		TextContent: &txt, AddUserTime: true, RefTime: time.Now().Unix(),
 	}
 

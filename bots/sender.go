@@ -2,7 +2,7 @@ package bots
 
 import (
 	"context"
-	"launchbot/messages"
+	"launchbot/sendables"
 	"launchbot/users"
 	"sync"
 	"time"
@@ -14,13 +14,13 @@ import (
 
 //  A queue of sendables to be sent
 type Queue struct {
-	MessagesPerSecond float32                       // Messages-per-second limit
-	Sendables         map[string]*messages.Sendable // Queue of sendables (uniqueHash:sendable)
-	Mutex             sync.Mutex                    // Mutex to avoid concurrent writes
+	MessagesPerSecond float32                        // Messages-per-second limit
+	Sendables         map[string]*sendables.Sendable // Queue of sendables (uniqueHash:sendable)
+	Mutex             sync.Mutex                     // Mutex to avoid concurrent writes
 }
 
 // Adds a message to the Telegram message queue
-func (queue *Queue) Enqueue(sendable *messages.Sendable, tg *TelegramBot, highPriority bool) {
+func (queue *Queue) Enqueue(sendable *sendables.Sendable, tg *TelegramBot, highPriority bool) {
 	// Unique ID for this sendable
 	uuid := uuid.NewV4().String()
 
@@ -43,7 +43,7 @@ func (queue *Queue) Enqueue(sendable *messages.Sendable, tg *TelegramBot, highPr
 }
 
 /* HighPrioritySender sends singular high-priority messages. */
-func highPrioritySender(tg *TelegramBot, message *messages.Message, user *users.User) bool {
+func highPrioritySender(tg *TelegramBot, message *sendables.Message, user *users.User) bool {
 	// If message needs to have its time set properly, do it now
 	text := message.TextContent
 	if message.AddUserTime {
@@ -105,7 +105,7 @@ func clearPriorityQueue(tg *TelegramBot, sleep bool) {
 
 	// Reset high-priority queue
 	tg.HighPriority.HasItemsInQueue = false
-	tg.HighPriority.Queue = []*messages.Sendable{}
+	tg.HighPriority.Queue = []*sendables.Sendable{}
 
 	// Unlock high-priority queue
 	tg.HighPriority.Mutex.Unlock()
