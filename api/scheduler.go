@@ -2,13 +2,133 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"launchbot/config"
-	"launchbot/ll2"
+	"launchbot/db"
+	"launchbot/messages"
+	"strings"
 	"time"
 
 	"github.com/procyon-projects/chrono"
 	"github.com/rs/zerolog/log"
+	tb "gopkg.in/telebot.v3"
 )
+
+// Creates and queues a notification
+func Notify(launch *db.Launch, db *db.Database) *messages.Sendable {
+	// Create message, get notification type
+	text, notification := launch.NotificationMessage()
+
+	// TODO make launch.NotificationMessage produce sendables for multiple platforms
+	// V3.1+
+
+	// Send silently if not a 1-hour or 5-minute notification
+	sendSilently := true
+	if notification.Type == "1hour" || notification.Type == "5min" {
+		sendSilently = false
+	}
+
+	// TODO: implement callback handling
+	muteBtn := tb.InlineButton{
+		Text: "🔇 Mute launch",
+		Data: fmt.Sprintf("mute/%s", launch.Id),
+	}
+
+	// TODO: implement callback handling
+	expandBtn := tb.InlineButton{
+		Text: "ℹ️ Expand description",
+		Data: fmt.Sprintf("exp/%s", launch.Id),
+	}
+
+	// Construct the keeb
+	kb := [][]tb.InlineButton{
+		{muteBtn}, {expandBtn},
+	}
+
+	// Message
+	msg := messages.Message{
+		TextContent: &text,
+		AddUserTime: true,
+		RefTime:     launch.NETUnix,
+		SendOptions: tb.SendOptions{
+			ParseMode:           "MarkdownV2",
+			DisableNotification: sendSilently,
+			ReplyMarkup:         &tb.ReplyMarkup{InlineKeyboard: kb},
+		},
+	}
+
+	// TODO Get recipients
+	recipients := launch.GetRecipients(db, notification)
+
+	/*
+		Some notes on just _how_ fast we can send stuff at Telegram's API
+
+		- link tags []() do _not_ count towards the perceived byte-size of
+			the message.
+		- new-lines are counted as 5 bytes (!)
+			- some other symbols, such as '&' or '"" may also count as 5 B
+
+		https://telegra.ph/So-your-bot-is-rate-limited-01-26
+	*/
+
+	/* Set rate-limit based on text length
+	TODO count markdown, ignore links (insert link later?)
+	- does markdown formatting count? */
+	perceivedByteLen := len(text)
+	perceivedByteLen += strings.Count(text, "\n") * 4 // Additional 4 B per newline
+
+	rateLimit := 30
+	if perceivedByteLen >= 512 {
+		// TODO update bot's limiter...?
+		log.Warn().Msgf("Large message (%d bytes): lowering send-rate to 6 msg/s", perceivedByteLen)
+		rateLimit = rateLimit / 5
+	}
+
+	// Create sendable
+	sendable := messages.Sendable{
+		Type: "notification", Message: &msg, Recipients: recipients,
+		RateLimit: rateLimit,
+	}
+
+	/*
+		Loop over the sent-flags, and ensure every previous state is flagged.
+		This is important for launches that come out of the blue, namely launches
+		by e.g. China/Chinese companies, where the exact NET may only appear less
+		than 24 hours before lift-off.
+
+		As an example, the first notification we send might be the 1-hour notification.
+		In this case, we will need to flag the 12-hour and 24-hour notification types
+		as sent, as they are no-longer relevant. This is done below.
+	*/
+
+	iterMap := map[string]string{
+		"5min":   "1hour",
+		"1hour":  "12hour",
+		"12hour": "24hour",
+	}
+
+	// Toggle the current state as sent, after which all flags will be toggled
+	passed := false
+	for curr, next := range iterMap {
+		if !passed && curr == notification.Type {
+			// This notification was sent: set state
+			launch.Notifications[curr] = true
+			passed = true
+		}
+
+		if passed {
+			// If flag has been set, and last type is flagged as unsent, update flag
+			if launch.Notifications[next] == false {
+				log.Debug().Msgf("Set %s to true for launch=%s", next, launch.Id)
+				launch.Notifications[next] = true
+			}
+		}
+	}
+
+	// TODO do database update...?
+
+	return &sendable
+}
 
 /*
 NotificationWrapper is called when scheduled notifications
@@ -41,7 +161,7 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 
 		log.Info().Msgf("[%d] Creating sendable for launch with name=%s", i+1, launch.Name)
 
-		sendable := launch.Notify(session.Db)
+		sendable := Notify(launch, session.Db)
 		session.Telegram.Queue.Enqueue(sendable, session.Telegram, false)
 	}
 }
@@ -50,7 +170,7 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 Schedules a chrono job for when the notification should be sent, with some
 margin for one extra API update before the sending process starts.
 */
-func NotificationScheduler(session *config.Session, notifTime *ll2.NotificationTime) bool {
+func NotificationScheduler(session *config.Session, notifTime *db.Notification) bool {
 	// TODO update job queue with tags (e.g. "notification", "api") for removal
 	// TODO when sending a 5-minute notification, schedule a post-launch check
 	// TODO explore issues caused by using sendTime = time.Now()
