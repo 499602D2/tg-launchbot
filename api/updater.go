@@ -7,17 +7,16 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"launchbot/config"
 	"launchbot/db"
-	"net/http"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/rs/zerolog/log"
 )
 
 /* Performs an LL2 API call */
-func apiCall(client *http.Client) (db.LaunchUpdate, error) {
+func apiCall(client *resty.Client) (db.LaunchUpdate, error) {
 	const apiVersion = "2.2.0"
 	const requestPath = "launch/upcoming"
 	const apiParams = "mode=detailed&limit=30"
@@ -29,46 +28,29 @@ func apiCall(client *http.Client) (db.LaunchUpdate, error) {
 	if useProdUrl {
 		endpoint = "https://ll.thespacedevs.com"
 	} else {
+		log.Warn().Msg("Using development endpoint")
 		endpoint = "https://lldev.thespacedevs.com"
 	}
 
 	// Construct the URL
-	url := fmt.Sprintf(
-		"%s/%s/%s?%s", endpoint, apiVersion, requestPath, apiParams,
-	)
-
-	// Create request
-	request, err := http.NewRequest("GET", url, nil)
-
-	if err != nil {
-		log.Error().Err(err).Msg("Error creating request")
-		return db.LaunchUpdate{}, err
-	}
-
-	// Add user-agent headers, because we're nice
-	// TODO: pull from config
-	request.Header.Add("user-agent", "github.com/499602D2/tg-launchbot")
+	url := fmt.Sprintf("%s/%s/%s?%s", endpoint, apiVersion, requestPath, apiParams)
 
 	// Do request
-	resp, err := client.Do(request)
+	resp, err := client.R().Get(url)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error performing GET request")
 		return db.LaunchUpdate{}, err
 	}
 
-	// Read bytes from returned data
-	defer resp.Body.Close()
-	bytes, err := ioutil.ReadAll(resp.Body)
-
-	if err != nil {
-		log.Error().Err(err).Msg("Error parsing resp body")
-		return db.LaunchUpdate{}, err
+	// Check status code
+	if resp.StatusCode() != 200 {
+		log.Warn().Msgf("Got status code %d", resp.StatusCode())
 	}
 
 	// Unmarshal into a launch update struct
 	var update db.LaunchUpdate
-	err = json.Unmarshal(bytes, &update)
+	err = json.Unmarshal(resp.Body(), &update)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error unmarshaling JSON")
@@ -89,22 +71,21 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	log.Debug().Msg("Starting LL2 API updater...")
 
 	// Create http-client
-	client := http.Client{
-		Timeout: time.Minute,
-	}
+	client := resty.New()
+	client.SetTimeout(time.Duration(1 * time.Minute))
+	client.SetHeader("user-agent", "github.com/499602D2/launchbot-go")
 
 	// Do API call
-	update, err := apiCall(&client)
-	log.Debug().Msgf("Got %d launches", update.Count)
+	update, err := apiCall(client)
 
 	if err != nil {
-		log.Error().Msg("Error performing API update")
+		log.Error().Err(err).Msg("Error performing API update")
 		return false
 	}
 
 	// Parse any relevant data before dumping to disk
 	launches, err := parseLaunchUpdate(session.LaunchCache, &update)
-	log.Debug().Msg("Launch update parsed")
+	log.Debug().Msgf("Launch update parsed (%d launches)", update.Count)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error parsing launch update")

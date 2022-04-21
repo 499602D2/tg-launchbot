@@ -97,8 +97,8 @@ func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, 
 
 		// If launch slipped, set postponed flag
 		// TODO implement
-		postponed, by := netSlipped(cache, launch)
-		log.Info().Msgf("Launch postponed (%s): %s", postponed, by)
+		//postponed, by := netSlipped(cache, launch)
+		//log.Info().Msgf("Launch postponed (%s): %s", postponed, by)
 
 		/*
 			if postponed {
