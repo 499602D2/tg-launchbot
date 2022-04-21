@@ -112,15 +112,15 @@ func Notify(launch *db.Launch, db *db.Database) *sendables.Sendable {
 	for curr, next := range iterMap {
 		if !passed && curr == notification.Type {
 			// This notification was sent: set state
-			launch.Notifications[curr] = true
+			launch.NotificationState.Map[curr] = true
 			passed = true
 		}
 
 		if passed {
 			// If flag has been set, and last type is flagged as unsent, update flag
-			if launch.Notifications[next] == false {
+			if launch.NotificationState.Map[next] == false {
 				log.Debug().Msgf("Set %s to true for launch=%s", next, launch.Id)
-				launch.Notifications[next] = true
+				launch.NotificationState.Map[next] = true
 			}
 		}
 	}
@@ -130,10 +130,7 @@ func Notify(launch *db.Launch, db *db.Database) *sendables.Sendable {
 	return &sendable
 }
 
-/*
-NotificationWrapper is called when scheduled notifications
-are prepared for sending.
-*/
+// NotificationWrapper is called when scheduled notifications are prepared for sending.
 func notificationWrapper(session *config.Session, launchIds []string, refreshData bool) {
 	// TODO compare NETs here after update (this is currently useless)
 	refreshData = false
@@ -166,10 +163,8 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 	}
 }
 
-/*
-Schedules a chrono job for when the notification should be sent, with some
-margin for one extra API update before the sending process starts.
-*/
+// Schedules a chrono job for when the notification should be sent, with some
+// margin for one extra API update before the sending process starts.
 func NotificationScheduler(session *config.Session, notifTime *db.Notification) bool {
 	// TODO update job queue with tags (e.g. "notification", "api") for removal
 	// TODO when sending a 5-minute notification, schedule a post-launch check
@@ -204,10 +199,8 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification) 
 	return true
 }
 
-/*
-Schedules the next API call through Chrono, and delegates calls to
-the notification scheduler.
-*/
+// Schedules the next API call through Chrono, and delegates calls to
+// the notification scheduler.
 func Scheduler(session *config.Session) bool {
 	/* Get time of the next notification. This will be used to
 	determine the time of the next API update, as in how far we
@@ -223,17 +216,17 @@ func Scheduler(session *config.Session) bool {
 	scheduled check. A final check will be performed just before a notification
 	is sent, independent of these scheduled checks. */
 	switch nextNotif.Type {
-	case "24hour":
+	case "24h":
 		// 24-hour window (??? ... 24h)
 		if timeUntilNotif.Hours() >= 6 {
 			autoUpdateTime = time.Now().Add(time.Hour * 6)
 		} else {
 			autoUpdateTime = time.Now().Add(time.Hour * 3)
 		}
-	case "12hour":
+	case "12h":
 		// 12-hour window (24h ... 12h)
 		autoUpdateTime = time.Now().Add(time.Hour * 3)
-	case "1hour":
+	case "1h":
 		// 1-hour window (12h ... 1h)
 		if timeUntilNotif.Hours() >= 4 {
 			autoUpdateTime = time.Now().Add(time.Hour * 2)

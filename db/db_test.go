@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"launchbot/users"
 	"os"
 	"path/filepath"
 	"testing"
@@ -52,7 +53,7 @@ func TestDatabaseOpen(t *testing.T) {
 	}
 }
 
-func TestChatInsert(t *testing.T) {
+func TestChatMethods(t *testing.T) {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC822Z})
 
 	// Open db
@@ -60,8 +61,9 @@ func TestChatInsert(t *testing.T) {
 	dbFolder := "/test"
 	db.Open(dbFolder)
 
+	// Add a whole bunch of users, then remove them
 	for i := 0; i < 10; i++ {
-		chat := Chat{
+		chat := users.User{
 			Id:                   fmt.Sprint(i),
 			Platform:             "tg",
 			Locale:               "Europe/Berlin",
@@ -76,7 +78,19 @@ func TestChatInsert(t *testing.T) {
 		}
 
 		log.Debug().Msgf("Inserted chat with id=%s", chat.Id)
+
+		// Test removal
+		db.RemoveUser(&chat)
 	}
+
+	// Test removing chat that doesn't exist
+	fauxUser := users.User{
+		Id:       "abcd",
+		Platform: "tg",
+	}
+
+	log.Debug().Msg("Deleting non-existent user")
+	db.RemoveUser(&fauxUser)
 
 	// Toggle to remove the files and folders created
 	if true {

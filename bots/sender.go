@@ -4,6 +4,7 @@ import (
 	"context"
 	"launchbot/sendables"
 	"launchbot/users"
+	"strconv"
 	"sync"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 	tb "gopkg.in/telebot.v3"
 )
 
-//  A queue of sendables to be sent
+// A queue of sendables to be sent
 type Queue struct {
 	MessagesPerSecond float32                        // Messages-per-second limit
 	Sendables         map[string]*sendables.Sendable // Queue of sendables (uniqueHash:sendable)
@@ -42,7 +43,7 @@ func (queue *Queue) Enqueue(sendable *sendables.Sendable, tg *TelegramBot, highP
 	queue.Mutex.Unlock()
 }
 
-/* HighPrioritySender sends singular high-priority messages. */
+// HighPrioritySender sends singular high-priority messages.
 func highPrioritySender(tg *TelegramBot, message *sendables.Message, user *users.User) bool {
 	// If message needs to have its time set properly, do it now
 	text := message.TextContent
@@ -50,8 +51,11 @@ func highPrioritySender(tg *TelegramBot, message *sendables.Message, user *users
 		text = message.SetTime(user)
 	}
 
+	// TODO store integer-id
+	id, _ := strconv.Atoi(user.Id)
+
 	// TODO: use sendable.Send()
-	_, err := tg.Bot.Send(tb.ChatID(user.Id),
+	_, err := tg.Bot.Send(tb.ChatID(id),
 		*text, &message.SendOptions,
 	)
 
@@ -70,7 +74,7 @@ func highPrioritySender(tg *TelegramBot, message *sendables.Message, user *users
 	return true
 }
 
-/* Clears the priority queue. */
+// Clears the priority queue.
 func clearPriorityQueue(tg *TelegramBot, sleep bool) {
 	// Lock the high-priority queue
 	tg.HighPriority.Mutex.Lock()
@@ -111,22 +115,20 @@ func clearPriorityQueue(tg *TelegramBot, sleep bool) {
 	tg.HighPriority.Mutex.Unlock()
 }
 
-/*
-TelegramSender is a daemon-like function that listens to the notification
-and priority queues for incoming messages and notifications.
+// TelegramSender is a daemon-like function that listens to the notification
+// and priority queues for incoming messages and notifications.
 
-TODO: alternatively use a job queue + dispatcher (V3.1+)
-- should feature priority tags
+// TODO: alternatively use a job queue + dispatcher (V3.1+)
+// - should feature priority tags
 
-Alternatively: implement Sendables so that they are unwrapped into distinct
-objects, that can then be queued. Then, implement a simple, linked priority-
-weighed queue and a dequeuer + all the related queue/dequeue/insert methods.
+// Alternatively: implement Sendables so that they are unwrapped into distinct
+// objects, that can then be queued. Then, implement a simple, linked priority-
+// weighed queue and a dequeuer + all the related queue/dequeue/insert methods.
 
-This could replace the priority queue, as the head of the queue would be the
-one that's always deleted.
+// This could replace the priority queue, as the head of the queue would be the
+// one that's always deleted.
 
-- Mutexes? Constant locking + unlocking (which may be fine)
-*/
+// - Mutexes? Constant locking + unlocking (which may be fine)
 func TelegramSender(tg *TelegramBot) {
 	const (
 		priorityQueueClearInterval = 3
@@ -170,8 +172,9 @@ func TelegramSender(tg *TelegramBot) {
 					// TODO: use sendable.Send()
 					// Use the tb.Sendable interface?
 					// https://pkg.go.dev/gopkg.in/telebot.v3@v3.0.0?utm_source=gopls#Sendable
+					id, _ := strconv.Atoi(user.Id)
 					sent, err := tg.Bot.Send(
-						tb.ChatID(user.Id), *text,
+						tb.ChatID(id), *text,
 						&sendable.Message.SendOptions,
 					)
 

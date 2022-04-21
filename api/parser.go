@@ -14,43 +14,6 @@ func GetHighestPriorityVideoLink(links *[]db.ContentURL) db.ContentURL {
 	return db.ContentURL{}
 }
 
-/* Inserts the parsed launches into the database. */
-func updateLaunchDatabase(db *db.Database, launches []*db.Launch) error {
-	// All fields of a launch.Launch struct
-	//fields := reflect.VisibleFields(reflect.TypeOf(struct{ ll2.Launch }{}))
-
-	//for _, launch := range launches {
-	// Iterate over keys...? This is one massive insert
-	// Use launchbot/db to execute the query; just construct it here?
-	// Use a const for launch update insert...?
-	// Iterate over the fields of the launch...?
-
-	// Access fields and values with reflect -> construct string
-	// FIRST: do a new schema, see what is needed and what is not
-	// If field is a sub-struct, do...
-
-	//for _, field := range fields {
-	//	fmt.Printf("Key: %s\tType: %s\tValue: %v\n", field.Name, field.Type, reflect.ValueOf(*launch).FieldByName(field.Name))
-	//}
-
-	/*
-		reflectVal := reflect.ValueOf(l)
-		lType := reflectVal.Type()
-
-		for i := 0; i < reflectVal.NumField(); i++ {
-			fmt.Printf("Field: %s\tValue: %v\n", lType.Field(i).Name, reflectVal.Field(i).Interface())
-		} */
-
-	//fields := ""
-	//values := l.FieldValues()
-	//query := fmt.Sprintf("INSERT INTO launches (%s) VALUES (%s)", fields, values)
-	//}
-
-	db.LaunchTableUpdated = time.Now()
-
-	return nil
-}
-
 /* Checks if any launches were postponed */
 func getPostponedLaunches(launches []*db.Launch) []*db.Launch {
 	postponedLaunches := []*db.Launch{}
@@ -94,6 +57,13 @@ func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, 
 
 		// Convert to unix time, store
 		launch.NETUnix = time.Time.Unix(utcTime)
+
+		// Set launched status
+		// 3: success, 4: failure, 6: in-flight, 7: partial failure
+		switch launch.Status.Id {
+		case 3, 4, 6, 7:
+			launch.Launched = true
+		}
 
 		// If launch slipped, set postponed flag
 		// TODO implement

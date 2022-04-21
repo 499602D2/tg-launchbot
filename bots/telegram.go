@@ -16,6 +16,7 @@ import (
 
 type TelegramBot struct {
 	Bot          *tb.Bot
+	Db           *db.Database
 	Cache        *db.Cache
 	Queue        *Queue
 	HighPriority *HighPriorityQueue
@@ -64,7 +65,9 @@ func (tg *TelegramBot) Initialize(token string) {
 
 func (tg *TelegramBot) pingHandler(c tb.Context) error {
 	message := c.Message()
-	if !PreHandler(tg.Spam, &users.User{Platform: "tg", Id: message.Sender.ID}, message.Unixtime) {
+	user := *tg.Db.LoadUser(fmt.Sprint(message.Sender.ID), "tg")
+
+	if !PreHandler(tg, &user, message.Unixtime) {
 		return nil
 	}
 
@@ -85,12 +88,18 @@ func (tg *TelegramBot) pingHandler(c tb.Context) error {
 	// Add to send queue
 	go tg.Queue.Enqueue(&sendable, tg, true)
 
+	// Save stats
+	// TODO regularly dump stats to disk (e.g. whenever user cache is cleaned)
+	go tg.Db.SaveUser(&user)
+
 	return nil
 }
 
 func (tg *TelegramBot) startHandler(c tb.Context) error {
 	message := c.Message()
-	if !PreHandler(tg.Spam, &users.User{Platform: "tg", Id: message.Sender.ID}, message.Unixtime) {
+	user := *tg.Db.LoadUser(fmt.Sprint(message.Sender.ID), "tg")
+
+	if !PreHandler(tg, &user, message.Unixtime) {
 		return nil
 	}
 
@@ -122,12 +131,11 @@ func (tg *TelegramBot) startHandler(c tb.Context) error {
 
 func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
 	message := c.Message()
-	if !PreHandler(tg.Spam, &users.User{Platform: "tg", Id: message.Sender.ID}, message.Unixtime) {
+	user := *tg.Db.LoadUser(fmt.Sprint(message.Sender.ID), "tg")
+
+	if !PreHandler(tg, &user, message.Unixtime) {
 		return nil
 	}
-
-	// User of this message
-	user := users.User{Platform: "tg", Id: c.Message().Sender.ID}
 
 	// Get text for the message
 	scheduleMsg := tg.Cache.ScheduleMessage(&user, false)
@@ -176,10 +184,10 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 	cb := c.Callback()
 
 	// User
-	user := users.User{Platform: "tg", Id: c.Chat().ID}
+	user := *tg.Db.LoadUser(fmt.Sprint(cb.Sender.ID), "tg")
 
 	// Enforce rate-limits
-	if !PreHandler(tg.Spam, &user, time.Now().Unix()) {
+	if !PreHandler(tg, &user, time.Now().Unix()) {
 		return nil
 	}
 

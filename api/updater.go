@@ -78,6 +78,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	// Do API call
 	update, err := apiCall(client)
 
+	// TODO use api.errors
 	if err != nil {
 		log.Error().Err(err).Msg("Error performing API update")
 		return false
@@ -104,17 +105,15 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 		}
 	*/
 
-	// Update launch cache (launch.cache)
+	// Update hot launch cache
 	session.LaunchCache.Update(launches)
-	log.Warn().Msg("USING FORCED NOTIFICATION STATES: remove from cache.Update()")
 	log.Debug().Msg("Hot launch cache updated")
 
-	// Dump launches to disk
-	err = updateLaunchDatabase(session.Db, launches)
+	// Update on-disk database
+	err = session.Db.Update(launches)
 	log.Info().Msg("Launch database updated")
 
 	if err != nil {
-		// TODO can we continue without a database insert?
 		log.Error().Err(err).Msg("Error inserting launches to database")
 		return false
 	}

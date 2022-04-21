@@ -34,7 +34,7 @@
 
 - [ ] Add database functions
 	- [x] Create database, auto-migrations
-	- [ ] Launch inserts
+	- [x] Launch inserts
 	- [ ] Stats updates
 	- [ ] User functions
 		- [ ] Statistics
@@ -75,7 +75,8 @@
 	- Also, be smarter about telebot's logging
 
 ### Nice-to-haves before 3.0.0
-- [x] Notify admin on any processing failure
+- [ ] Notify admin on any processing failure
+	- [x] Telegram
 
 ### Future: 3.1 and onwards
 - [ ] Handle window starts/ends

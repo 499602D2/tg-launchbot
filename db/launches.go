@@ -12,12 +12,14 @@ import (
 	"github.com/dustin/go-humanize"
 	emoji "github.com/jayco/go-emoji-flag"
 	"github.com/rs/zerolog/log"
+	"gorm.io/gorm"
 )
 
 // TODO save in a database table + cache
 // V3.1 (load IDs from LL2)
 var LSPShorthands = map[int]string{
 	63:  "ROSCOSMOS",
+	96:  "KhSC",
 	115: "Arianespace",
 	124: "ULA",
 	147: "Rocket Lab",
@@ -60,27 +62,34 @@ type Launch struct {
 	WebcastIsLive  bool           `json:"webcast_live"`
 	Url            string         `json:"url"`
 
-	NETUnix     int64  // Calculated from NET
-	WebcastLink string // Highest-priority link from VidURLs
+	NETUnix     int64     // Calculated from NET
+	Launched    bool      // If success/failure/partial_failure
+	WebcastLink string    // Highest-priority link from VidURLs
+	ApiUpdate   time.Time // Last API update
 
-	// Manually, stored in the database (capture on cache updates)
+	// Status of notification sends (boolean + non-embedded map)
+	NotificationState NotificationState `gorm:"embedded"`
+
+	// Information not dumped into the database (-> manual parse on a cache init from db)
+	InfoURL []ContentURL `json:"infoURLs" gorm:"-:all"` // Not embedded into db: parsed manually
+	VidURL  []ContentURL `json:"vidURLs" gorm:"-:all"`  // Not embedded into db: parsed manually
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt gorm.DeletedAt `gorm:"index"`
+}
+
+// Maps the send times to send states.
+type NotificationState struct {
 	Sent24h  bool
 	Sent12h  bool
 	Sent1h   bool
 	Sent5min bool
 
-	// Status of notification sends (e.g. "24hour": false), not embedded
-	Notifications NotificationStates `gorm:"-:all"`
-
-	// Information not dumped into the database (-> manual parse on a cache init from db)
-	InfoURL []ContentURL `json:"infoURLs" gorm:"-:all"` // Not embedded into db: parsed manually
-	VidURL  []ContentURL `json:"vidURLs" gorm:"-:all"`  // Not embedded into db: parsed manually
+	// Maps send-times to boolean states.
+	// Keys are equal to the NotificationState boolean fields.
+	Map map[string]bool `gorm:"-:all"`
 }
-
-// Maps the send times to send states.
-// Keys: (24hour, 12hour, 1hour, 5min)
-// Value: bool, indicating sent status
-type NotificationStates map[string]bool
 
 type LaunchStatus struct {
 	Id          int    `json:"id"`
@@ -398,7 +407,7 @@ func (launch *Launch) PostponeNotify(postponedTo int) {
 func (launch *Launch) GetRecipients(db *Database, notifType *Notification) *users.UserList {
 	// TODO Implement
 	recipients := users.UserList{Platform: "tg", Users: []*users.User{}}
-	user := users.User{Platform: recipients.Platform, Id: db.Owner}
+	user := users.User{Platform: recipients.Platform, Id: fmt.Sprint(db.Owner)}
 
 	recipients.Add(user, true)
 
@@ -409,16 +418,16 @@ func (launch *Launch) GetRecipients(db *Database, notifType *Notification) *user
 func (launch *Launch) NextNotification() Notification {
 	// TODO do this smarter instead of re-declaring a billion times
 	NotificationSendTimes := map[string]time.Duration{
-		"24hour": time.Duration(24) * time.Hour,
-		"12hour": time.Duration(12) * time.Hour,
-		"1hour":  time.Duration(1) * time.Hour,
-		"5min":   time.Duration(5) * time.Minute,
+		"Sent24h":  time.Duration(24) * time.Hour,
+		"Sent12h":  time.Duration(12) * time.Hour,
+		"Sent1h":   time.Duration(1) * time.Hour,
+		"Sent5min": time.Duration(5) * time.Minute,
 	}
 
 	// Minutes the send-time is allowed to slip by
 	allowedSlipMins := 5
 
-	for notifType, sent := range launch.Notifications {
+	for notifType, sent := range launch.NotificationState.Map {
 		// Map starts from 24hour, goes down to 5min
 		if sent == false {
 			// How many seconds before NET the notification is sent
@@ -452,12 +461,14 @@ func (launch *Launch) NextNotification() Notification {
 					// Modify to send in 5 seconds
 					sendTime = time.Now().Unix() + 5
 
+					notifType = strings.ReplaceAll(notifType, "Sent", "")
 					return Notification{Type: notifType, SendTime: sendTime,
 						LaunchId: launch.Id, LaunchName: launch.Name, Count: 1}
 				}
 			}
 
 			// Sent is false and has not been missed: return type
+			notifType = strings.ReplaceAll(notifType, "Sent", "")
 			return Notification{Type: notifType, SendTime: sendTime,
 				LaunchId: launch.Id, LaunchName: launch.Name, Count: 1}
 		}
@@ -484,4 +495,27 @@ func (provider *LaunchProvider) ShortName() string {
 	}
 
 	return provider.Name
+}
+
+// Updates the notification-state map from the boolean values
+func (state *NotificationState) UpdateMap() {
+	state.Map = map[string]bool{
+		"Sent24h":  state.Sent24h,
+		"Sent12h":  state.Sent12h,
+		"Sent1h":   state.Sent1h,
+		"Sent5min": state.Sent5min,
+	}
+}
+
+// Updates the notification-state booleans from the map
+func (state *NotificationState) UpdateFlags() {
+	state.Sent24h = state.Map["Sent24h"]
+	state.Sent12h = state.Map["Sent12h"]
+	state.Sent1h = state.Map["Sent1h"]
+	state.Sent5min = state.Map["Sent5min"]
+}
+
+// A simple wrapper to initialize a new notification state from struct's boolean values
+func (state *NotificationState) Load() {
+	state.UpdateMap()
 }

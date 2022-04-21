@@ -2,34 +2,52 @@ package users
 
 import (
 	"fmt"
+	"launchbot/stats"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"gorm.io/gorm"
 )
 
 type User struct {
-	Platform string // Discord=dg, Telegram=tb, Email=email
-	Id       int64
-	Time     UserTime
+	Id                   string   `gorm:"primaryKey;index:enabled;index:disabled"`
+	Platform             string   `gorm:"primaryKey"`
+	Locale               string   // E.g. "Europe/Berlin"
+	Time                 UserTime `gorm:"-:all"`
+	Enabled24h           bool     `gorm:"index:enabled;index:disabled"`
+	Enabled12h           bool     `gorm:"index:enabled;index:disabled"`
+	Enabled1h            bool     `gorm:"index:enabled;index:disabled"`
+	Enabled5min          bool     `gorm:"index:enabled;index:disabled"`
+	SubscribedAll        bool     `gorm:"index:enabled;index:disabled"`
+	SubscribedNewsletter bool
+	SubscribedTo         string     // List of LSP IDs
+	UnsubscribedFrom     string     // List of LSP IDs
+	Stats                stats.User `gorm:"embedded"`
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	DeletedAt            gorm.DeletedAt `gorm:"index"`
 }
 
+// User-time, to help with caching and minimize DB reads
 type UserTime struct {
 	Location  *time.Location // User's time zone for the Time module
 	UtcOffset string         // A legible UTC offset string, e.g. "UTC+5"
 }
 
-/*
-Extends the User type by creating a list of users.
-This can be userful for e.g. sending notifications to one platform.
-*/
+type UserCache struct {
+	Users []*User
+}
+
+// Extends the User type by creating a list of users.
+// This can be userful for e.g. sending notifications to one platform.
 type UserList struct {
 	Platform string
 	Users    []*User
 	Mutex    sync.Mutex
 }
 
-/* Loads the user's time zone information from cache/disk */
+// Loads the user's time zone information from cache/disk
 func (user *User) LoadTimeZone() {
 	// TODO do properly
 	tz, err := time.LoadLocation("Europe/Helsinki")
@@ -66,7 +84,7 @@ func (user *User) LoadTimeZone() {
 	log.Warn().Msg("Proper time zone loading not implemented!")
 }
 
-/* Adds a single user to a UserList and adds a time zone if required */
+// Adds a single user to a UserList and adds a time zone if required
 func (userList *UserList) Add(user User, addTimeZone bool) {
 	userList.Mutex.Lock()
 
@@ -86,7 +104,7 @@ func SingleUserList(id int64, addTimeZone bool, platform string) *UserList {
 	list := UserList{Platform: platform}
 
 	// Create user
-	user := User{Platform: platform, Id: id}
+	user := User{Platform: platform, Id: fmt.Sprint(id)}
 
 	// Add user, return
 	list.Add(user, addTimeZone)

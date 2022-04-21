@@ -48,9 +48,9 @@ func (spam *AntiSpam) Initialize() {
 }
 
 /* When user sends a command, verify the chat is eligible for a command parse. */
-func PreHandler(spam *AntiSpam, user *users.User, sentAt int64) bool {
-	spam.Mutex.Lock()
-	chatLog := spam.ChatLogs[*user]
+func PreHandler(tg *TelegramBot, user *users.User, sentAt int64) bool {
+	tg.Spam.Mutex.Lock()
+	chatLog := tg.Spam.ChatLogs[*user]
 
 	// If limiter doesn't exist, create it
 	if chatLog.Limiter == nil {
@@ -58,13 +58,16 @@ func PreHandler(spam *AntiSpam, user *users.User, sentAt int64) bool {
 		chatLog.Limiter = rate.NewLimiter(rate.Every(time.Second*3), 2)
 	}
 
+	// Run limiter
 	if chatLog.Limiter.Allow() == false {
 		log.Debug().Msg("limiter.Allow() returned false...")
 
 		// Dummy context
 		ctx := context.Background()
 
+		// If limiter returned false, wait until we can proceed
 		err := chatLog.Limiter.Wait(ctx)
+
 		if err != nil {
 			log.Error().Err(err).Msgf("Error using Limiter.Wait()")
 		}
@@ -81,7 +84,15 @@ func PreHandler(spam *AntiSpam, user *users.User, sentAt int64) bool {
 
 	// No spam, update chat's ConversionLog
 	// chatLog.NextAllowedCommandTimestamp = time.Now().Unix() + spam.Rules["TimeBetweenCommands"]
-	spam.ChatLogs[*user] = chatLog
-	spam.Mutex.Unlock()
+	tg.Spam.ChatLogs[*user] = chatLog
+	tg.Spam.Mutex.Unlock()
+
+	// Bump stats
+	user.Stats.SentCommands++
+
+	// Save stats
+	// TODO save automatically whenever chat cache is cleaned
+	go tg.Db.SaveUser(user)
+
 	return true
 }

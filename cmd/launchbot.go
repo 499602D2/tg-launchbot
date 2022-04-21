@@ -76,6 +76,7 @@ func initSession(version string) *config.Session {
 	session.Telegram = &bots.TelegramBot{}
 	session.Telegram.Spam = session.Spam
 	session.Telegram.Cache = session.LaunchCache
+	session.Telegram.Db = session.Db
 	session.Telegram.Initialize(session.Config.Token.Telegram)
 
 	return &session
@@ -128,7 +129,7 @@ func main() {
 		session.Scheduler = chrono.NewDefaultTaskScheduler()
 
 		// Before doing finer scheduling, check if we need to update immediately
-		if session.Db.RequireImmediateUpdate() {
+		if session.Db.RequiresImmediateUpdate() {
 			log.Info().Msg("Db requires an immediate update: updating now...")
 
 			// Run API update manually and enable auto-scheduler
@@ -139,9 +140,8 @@ func main() {
 			// No need to update: schedule next call
 			log.Info().Msg("Database does not require an immediate update")
 
-			// Since db won't be immediately updated, we will still need to load the cache
-			// TODO implement
-			// session.LaunchCache.Populate()
+			// Since db won't be immediately updated, we will need to load the cache
+			session.LaunchCache.Populate(session.Db)
 
 			// Schedule next call normally: cache is now populated
 			go api.Scheduler(session)

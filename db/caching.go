@@ -14,16 +14,18 @@ type Cache struct {
 	Mutex     sync.Mutex
 }
 
-// Updates cache with a list of launches
+// Updates cache with a list of fresh launches
 func (cache *Cache) Update(launches []*Launch) {
 	cache.Mutex.Lock()
 	defer cache.Mutex.Unlock()
 
-	// Remove the launch list
+	// Remove the launch list (pointers are preserved in LaunchMap)
 	cache.Launches = []*Launch{}
 
-	// Preserve old launch ID map before deleting it
+	// Preserve old launch-ID map before deleting it
 	oldCache := cache.LaunchMap
+
+	// Initialize the launch-ID -> *launch -map
 	cache.LaunchMap = make(map[string]*Launch)
 
 	// Re-insert all launches into the launch list and launch map
@@ -31,46 +33,59 @@ func (cache *Cache) Update(launches []*Launch) {
 		// Pull old launch
 		oldLaunch, ok := oldCache[launch.Id]
 
-		// Copy notification states, if old launch exists
 		if ok {
-			launch.Notifications = oldLaunch.Notifications
+			// Copy notification states if old launch exists
+			launch.NotificationState = oldLaunch.NotificationState
+		} else {
+			// If states don't exist, initialize from struct's values
+			launch.NotificationState.Load()
 		}
 
 		// Save new launch
 		cache.Launches = append(cache.Launches, launch)
 		cache.LaunchMap[launch.Id] = launch
-
-		if !ok {
-			// TODO REMOVE ONCE PARSING IMPLEMENTED
-			testNotifs := NotificationStates{
-				"24hour": false, "12hour": false,
-				"1hour": false, "5min": false,
-			}
-
-			cache.LaunchMap[launch.Id].Notifications = testNotifs
-		}
 	}
 
 	cache.Updated = time.Now()
 }
 
 // Populates the cache from database
-func (cache *Cache) Populate(update *LaunchUpdate) {
+func (cache *Cache) Populate(db *Database) {
 	cache.Mutex.Lock()
 
-	// TODO implement
-	// - select all launches that have not launched
-	// - create a list of launch objects from the returned rows
-	// - do a cache.Update()
+	// Save found launches to a slice
+	var launches []*Launch
 
-	// TODO load notification states from the database for all launches
-	// (launch.Notifications)
+	// Find all launches that have not launched
+	launch := Launch{Launched: false}
+	result := db.Conn.Where(&launch).Find(&launches)
+
+	switch result.Error {
+	case nil:
+		break
+	default:
+		log.Error().Err(result.Error).Msg("Encountered error while populating launch cache")
+	}
+
+	// Assign to cache
+	cache.Launches = launches
+
+	// Initialize the launch-ID -> *launch -map
+	cache.LaunchMap = make(map[string]*Launch)
+
+	// Loop over launches, init cache map + notification states
+	for _, launch := range launches {
+		cache.LaunchMap[launch.Id] = launch
+		launch.NotificationState.UpdateMap()
+	}
+
+	log.Info().Msgf("Cache populated with %d launches", len(launches))
 	cache.Mutex.Unlock()
 }
 
 // Finds the next notification send-time from the launch cache.
-// Function goes over the notification states and finds the next notification
-// to send, returning a NotificationTime type with the send-time and all launch
+// Function goes over the notification states, finding the next notification
+// to send. Returns a Notification-type, with the send-time and all launch
 // IDs associated with this send-time.
 func (cache *Cache) FindNext() *Notification {
 	// Find first send-time from the launch cache
