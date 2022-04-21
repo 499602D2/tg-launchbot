@@ -70,12 +70,7 @@ func TestChatMethods(t *testing.T) {
 			SubscribedNewsletter: true,
 		}
 
-		err := db.Conn.Create(&chat).Error
-
-		if err != nil {
-			log.Error().Err(err).Msg("Transaction failed")
-			t.Fail()
-		}
+		db.SaveUser(&chat)
 
 		log.Debug().Msgf("Inserted chat with id=%s", chat.Id)
 

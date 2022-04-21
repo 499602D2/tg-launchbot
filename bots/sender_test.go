@@ -16,7 +16,7 @@ func TestSetTime(t *testing.T) {
 
 	// Positive offset
 	user1 := users.User{}
-	user1.LoadTimeZone()
+	user1.SetTimeZone()
 	newText := msg.SetTime(&user1)
 	fmt.Println(*newText)
 

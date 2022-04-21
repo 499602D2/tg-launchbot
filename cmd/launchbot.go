@@ -123,27 +123,21 @@ func main() {
 	// Create session
 	session := initSession(version)
 
-	// Start notification scheduler in a new thread
 	if !noUpdates {
 		// Create a new task scheduler, assign to session
 		session.Scheduler = chrono.NewDefaultTaskScheduler()
 
 		// Before doing finer scheduling, check if we need to update immediately
 		if session.Db.RequiresImmediateUpdate() {
-			log.Info().Msg("Db requires an immediate update: updating now...")
-
 			// Run API update manually and enable auto-scheduler
 			// Running this in a go-routine might cause the cache to not be initialized,
 			// so we're doing this synchronously.
 			api.Updater(session, true)
 		} else {
-			// No need to update: schedule next call
-			log.Info().Msg("Database does not require an immediate update")
-
 			// Since db won't be immediately updated, we will need to load the cache
 			session.LaunchCache.Populate(session.Db)
 
-			// Schedule next call normally: cache is now populated
+			// Start scheduler normally: cache is now populated
 			go api.Scheduler(session)
 		}
 	} else {

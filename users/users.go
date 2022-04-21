@@ -47,10 +47,10 @@ type UserList struct {
 	Mutex    sync.Mutex
 }
 
-// Loads the user's time zone information from cache/disk
-func (user *User) LoadTimeZone() {
-	// TODO do properly
-	tz, err := time.LoadLocation("Europe/Helsinki")
+// Sets the user's user.Time field. Called when user is loaded from or saved to DB.
+func (user *User) SetTimeZone() {
+	// If locale is empty, the default is UTC
+	tz, err := time.LoadLocation(user.Locale)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error loading time zone for user")
@@ -60,7 +60,7 @@ func (user *User) LoadTimeZone() {
 	// Create time field for user
 	user.Time = UserTime{
 		Location:  tz,
-		UtcOffset: "",
+		UtcOffset: "UTC",
 	}
 
 	// Get offset from user's current time
@@ -80,8 +80,6 @@ func (user *User) LoadTimeZone() {
 
 		user.Time.UtcOffset += fmt.Sprintf("%d:%2d", hours, mins)
 	}
-
-	log.Warn().Msg("Proper time zone loading not implemented!")
 }
 
 // Adds a single user to a UserList and adds a time zone if required
@@ -89,12 +87,13 @@ func (userList *UserList) Add(user User, addTimeZone bool) {
 	userList.Mutex.Lock()
 
 	if addTimeZone {
-		user.LoadTimeZone()
+		if user.Time == (UserTime{}) {
+			user.SetTimeZone()
+		}
 	}
 
 	// Add user to the list
 	userList.Users = append(userList.Users, &user)
-
 	userList.Mutex.Unlock()
 }
 

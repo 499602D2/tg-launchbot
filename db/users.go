@@ -16,6 +16,9 @@ func (db *Database) LoadUser(id string, platform string) *users.User {
 	// Check if user exists
 	result := db.Conn.First(&user, "Id = ? AND platform = ?", id, platform)
 
+	// Set time zone when function returns
+	defer user.SetTimeZone()
+
 	switch result.Error {
 	case nil:
 		// No errors: return loaded user
@@ -39,11 +42,14 @@ func (db *Database) LoadUser(id string, platform string) *users.User {
 	return &user
 }
 
-// Save statistics to disk after an update
+// Save user to disk
 func (db *Database) SaveUser(user *users.User) {
 	// Load user
 	temp := users.User{}
 	result := db.Conn.First(&temp, "Id = ? AND platform = ?", user.Id, user.Platform)
+
+	// Set time zone when function returns
+	defer user.SetTimeZone()
 
 	switch result.Error {
 	case nil:

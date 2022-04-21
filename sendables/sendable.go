@@ -45,14 +45,14 @@ func (sendable *Sendable) Send() {
 func (msg *Message) SetTime(user *users.User) *string {
 	// Load user's time zone, if not already loaded
 	if user.Time == (users.UserTime{}) {
-		user.LoadTimeZone()
+		user.SetTimeZone()
 	}
 
 	// Convert unix time to local time in user's time zone
 	userTime := time.Unix(msg.RefTime, 0).In(user.Time.Location)
 
 	// Create time string, escape it
-	timeString := fmt.Sprintf("%02d:%02d UTC%s",
+	timeString := fmt.Sprintf("%02d:%02d %s",
 		userTime.Hour(), userTime.Minute(), user.Time.UtcOffset)
 	timeString = utils.PrepareInputForMarkdown(timeString, "text")
 

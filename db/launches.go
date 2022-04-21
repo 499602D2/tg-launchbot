@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/dustin/go-humanize"
+	"github.com/dustin/go-humanize/english"
 	emoji "github.com/jayco/go-emoji-flag"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
@@ -260,7 +261,7 @@ func (launch *Launch) NotificationMessage() (string, *Notification) {
 // TODO simplify, now that launch cache is truly ordered (do in one loop)
 func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string {
 	if user.Time == (users.UserTime{}) {
-		user.LoadTimeZone()
+		user.SetTimeZone()
 	}
 
 	// List of launch-lists, one per launch date
@@ -272,6 +273,11 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 	// The launch cache is always ordered (sorted when API update is parsed)
 	freeIdx := 0
 	for _, launch := range cache.Launches {
+		// Ignore bad launches (only really with LL2's development endpoint)
+		if launch.NETUnix < time.Now().Unix() && !launch.Launched {
+			continue
+		}
+
 		// Get launch date in user's time zone
 		yy, mm, dd := time.Unix(launch.NETUnix, 0).In(user.Time.Location).Date()
 		dateStr := fmt.Sprintf("%d-%d-%d", yy, mm, dd)
@@ -295,7 +301,6 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 		}
 	}
 
-	// Map launch status to an indicator
 	// https://ll.thespacedevs.com/2.2.0/config/launchstatus/
 	statusToIndicator := map[string]string{
 		"Partial Failure": "💥",
@@ -310,7 +315,7 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 
 	// Loop over the schedule map and create the message
 	msg := "📅 *5-day flight schedule*\n" +
-		fmt.Sprintf("_Dates are relative to UTC%s. ", user.Time.UtcOffset) +
+		fmt.Sprintf("_Dates are relative to %s. ", user.Time.UtcOffset) +
 		"For detailed flight information, use /next@rocketrybot._\n\n"
 
 	i := 0
@@ -330,28 +335,20 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 			// Same day: launch is today
 			etaString = "today"
 		} else {
-			// If the day is not the same, do simple subtraction
-			// Remove 24-hour modulo from the time: this leaves us with whole days,
-			// and since the day _has_ to be at least one day from now, the rest is trivial
-			// humanize.Ordinal(...)
-			secUntil := int64(timeToLaunch.Seconds()) - int64(timeToLaunch.Seconds())%(3600*24)
-			daysUntil := secUntil / (3600 * 24) // 0 == tomorrow, 1 == 2 days from now, etc.
+			daysUntil := timeToLaunch.Hours() / 24
 
-			// TODO fix
-			//log.Debug().Msgf("secUntil: %d | daysUntil: %d", secUntil, daysUntil)
-
-			if daysUntil == 0 {
+			if daysUntil < 2.0 {
+				// The case of the date being today has already been caught, therefore it's tomorrow
 				etaString = "tomorrow"
 			} else {
-				etaString = fmt.Sprintf("in %d days", daysUntil+1)
+				// Otherwise, just count the days
+				etaString = fmt.Sprintf("in %s", english.Plural(int(daysUntil), "day", "days"))
 			}
 		}
 
 		// The header of the date, e.g. "June 1st in 7 days"
 		header := fmt.Sprintf("*%s %s* %s\n",
-			userLaunchTime.Month().String(),
-			humanize.Ordinal(userLaunchTime.Day()),
-			etaString,
+			userLaunchTime.Month().String(), humanize.Ordinal(userLaunchTime.Day()), etaString,
 		)
 
 		// Add header
@@ -366,10 +363,8 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 			}
 
 			if !showMissions {
-				row = fmt.Sprintf("%s%s %s %s",
-					emoji.GetFlag(launch.LaunchProvider.CountryCode),
-					statusToIndicator[launch.Status.Abbrev],
-					launch.LaunchProvider.ShortName(),
+				row = fmt.Sprintf("%s%s %s %s", emoji.GetFlag(launch.LaunchProvider.CountryCode),
+					statusToIndicator[launch.Status.Abbrev], launch.LaunchProvider.ShortName(),
 					launch.Rocket.Config.Name)
 			} else {
 				missionName := launch.Mission.Name
@@ -394,7 +389,7 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 	// Add the footer
 	msg += "\n" + "🟢🟡🔴 *Launch-time accuracy*"
 
-	// Escape the message, return
+	// Escape the message, return it
 	msg = utils.PrepareInputForMarkdown(msg, "text")
 	return msg
 }
