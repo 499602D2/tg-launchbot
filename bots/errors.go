@@ -86,7 +86,7 @@ func errorMonitor(err error, tg *TelegramBot) {
 		Message: &msg, Recipients: recipients, RateLimit: 30,
 	}
 
-	// Enqueue message
+	// Enqueue message as high-priority
 	tg.Queue.Enqueue(&sendable, tg, true)
 }
 
