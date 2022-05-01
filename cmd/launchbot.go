@@ -8,10 +8,13 @@ import (
 	"launchbot/config"
 	"launchbot/db"
 	"launchbot/logs"
+	"launchbot/users"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/rs/zerolog/pkgerrors"
 
 	"github.com/procyon-projects/chrono"
 	"github.com/rs/zerolog"
@@ -48,8 +51,9 @@ func setupSignalHandler(session *config.Session) {
 func initSession(version string) *config.Session {
 	// Create session
 	session := config.Session{
-		Started: time.Now().Unix(),
-		Version: fmt.Sprintf("%s (%s)", version, GitSHA[0:7]),
+		Started:           time.Now().Unix(),
+		Version:           fmt.Sprintf("%s (%s)", version, GitSHA[0:7]),
+		NotificationTasks: make(map[time.Time]*chrono.ScheduledTask),
 	}
 
 	// Signal handler (ctrl+c, etc.)
@@ -58,15 +62,17 @@ func initSession(version string) *config.Session {
 	// Load config
 	session.Config = config.LoadConfig()
 
-	// Open database (TODO remove owner tag)
-	session.Db = &db.Database{Owner: session.Config.Owner}
-	session.Db.Open(session.Config.DbFolder)
-
 	// Initialize cache
 	session.LaunchCache = &db.Cache{
 		Launches:  []*db.Launch{},
-		LaunchMap: make(map[string]*db.Launch),
-	}
+		LaunchMap: make(map[string]*db.Launch)}
+
+	session.LaunchCache.Users = &users.UserCache{Count: 0}
+
+	// Open database (TODO remove owner tag)
+	session.Db = &db.Database{Owner: session.Config.Owner, Cache: session.LaunchCache}
+	session.Db.Open(session.Config.DbFolder)
+	session.LaunchCache.Database = session.Db
 
 	// Create and initialize the anti-spam system
 	session.Spam = &bots.AntiSpam{}
@@ -86,13 +92,22 @@ func main() {
 	const version = "3.0.0-pre"
 
 	// CLI flags
-	var debug bool
-	var noUpdates bool
+	var (
+		debug          bool
+		noUpdates      bool
+		updateNow      bool
+		useDevEndpoint bool
+	)
 
 	// Command line arguments
 	flag.BoolVar(&debug, "debug", false, "Specify to enable debug mode")
 	flag.BoolVar(&noUpdates, "no-api-updates", false, "Specify to disable API updates")
+	flag.BoolVar(&updateNow, "update-now", false, "Specify to run an API update now")
+	flag.BoolVar(&useDevEndpoint, "dev-endpoint", false, "Specify to use LL2's dev endpoint")
 	flag.Parse()
+
+	// Enable stack traces
+	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
 
 	// Set-up logging
 	if !debug {
@@ -122,23 +137,28 @@ func main() {
 
 	// Create session
 	session := initSession(version)
+	session.UseDevEndpoint = useDevEndpoint
 
 	if !noUpdates {
 		// Create a new task scheduler, assign to session
 		session.Scheduler = chrono.NewDefaultTaskScheduler()
 
 		// Before doing finer scheduling, check if we need to update immediately
-		if session.Db.RequiresImmediateUpdate() {
-			// Run API update manually and enable auto-scheduler
+		if updateNow || session.Db.RequiresImmediateUpdate() {
+			// Run API update manually and enable auto-scheduler.
 			// Running this in a go-routine might cause the cache to not be initialized,
 			// so we're doing this synchronously.
+			if updateNow {
+				log.Info().Msg("--Update-now specified, running API update")
+			}
+
 			api.Updater(session, true)
 		} else {
 			// Since db won't be immediately updated, we will need to load the cache
-			session.LaunchCache.Populate(session.Db)
+			session.LaunchCache.Populate()
 
 			// Start scheduler normally: cache is now populated
-			go api.Scheduler(session)
+			api.Scheduler(session)
 		}
 	} else {
 		log.Warn().Msg("API updates disabled")
