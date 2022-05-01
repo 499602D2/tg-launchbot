@@ -1,6 +1,8 @@
 package db
 
 import (
+	"launchbot/users"
+	"sort"
 	"sync"
 	"time"
 
@@ -11,6 +13,8 @@ type Cache struct {
 	Launches  []*Launch          // An ordered list of launches
 	LaunchMap map[string]*Launch // Maps the launch ID to the launch object
 	Updated   time.Time          // Time the cache was last updated
+	Users     *users.UserCache
+	Database  *Database
 	Mutex     sync.Mutex
 }
 
@@ -19,11 +23,19 @@ func (cache *Cache) Update(launches []*Launch) {
 	cache.Mutex.Lock()
 	defer cache.Mutex.Unlock()
 
+	if cache.Updated == (time.Time{}) {
+		// If cache has not been initialized yet, populate it first so we have all
+		// the notification states we need
+		cache.Mutex.Unlock()
+		cache.Populate()
+		cache.Mutex.Lock()
+	}
+
+	// Preserve old launch-ID map before deleting it, so we can reuse notif. states
+	oldCache := cache.LaunchMap
+
 	// Remove the launch list (pointers are preserved in LaunchMap)
 	cache.Launches = []*Launch{}
-
-	// Preserve old launch-ID map before deleting it
-	oldCache := cache.LaunchMap
 
 	// Initialize the launch-ID -> *launch -map
 	cache.LaunchMap = make(map[string]*Launch)
@@ -38,7 +50,7 @@ func (cache *Cache) Update(launches []*Launch) {
 			launch.NotificationState = oldLaunch.NotificationState
 		} else {
 			// If states don't exist, initialize from struct's values
-			launch.NotificationState.Load()
+			launch.NotificationState = launch.NotificationState.UpdateMap()
 		}
 
 		// Save new launch
@@ -50,7 +62,7 @@ func (cache *Cache) Update(launches []*Launch) {
 }
 
 // Populates the cache from database
-func (cache *Cache) Populate(db *Database) {
+func (cache *Cache) Populate() {
 	cache.Mutex.Lock()
 
 	// Save found launches to a slice
@@ -58,8 +70,9 @@ func (cache *Cache) Populate(db *Database) {
 
 	// Find all launches that have not launched
 	launch := Launch{Launched: false}
-	result := db.Conn.Where(&launch).Find(&launches)
+	result := cache.Database.Conn.Where(&launch).Find(&launches)
 
+	// TODO handle other database errors
 	switch result.Error {
 	case nil:
 		break
@@ -74,10 +87,18 @@ func (cache *Cache) Populate(db *Database) {
 	cache.LaunchMap = make(map[string]*Launch)
 
 	// Loop over launches, init cache map + notification states
-	for _, launch := range launches {
+	for _, launch := range cache.Launches {
+		// Assign to map
 		cache.LaunchMap[launch.Id] = launch
-		launch.NotificationState.UpdateMap()
+
+		// Init the notification states
+		launch.NotificationState = launch.NotificationState.UpdateMap()
 	}
+
+	// Finally, sort the cache by NET
+	sort.Slice(cache.Launches, func(i, j int) bool {
+		return cache.Launches[i].NETUnix < cache.Launches[j].NETUnix
+	})
 
 	log.Info().Msgf("Cache populated with %d launches", len(launches))
 	cache.Mutex.Unlock()
@@ -92,8 +113,8 @@ func (cache *Cache) FindNext() *Notification {
 	earliestTime := int64(0)
 	tbdLaunchCount := 0
 
-	/* Returns a list of notification times
-	(only more than one if two+ notifs share the same send time) */
+	// Returns a list of notification times
+	// (only more than one if two+ notifs share the same send time)
 	notificationTimes := make(map[int64][]Notification)
 
 	// How much the send time is allowed to slip, in minutes
@@ -103,23 +124,23 @@ func (cache *Cache) FindNext() *Notification {
 		// If launch time is TBD/TBC or in the past, don't notify
 		if launch.Status.Abbrev == "Go" {
 			// Calculate the next upcoming send time for this launch
-			next := launch.NextNotification()
+			next := launch.NextNotification(cache.Database)
 
 			if next.AllSent {
 				// If all notifications have already been sent, ignore
-				// log.Warn().Msgf("All notifications have been sent for launch=%s", launch.Id)
+				log.Warn().Msgf("All notifications have been sent for launch=%s", launch.Id)
 				continue
 			}
 
 			// Verify the launch-time is not in the past by more than the allowed slip window
 			if allowedNetSlip.Seconds() > time.Until(time.Unix(next.SendTime, 0)).Seconds() {
-				log.Warn().Msgf("Launch %s is more than 5 minutes into the past",
+				log.Warn().Msgf("[cache.findNext()] Launch %s is more than 5 minutes into the past",
 					next.LaunchName)
 				continue
 			}
 
 			if (next.SendTime < earliestTime) || (earliestTime == 0) {
-				// If time is smaller than last earliestTime, delete old key and insert
+				// If send-time is smaller than last earliestTime, delete old key and insert
 				delete(notificationTimes, earliestTime)
 				earliestTime = next.SendTime
 
@@ -139,12 +160,12 @@ func (cache *Cache) FindNext() *Notification {
 		// Calculate time until notification(s)
 		toNotif := time.Until(time.Unix(earliestTime, 0))
 
-		log.Debug().Msgf("Got next notification send time (%s from now), %d launches)",
+		log.Debug().Msgf("[cache.FindNext] Got next notification send time (%s from now), %d launch(es))",
 			toNotif.String(), len(notificationTimes[earliestTime]))
 
 		// Print launch names in logs
 		for n, l := range notificationTimes[earliestTime] {
-			log.Debug().Msgf("[%d] %s (%s)", n+1, l.LaunchName, l.LaunchId)
+			log.Debug().Msgf("➙ [%d] %s (%s)", n+1, l.LaunchName, l.LaunchId)
 		}
 	} else {
 		log.Warn().Msgf("Could not find next notification send time. No-Go launches: %d out of %d",
@@ -160,8 +181,8 @@ func (cache *Cache) FindNext() *Notification {
 	if len(notificationList) > 1 {
 		// Add more weight to the latest notifications
 		timeWeights := map[string]int{
-			"24hour": 1, "12hour": 2,
-			"1hour": 3, "5min": 4,
+			"24h": 1, "12h": 2,
+			"1h": 3, "5min": 4,
 		}
 
 		// Keep track of largest encountered key (timeWeight)
