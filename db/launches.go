@@ -29,11 +29,11 @@ var LSPShorthands = map[int]string{
 }
 
 type Notification struct {
-	Type       string // In (24hour, 12hour, 1hour, 5min)
-	SendTime   int64  // Unix-time of the notification
-	AllSent    bool   // All notifications sent already?
-	LaunchId   string
-	LaunchName string
+	Type       string   // In (24h, 12h, 1h, 5min)
+	SendTime   int64    // Unix-time of the notification
+	AllSent    bool     // All notifications sent already?
+	LaunchId   string   // Launch ID associated
+	LaunchName string   // Name of launch
 	Count      int      // If more than one, list their count
 	IDs        []string // If more than one, include their IDs here
 }
@@ -168,16 +168,20 @@ type ContentURL struct {
 }
 
 // Produces a launch notification message
-func (launch *Launch) NotificationMessage() (string, *Notification) {
-	notification := launch.NextNotification()
+func (launch *Launch) NotificationMessage(db *Database) (string, *Notification) {
+	notification := launch.NextNotification(db)
 
 	// Map notification type to a header
-	header := map[string]string{
-		"24hour": "in 24 hours",
-		"12hour": "in 12 hours",
-		"1hour":  "in 60 minutes",
-		"5min":   "in 5 minutes",
+	header, ok := map[string]string{
+		"24h":  "in 24 hours",
+		"12h":  "in 12 hours",
+		"1h":   "in 60 minutes",
+		"5min": "in 5 minutes",
 	}[notification.Type]
+
+	if !ok {
+		log.Warn().Msgf("%s not found when mapping notif.Type to header", notification.Type)
+	}
 
 	// If notification type is 5-minute, use real launch time for clarity
 	if notification.Type == "5min" {
@@ -198,9 +202,16 @@ func (launch *Launch) NotificationMessage() (string, *Notification) {
 		}
 	}
 
+	// If mission has no name, use the name of the launch itself (and split by `|`)
 	name := launch.Mission.Name
 	if name == "" {
-		name = strings.Trim(strings.Split(launch.Name, "|")[0], " ")
+		nameSplit := strings.Split(launch.Name, "|")
+
+		if len(nameSplit) > 1 {
+			name = strings.Trim(nameSplit[1], " ")
+		} else {
+			name = strings.Trim(nameSplit[0], " ")
+		}
 	}
 
 	// Shorten long LSP names
@@ -220,6 +231,18 @@ func (launch *Launch) NotificationMessage() (string, *Notification) {
 	// TODO create a copy of the launch -> monospace all relevant fields?
 	// TODO set bot username dynamically (throw a tb.bot object at ll2.notify?)
 
+	// Mission information
+	missionType := launch.Mission.Type
+	missionOrbit := launch.Mission.Orbit.Name
+
+	if missionType == "" {
+		missionType = "Unknown purpose"
+	}
+
+	if missionOrbit == "" {
+		missionOrbit = "Unknown orbit"
+	}
+
 	text := fmt.Sprintf(
 		"🚀 *%s is launching %s*\n"+
 			"*Provider* %s%s\n"+
@@ -234,12 +257,13 @@ func (launch *Launch) NotificationMessage() (string, *Notification) {
 			"🔴 *LAUNCHLINKGOESHERE*\n"+
 			"🔕 *Stop with /notify@tglaunchbot*",
 
+		// Name, launching-in, provider, rocket, launch pad
 		name, header,
-
 		utils.Monospaced(providerName), flag, utils.Monospaced(launch.Rocket.Config.FullName),
 		utils.Monospaced(launch.LaunchPad.Name),
 
-		utils.Monospaced(launch.Mission.Type), utils.Monospaced(launch.Mission.Orbit.Name),
+		// Mission information
+		utils.Monospaced(missionType), utils.Monospaced(missionOrbit),
 	)
 
 	// Prepare message for Telegram's MarkdownV2 parser
@@ -274,7 +298,8 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 	freeIdx := 0
 	for _, launch := range cache.Launches {
 		// Ignore bad launches (only really with LL2's development endpoint)
-		if launch.NETUnix < time.Now().Unix() && !launch.Launched {
+		delta := time.Until(time.Unix(launch.NETUnix, 0))
+		if delta.Seconds() < 0 && launch.Status.Abbrev != "In Flight" {
 			continue
 		}
 
@@ -335,7 +360,19 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 			// Same day: launch is today
 			etaString = "today"
 		} else {
-			daysUntil := timeToLaunch.Hours() / 24
+			var daysUntil float64
+
+			// Remove seconds that are not contributing to a whole day.
+			// As in, TTL might be 1.25 days: extract the .25 days
+			mod := int64(timeToLaunch.Seconds()) % (24 * 3600)
+
+			// If, even after adding the remainder, the day is still today, calculating days is simple
+			if time.Now().Add(time.Second*time.Duration(mod)).Day() == time.Now().Day() {
+				daysUntil = timeToLaunch.Hours() / 24
+			} else {
+				// If the remained, e.g. .25 days, causes us to jump over to tomorrow, add a +1 to the days
+				daysUntil = timeToLaunch.Hours()/24 + 1
+			}
 
 			if daysUntil < 2.0 {
 				// The case of the date being today has already been caught, therefore it's tomorrow
@@ -363,18 +400,21 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 			}
 
 			if !showMissions {
+				// Create the row (vehicle-mode)
 				row = fmt.Sprintf("%s%s %s %s", emoji.GetFlag(launch.LaunchProvider.CountryCode),
-					statusToIndicator[launch.Status.Abbrev], launch.LaunchProvider.ShortName(),
-					launch.Rocket.Config.Name)
+					utils.Monospaced(statusToIndicator[launch.Status.Abbrev]), utils.Monospaced(launch.LaunchProvider.ShortName()),
+					utils.Monospaced(launch.Rocket.Config.Name))
 			} else {
+				// Create the row (mission-mode)
 				missionName := launch.Mission.Name
 				if missionName == "" {
 					missionName = "Unknown payload"
 				}
 
+				// Flag, status, mission name
 				row = fmt.Sprintf("%s%s %s",
 					emoji.GetFlag(launch.LaunchProvider.CountryCode),
-					statusToIndicator[launch.Status.Abbrev], missionName)
+					utils.Monospaced(statusToIndicator[launch.Status.Abbrev]), utils.Monospaced(missionName))
 			}
 
 			msg += row + "\n"
@@ -410,8 +450,8 @@ func (launch *Launch) GetRecipients(db *Database, notifType *Notification) *user
 }
 
 //  Returns the first unsent notification type for a launch
-func (launch *Launch) NextNotification() Notification {
-	// TODO do this smarter instead of re-declaring a billion times
+func (launch *Launch) NextNotification(db *Database) Notification {
+	// Not ordered, so we re-declare the list below
 	NotificationSendTimes := map[string]time.Duration{
 		"Sent24h":  time.Duration(24) * time.Hour,
 		"Sent12h":  time.Duration(12) * time.Hour,
@@ -419,17 +459,26 @@ func (launch *Launch) NextNotification() Notification {
 		"Sent5min": time.Duration(5) * time.Minute,
 	}
 
+	// An ordered list of send times
+	notificationClasses := []string{
+		"Sent24h", "Sent12h", "Sent1h", "Sent5min",
+	}
+
 	// Minutes the send-time is allowed to slip by
 	allowedSlipMins := 5
 
-	for notifType, sent := range launch.NotificationState.Map {
-		// Map starts from 24hour, goes down to 5min
-		if sent == false {
+	// Update map before parsing
+	launch.NotificationState = launch.NotificationState.UpdateMap()
+
+	// Loop over the valid notification classes (24h, 12h, 1h, 5min)
+	for _, notifType := range notificationClasses {
+		// If notification of this type has not been sent, check when it should be sent
+		if launch.NotificationState.Map[notifType] == false {
 			// How many seconds before NET the notification is sent
 			secBeforeNet, ok := NotificationSendTimes[notifType]
 
 			if !ok {
-				log.Error().Msgf("Error parsing notificationType for %s: %s",
+				log.Error().Msgf("[launch.NextNotification] Error parsing notificationType for %s: %s",
 					launch.Id, notifType)
 				continue
 			}
@@ -445,16 +494,26 @@ func (launch *Launch) NextNotification() Notification {
 
 				// TODO implement launch.ClearMissedNotifications + database update
 				if missedBy > time.Minute*time.Duration(allowedSlipMins) {
-					// TODO set as missed in database
-					log.Warn().Msgf("[%s] Missed type=%s notification (by %.2f minutes)",
-						launch.Slug, notifType, missedBy.Minutes())
+					log.Warn().Msgf("Missed type=%s notification by %.2f minutes, id=%s; marking as sent...",
+						notifType, missedBy.Minutes(), launch.Slug)
+
+					// Launch was missed: log, and set as sent in database
+					launch.NotificationState.Map[notifType] = true
+					launch.NotificationState = launch.NotificationState.UpdateFlags()
+
+					// Save state in db
+					err := db.Update([]*Launch{launch}, false, false)
+					if err != nil {
+						log.Error().Err(err).Msg("Error saving updated notification states to disk")
+					}
+
 					continue
 				} else {
-					log.Info().Msgf("[%s] Missed type=%s by under %d min (%.2f min): modifying send-time",
+					log.Info().Msgf("[launch.NextNotification] [%s] Missed type=%s by under %d min (%.2f min): modifying send-time",
 						launch.Slug, notifType, allowedSlipMins, missedBy.Minutes())
 
-					// Modify to send in 5 seconds
-					sendTime = time.Now().Unix() + 5
+					// Modify to send in 10 seconds
+					sendTime = time.Now().Unix() + 10
 
 					notifType = strings.ReplaceAll(notifType, "Sent", "")
 					return Notification{Type: notifType, SendTime: sendTime,
@@ -464,8 +523,10 @@ func (launch *Launch) NextNotification() Notification {
 
 			// Sent is false and has not been missed: return type
 			notifType = strings.ReplaceAll(notifType, "Sent", "")
-			return Notification{Type: notifType, SendTime: sendTime,
-				LaunchId: launch.Id, LaunchName: launch.Name, Count: 1}
+			return Notification{
+				Type: notifType, SendTime: sendTime, LaunchId: launch.Id,
+				LaunchName: launch.Name, Count: 1,
+			}
 		}
 	}
 
@@ -493,24 +554,23 @@ func (provider *LaunchProvider) ShortName() string {
 }
 
 // Updates the notification-state map from the boolean values
-func (state *NotificationState) UpdateMap() {
+func (state *NotificationState) UpdateMap() NotificationState {
 	state.Map = map[string]bool{
 		"Sent24h":  state.Sent24h,
 		"Sent12h":  state.Sent12h,
 		"Sent1h":   state.Sent1h,
 		"Sent5min": state.Sent5min,
 	}
+
+	return *state
 }
 
 // Updates the notification-state booleans from the map
-func (state *NotificationState) UpdateFlags() {
+func (state *NotificationState) UpdateFlags() NotificationState {
+	// Update booleans
 	state.Sent24h = state.Map["Sent24h"]
 	state.Sent12h = state.Map["Sent12h"]
 	state.Sent1h = state.Map["Sent1h"]
 	state.Sent5min = state.Map["Sent5min"]
-}
-
-// A simple wrapper to initialize a new notification state from struct's boolean values
-func (state *NotificationState) Load() {
-	state.UpdateMap()
+	return *state
 }
