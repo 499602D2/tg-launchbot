@@ -11,26 +11,31 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/procyon-projects/chrono"
 	"github.com/rs/zerolog/log"
 )
 
-/* Session is a superstruct to simplify passing around other structs */
+// Session is a superstruct to simplify passing around other structs
 type Session struct {
-	Telegram    *bots.TelegramBot      // Telegram bot this session runs
-	Discord     *bots.DiscordBot       // Discord bot this session runs
-	Spam        *bots.AntiSpam         // Anti-spam struct for session
-	Config      *Config                // Configuration for session
-	LaunchCache *db.Cache              // Launch cache
-	Db          *db.Database           // Pointer to the database object
-	Scheduler   chrono.TaskScheduler   // Chrono scheduler
-	Tasks       []chrono.ScheduledTask // List of tasks pending
-	Version     string                 // Version number
-	Started     int64                  // Unix timestamp of startup time
-	Mutex       sync.Mutex             // Avoid concurrent writes
+	Telegram          *bots.TelegramBot                   // Telegram bot this session runs
+	Discord           *bots.DiscordBot                    // Discord bot this session runs
+	Spam              *bots.AntiSpam                      // Anti-spam struct for session
+	Config            *Config                             // Configuration for session
+	LaunchCache       *db.Cache                           // Launch cache
+	Db                *db.Database                        // Pointer to the database object
+	Scheduler         chrono.TaskScheduler                // Chrono scheduler
+	Tasks             []*chrono.ScheduledTask             // List of Chrono tasks
+	NotificationTasks map[time.Time]*chrono.ScheduledTask // Map a time to a scheduled Chrono task
+	Scheduled         []string                            // A list of launch IDs that have a notification scheduled
+	Version           string                              // Version number
+	Started           int64                               // Unix timestamp of startup time
+	UseDevEndpoint    bool                                // Configure to use LL2's development endpoint
+	Mutex             sync.Mutex                          // Avoid concurrent writes
 }
 
+// Config contains the configuration parameters used by the program
 type Config struct {
 	Token    Tokens     // API tokens
 	DbFolder string     // Folder path the DB lives in
@@ -38,12 +43,13 @@ type Config struct {
 	Mutex    sync.Mutex // Mutex to avoid concurrent writes
 }
 
+// Tokens containts the API tokens used by the bot(s)
 type Tokens struct {
 	Telegram string
 	Discord  string
 }
 
-/* Dumps the config to disk */
+// DumpConfig dumps the config to disk
 func DumpConfig(config *Config) {
 	jsonbytes, err := json.MarshalIndent(config, "", "\t")
 	if err != nil {
@@ -71,7 +77,7 @@ func DumpConfig(config *Config) {
 	file.Close()
 }
 
-/* Loads the config, returns a pointer to it */
+// LoadConfig loads the config and returns a pointer to it
 func LoadConfig() *Config {
 	// Get log file's path relative to working dir
 	wd, _ := os.Getwd()
