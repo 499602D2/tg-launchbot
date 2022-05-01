@@ -16,20 +16,19 @@ import (
 )
 
 /* Performs an LL2 API call */
-func apiCall(client *resty.Client) (db.LaunchUpdate, error) {
+func apiCall(client *resty.Client, useDevEndpoint bool) (db.LaunchUpdate, error) {
 	const apiVersion = "2.2.0"
 	const requestPath = "launch/upcoming"
 	const apiParams = "mode=detailed&limit=30"
 
 	// Set to true to use the ratelimited production end-point
-	useProdUrl := false
 	var endpoint string
 
-	if useProdUrl {
-		endpoint = "https://ll.thespacedevs.com"
-	} else {
+	if useDevEndpoint {
 		log.Warn().Msg("Using development endpoint")
 		endpoint = "https://lldev.thespacedevs.com"
+	} else {
+		endpoint = "https://ll.thespacedevs.com"
 	}
 
 	// Construct the URL
@@ -37,6 +36,8 @@ func apiCall(client *resty.Client) (db.LaunchUpdate, error) {
 
 	// Do request
 	resp, err := client.R().Get(url)
+
+	// TODO resp.IsError() -> handle
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error performing GET request")
@@ -76,7 +77,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	client.SetHeader("user-agent", "github.com/499602D2/launchbot-go")
 
 	// Do API call
-	update, err := apiCall(client)
+	update, err := apiCall(client, session.UseDevEndpoint)
 
 	// TODO use api.errors
 	if err != nil {
@@ -110,7 +111,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	log.Debug().Msg("Hot launch cache updated")
 
 	// Update on-disk database
-	err = session.Db.Update(launches)
+	err = session.Db.Update(launches, true, true)
 	log.Info().Msg("Launch database updated")
 
 	if err != nil {
