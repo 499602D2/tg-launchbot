@@ -11,7 +11,8 @@ require (
 require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	golang.org/x/net v0.0.0-20220420153159-1850ba15e1be // indirect
+	github.com/pkg/errors v0.9.1 // indirect
+	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4 // indirect
 )
 
 require (
@@ -22,10 +23,10 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.12 // indirect
 	github.com/procyon-projects/chrono v1.1.0
 	github.com/satori/go.uuid v1.2.0
-	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4 // indirect
-	golang.org/x/exp v0.0.0-20220414153411-bcd21879b8fd
-	golang.org/x/sys v0.0.0-20220412211240-33da011f77ad // indirect
+	golang.org/x/crypto v0.0.0-20220427172511-eb4f295cb31f // indirect
+	golang.org/x/exp v0.0.0-20220428152302-39d4317da171
+	golang.org/x/sys v0.0.0-20220429233432-b5fbb4746d32 // indirect
 	golang.org/x/time v0.0.0-20220411224347-583f2d630306
-	gorm.io/driver/sqlite v1.3.1
-	gorm.io/gorm v1.23.4
+	gorm.io/driver/sqlite v1.3.2
+	gorm.io/gorm v1.23.5
 )
