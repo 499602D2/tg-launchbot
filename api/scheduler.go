@@ -14,19 +14,13 @@ import (
 	tb "gopkg.in/telebot.v3"
 )
 
-// Creates and queues a notification
-func Notify(launch *db.Launch, db *db.Database) *sendables.Sendable {
+// Notify creates and queues a notification
+func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 	// Create message, get notification type
-	text, notification := launch.NotificationMessage()
+	text, notification := launch.NotificationMessage(database)
 
 	// TODO make launch.NotificationMessage produce sendables for multiple platforms
 	// V3.1+
-
-	// Send silently if not a 1-hour or 5-minute notification
-	sendSilently := true
-	if notification.Type == "1hour" || notification.Type == "5min" {
-		sendSilently = false
-	}
 
 	// TODO: implement callback handling
 	muteBtn := tb.InlineButton{
@@ -51,14 +45,21 @@ func Notify(launch *db.Launch, db *db.Database) *sendables.Sendable {
 		AddUserTime: true,
 		RefTime:     launch.NETUnix,
 		SendOptions: tb.SendOptions{
-			ParseMode:           "MarkdownV2",
-			DisableNotification: sendSilently,
-			ReplyMarkup:         &tb.ReplyMarkup{InlineKeyboard: kb},
+			ParseMode:   "MarkdownV2",
+			ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
 		},
 	}
 
-	// TODO Get recipients
-	recipients := launch.GetRecipients(db, notification)
+	// Send silently if not a 1-hour or 5-minute notification
+	switch notification.Type {
+	case "24hour", "12hour":
+		msg.SendOptions.DisableNotification = true
+	case "1hour", "5min":
+		msg.SendOptions.DisableNotification = false
+	}
+
+	// Get list of recipients
+	recipients := launch.GetRecipients(database, notification)
 
 	/*
 		Some notes on just _how_ fast we can send stuff at Telegram's API
@@ -100,32 +101,46 @@ func Notify(launch *db.Launch, db *db.Database) *sendables.Sendable {
 		In this case, we will need to flag the 12-hour and 24-hour notification types
 		as sent, as they are no-longer relevant. This is done below.
 	*/
-
+	times := []string{"5min", "1h", "12h", "24h"}
 	iterMap := map[string]string{
-		"5min":   "1hour",
-		"1hour":  "12hour",
-		"12hour": "24hour",
+		"5min": "1h",
+		"1h":   "12h",
+		"12h":  "24h",
 	}
 
-	// Toggle the current state as sent, after which all flags will be toggled
+	// Toggle the current state as sent, after which all flags will be toggled.
 	passed := false
-	for curr, next := range iterMap {
-		if !passed && curr == notification.Type {
-			// This notification was sent: set state
-			launch.NotificationState.Map[curr] = true
+	for _, notificationType := range times {
+		// Get the notification type that should have been sent before this one
+		previousType, ok := iterMap[notificationType]
+
+		if !passed && notificationType == notification.Type {
+			// This notification was sent: set state, sprintf to correct format.
+			launch.NotificationState.Map[fmt.Sprintf("Sent%s", notificationType)] = true
 			passed = true
 		}
 
-		if passed {
+		if passed && ok {
 			// If flag has been set, and last type is flagged as unsent, update flag
-			if launch.NotificationState.Map[next] == false {
-				log.Debug().Msgf("Set %s to true for launch=%s", next, launch.Id)
-				launch.NotificationState.Map[next] = true
+			if launch.NotificationState.Map[fmt.Sprintf("Sent%s", previousType)] == false {
+				log.Debug().Msgf("Set %s to true for launch=%s", previousType, launch.Id)
+				launch.NotificationState.Map[fmt.Sprintf("Sent%s", previousType)] = true
 			}
 		}
 	}
 
-	// TODO do database update...?
+	// Flags in the notification-state map have been set: automatically update the
+	// boolean values that are thrown into the database.
+	launch.NotificationState = launch.NotificationState.UpdateFlags()
+
+	// Push changes to database
+	err := database.Update([]*db.Launch{launch}, false, true)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Dumping updated launch notification states to disk failed")
+	} else {
+		log.Debug().Msg("Launch with updated notification states dumped to database")
+	}
 
 	return &sendable
 }
@@ -172,15 +187,23 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification) 
 
 	log.Debug().Msgf("Creating scheduled jobs for %d launch(es)", len(notifTime.IDs))
 
+	// How many seconds before notification time to start the send process
+	scheduledTime := time.Unix(notifTime.SendTime, 0)
+
+	// Check if a task has been scheduled for this time instance
+	scheduled, ok := session.NotificationTasks[scheduledTime]
+	if ok {
+		log.Warn().Msgf("Found already scheduled task for this send-time: %+v", scheduled)
+	}
+
 	// Create task
 	task, err := session.Scheduler.Schedule(func(ctx context.Context) {
 		// Run notification sender
 		notificationWrapper(session, notifTime.IDs, true)
 
 		// Schedule next API update with some margin for an API call
-		// TODO determine margin
 		Scheduler(session)
-	}, chrono.WithTime(time.Unix(notifTime.SendTime, 0)))
+	}, chrono.WithTime(scheduledTime))
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error creating notification task")
@@ -189,10 +212,13 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification) 
 
 	// Lock session, add task to list of scheduled tasks
 	session.Mutex.Lock()
-	session.Tasks = append(session.Tasks, task)
+
+	// TODO keep tasks in database, reload on startup (?)
+	session.NotificationTasks[scheduledTime] = &task
+
 	session.Mutex.Unlock()
 
-	until := time.Until(time.Unix(notifTime.SendTime, 0))
+	until := time.Until(scheduledTime)
 	log.Debug().Msgf("Notifications scheduled for %d launch(es), in %s",
 		len(notifTime.IDs), until.String())
 
@@ -202,9 +228,9 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification) 
 // Schedules the next API call through Chrono, and delegates calls to
 // the notification scheduler.
 func Scheduler(session *config.Session) bool {
-	/* Get time of the next notification. This will be used to
-	determine the time of the next API update, as in how far we
-	can push it. */
+	// Get time of the next notification. This will be used to
+	// determine the time of the next API update, as in how far we
+	// can push it. Returns the exact time the notification must be sent.
 	nextNotif := session.LaunchCache.FindNext()
 	timeUntilNotif := time.Until(time.Unix(nextNotif.SendTime, 0))
 
@@ -272,7 +298,7 @@ func Scheduler(session *config.Session) bool {
 
 	// Lock session, add task to list of scheduled tasks
 	session.Mutex.Lock()
-	session.Tasks = append(session.Tasks, task)
+	session.Tasks = append(session.Tasks, &task)
 	session.Mutex.Unlock()
 
 	log.Info().Msgf("Next auto-update scheduled for %s",
