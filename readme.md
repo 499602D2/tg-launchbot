@@ -16,16 +16,17 @@
 🌟 **Improve performance** by simply switching to Go
 
 ### To-do before 3.0.0
+- [ ] Verify no maps are used where the read is expected to be ordered
 - [ ] LaunchLibrary2 API
 	- [x] `/launch/upcoming`
 	- [ ] `/lsp`
 
 - [ ] Telegram bot API
 	- [ ] Add error handlers
-		- [x] Catch-all type handlers 
-		- [ ] Migrations
+		- [x] Catch-all type handlers
 	- [ ] Implement callbacks
 		- [ ] Notifications
+		- [ ] Commands
 	- [ ] Handle callbacks with sender (limits?)
 	- [ ] Use a dual-limiter
 		- Issues with sends?
@@ -44,7 +45,7 @@
 
 - [ ] Caching
 	- [x] Launches
-	- [ ] Active users
+	- [x] Active users
 		- [ ] Regularly clean cache (once a day, e.g.)
 			- gochron
 
