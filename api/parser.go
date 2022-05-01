@@ -8,7 +8,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Finds the highest-priority link for the launch
+// GetHighestPriorityVideoLink finds the highest-priority link for the launch
 func GetHighestPriorityVideoLink(links *[]db.ContentURL) db.ContentURL {
 
 	return db.ContentURL{}
@@ -64,6 +64,10 @@ func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, 
 		case 3, 4, 6, 7:
 			launch.Launched = true
 		}
+
+		// Save new launch REMOVED
+		// cache.Launches = append(cache.Launches, launch)
+		// cache.LaunchMap[launch.Id] = launch
 
 		// If launch slipped, set postponed flag
 		// TODO implement
