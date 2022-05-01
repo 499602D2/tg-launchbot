@@ -2,10 +2,51 @@ package db
 
 import (
 	"launchbot/users"
+	"sort"
 
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 )
+
+// Finds a user from the user-cache and returns the user
+func (cache *Cache) FindUser(id string, platform string) *users.User {
+	// Set userCache ptr
+	userCache := cache.Users
+
+	// Checks if the chat ID already exists
+	i := sort.SearchStrings(userCache.InCache, id)
+
+	if i < userCache.Count && userCache.Users[i].Id == id {
+		// User is in cache
+		log.Debug().Msgf("Loaded user=%s:%s from cache", userCache.Users[i].Id, userCache.Users[i].Platform)
+		return userCache.Users[i]
+	}
+
+	// User is not in cache; load from db (also sets time zone)
+	user := cache.Database.LoadUser(id, platform)
+
+	// Add user to cache
+	if userCache.Count == i {
+		// Nil or empty slice, or after last element
+		userCache.Users = append(userCache.Users, user)
+		userCache.InCache = append(userCache.InCache, user.Id)
+	} else if i == 0 {
+		// If zeroth index, append
+		userCache.Users = append([]*users.User{user}, userCache.Users...)
+		userCache.InCache = append([]string{user.Id}, userCache.InCache...)
+	} else {
+		// Otherwise, we're inserting in the middle of the array
+		userCache.Users = append(userCache.Users[:i+1], userCache.Users[i:]...)
+		userCache.Users[i] = user
+
+		userCache.InCache = append(userCache.InCache[:i+1], userCache.InCache[i:]...)
+		userCache.InCache[i] = user.Id
+	}
+
+	log.Debug().Msgf("Added user=%s:%s to cache", userCache.Users[i].Id, userCache.Users[i].Platform)
+	userCache.Count++
+	return user
+}
 
 // Load a user from the database. If the user is not found, initialize it in
 // the database, and return the new entry.

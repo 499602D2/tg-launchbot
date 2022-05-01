@@ -36,7 +36,9 @@ type UserTime struct {
 }
 
 type UserCache struct {
-	Users []*User
+	Users   []*User
+	InCache []string
+	Count   int
 }
 
 // Extends the User type by creating a list of users.
