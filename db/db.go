@@ -11,11 +11,13 @@ import (
 	"github.com/rs/zerolog/log"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 )
 
 type Database struct {
 	Conn        *gorm.DB
+	Cache       *Cache
 	LastUpdated time.Time // Last time the Launches-table was updated
 	Size        float32   // Db size in megabytes
 	Owner       int64     // Telegram admin ID
@@ -100,47 +102,44 @@ func (db *Database) Open(dbFolder string) bool {
 }
 
 // Update database with updated launch data
-func (db *Database) Update(launches []*Launch) error {
+func (db *Database) Update(launches []*Launch, apiUpdate bool, useCacheNotifStates bool) error {
 	// Keep track of update time
 	updated := time.Now()
 
 	for _, launch := range launches {
-		// Check if launch exists in database
-		// https://gorm.io/docs/query.html#Retrieving-objects-with-primary-key
-		dummyLaunch := Launch{}
-		result := db.Conn.First(&dummyLaunch, "Id = ?", launch.Id)
-
-		// Set update time
-		launch.ApiUpdate = updated
-
-		switch result.Error {
-		case nil:
-			break
-		case gorm.ErrRecordNotFound:
-			// Record doesn't exist: insert as new
-			result = db.Conn.Create(launch)
-		default:
-			log.Error().Err(result.Error).Msg("Error running db.First()")
-			continue
+		// Set time of API update, if this is one
+		if apiUpdate {
+			launch.ApiUpdate = updated
 		}
 
-		if result.RowsAffected != 0 {
-			// Row exists: update
-			result = db.Conn.Save(launch)
-		}
+		if useCacheNotifStates {
+			// Store status of notification sends
+			cacheLaunch, ok := db.Cache.LaunchMap[launch.Id]
 
-		if result.Error != nil {
-			log.Error().Err(result.Error).Msgf("Database row creation failed for id=%s",
-				launch.Id,
-			)
+			if ok {
+				// Copy notification states if old launch exists
+				launch.NotificationState = cacheLaunch.NotificationState
+			} else {
+				// If states don't exist, initialize from struct's values
+				launch.NotificationState = launch.NotificationState.UpdateMap()
+			}
 		}
 	}
 
-	// if tx.Error != nil {
-	// 	log.Error().Err(tx.Error).Msg("Batch transaction failed")
-	// 	log.Fatal().Msg("Exiting...")
-	// }
+	// Do a single batch upsert (Update all columns, except primary keys, to new value on conflict)
+	// https://gorm.io/docs/create.html#Upsert-x2F-On-Conflict
+	result := db.Conn.Clauses(clause.OnConflict{
+		UpdateAll: true,
+	}).Create(&launches)
 
+	if result.Error != nil {
+		log.Error().Err(result.Error).Msg("Batch insert failed")
+		return result.Error
+	} else {
+		log.Info().Msgf("Updated %d row(s) successfully", result.RowsAffected)
+	}
+
+	// Store LastUpdated value in the database struct
 	db.LastUpdated = updated
 
 	return nil
@@ -157,7 +156,7 @@ func (db *Database) CleanSlippedLaunches() error {
 	// Find all launches that have launched=0, and weren't updated in the last update
 	result := db.Conn.Where(
 		"launched = ? AND updated_at < ? AND net_unix > ?",
-		false, db.LastUpdated, nowUnix,
+		0, db.LastUpdated, nowUnix,
 	).Find(&launch)
 
 	if result.RowsAffected == 0 {
@@ -167,33 +166,9 @@ func (db *Database) CleanSlippedLaunches() error {
 
 	log.Info().Msgf("Deleting %d launches that have slipped out of range", result.RowsAffected)
 	db.Conn.Where("launched = ? AND updated_at < ? AND net_unix > ?",
-		false, db.LastUpdated, nowUnix,
+		0, db.LastUpdated, nowUnix,
 	).Delete(&launch)
 
-	/*
-		# Select all launches
-		cursor.execute(
-		'SELECT unique_id FROM launches WHERE launched = 0 AND last_updated < ? AND net_unix > ?',
-		(last_update, int(time.time())))
-
-		deleted_launches = set()
-		for launch_row in cursor.fetchall():
-			deleted_launches.add(launch_row[0])
-
-		# If no rows returned, nothing to do
-		if len(deleted_launches) == 0:
-			logging.debug('✨ Database already clean: nothing to do!')
-			return
-
-		# More than one launch out of range
-		logging.info(
-		f'✨ Deleting {len(deleted_launches)} launches that have slipped out of range...'
-		)
-
-		cursor.execute(
-			'DELETE FROM launches WHERE launched = 0 AND last_updated < ? AND net_unix > ?',
-			(last_update, int(time.time())))
-	*/
 	log.Info().Msg("Database cleaned")
 	return nil
 }
@@ -213,6 +188,7 @@ func (db *Database) RequiresImmediateUpdate() bool {
 	db.LastUpdated = dest.ApiUpdate
 
 	// If more than an hour since last update, update now
+	// TODO use a function in scheduler to determine if we need to update
 	if time.Since(db.LastUpdated) > time.Hour {
 		log.Info().Msg("More than an hour since last API update: updating now")
 		return true
