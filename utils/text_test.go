@@ -28,6 +28,7 @@ func TestMarkdownEscaper(t *testing.T) {
 
 	testMonospaceStrs := []string{
 		"Hello! This is a description that has lots of spaces.",
+		"",
 	}
 
 	for _, testStr := range testMonospaceStrs {
