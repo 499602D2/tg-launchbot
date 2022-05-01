@@ -65,7 +65,7 @@ func (tg *TelegramBot) Initialize(token string) {
 
 func (tg *TelegramBot) pingHandler(c tb.Context) error {
 	message := c.Message()
-	user := *tg.Db.LoadUser(fmt.Sprint(message.Sender.ID), "tg")
+	user := *tg.Cache.FindUser(fmt.Sprint(message.Sender.ID), "tg")
 
 	if !PreHandler(tg, &user, message.Unixtime) {
 		return nil
@@ -97,7 +97,7 @@ func (tg *TelegramBot) pingHandler(c tb.Context) error {
 
 func (tg *TelegramBot) startHandler(c tb.Context) error {
 	message := c.Message()
-	user := *tg.Db.LoadUser(fmt.Sprint(message.Sender.ID), "tg")
+	user := *tg.Cache.FindUser(fmt.Sprint(message.Sender.ID), "tg")
 
 	if !PreHandler(tg, &user, message.Unixtime) {
 		return nil
@@ -131,7 +131,7 @@ func (tg *TelegramBot) startHandler(c tb.Context) error {
 
 func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
 	message := c.Message()
-	user := *tg.Db.LoadUser(fmt.Sprint(message.Sender.ID), "tg")
+	user := *tg.Cache.FindUser(fmt.Sprint(message.Sender.ID), "tg")
 
 	if !PreHandler(tg, &user, message.Unixtime) {
 		return nil
@@ -184,7 +184,7 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 	cb := c.Callback()
 
 	// User
-	user := *tg.Db.LoadUser(fmt.Sprint(cb.Sender.ID), "tg")
+	user := *tg.Cache.FindUser(fmt.Sprint(cb.Sender.ID), "tg")
 
 	// Enforce rate-limits
 	if !PreHandler(tg, &user, time.Now().Unix()) {
@@ -192,8 +192,8 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 	}
 
 	// Split data field
-	splitData := strings.Split(cb.Data, "/")
-	primaryRequest := fmt.Sprintf("%s/%s", splitData[0], splitData[1])
+	callbackData := strings.Split(cb.Data, "/")
+	primaryRequest := fmt.Sprintf("%s/%s", callbackData[0], callbackData[1])
 
 	// Callback response
 	var cbRespStr string
@@ -201,7 +201,7 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 	switch primaryRequest {
 	case "sch/r":
 		// Get new text for the refresh (v for vehicles, m for missions)
-		newText := tg.Cache.ScheduleMessage(&user, splitData[2] == "m")
+		newText := tg.Cache.ScheduleMessage(&user, callbackData[2] == "m")
 
 		// Send options: reuse keyboard
 		sendOptions := tb.SendOptions{
@@ -220,24 +220,36 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 		}
 
 		// Create callback response text
-		cbRespStr = "🔄 Data refreshed"
+		cbRespStr = "🔄 Schedule refreshed"
 	case "sch/m":
+		// Map for input validity check
+		validInputs := map[string]bool{
+			"v": true, "m": true,
+		}
+
+		// Check input is valid
+		_, ok := validInputs[callbackData[2]]
+		if !ok {
+			log.Warn().Msgf("Received invalid data in sch/m callback handler: %s", callbackData[2])
+		}
+
 		// Get new text for mode change (v for vehicles, m for missions)
-		newText := tg.Cache.ScheduleMessage(&user, splitData[2] == "m")
+		newText := tg.Cache.ScheduleMessage(&user, callbackData[2] == "m")
 
 		// Refresh button (schedule/refresh/vehicles)
 		updateBtn := tb.InlineButton{
 			Text: "🔄 Refresh",
-			Data: fmt.Sprintf("sch/r/%s", splitData[2]),
+			Data: fmt.Sprintf("sch/r/%s", callbackData[2]),
 		}
 
 		// Init the mode-switch button
 		modeBtn := tb.InlineButton{}
 
-		if splitData[2] == "m" {
+		switch callbackData[2] {
+		case "m":
 			modeBtn.Text = "🚀 Vehicles"
 			modeBtn.Data = "sch/m/v"
-		} else {
+		case "v":
 			modeBtn.Text = "🛰️ Missions"
 			modeBtn.Data = "sch/m/m"
 		}
@@ -262,8 +274,7 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 		}
 
 		// Create callback response text
-		cbRespStr = "🔄 Data loaded"
-
+		cbRespStr = "🔄 Schedule loaded"
 	default:
 		// Handle invalid callback data
 		log.Warn().Msgf("Invalid callback data: %s", cb.Data)
@@ -278,10 +289,12 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 	}
 
 	// Respond to callback
+	// TODO throw to queue as a sendable
 	err := tg.Bot.Respond(cb, &cbResp)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error responding to callback")
+		handleTelegramError(err, tg)
 	}
 
 	return nil
