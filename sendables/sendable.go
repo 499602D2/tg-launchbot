@@ -42,21 +42,49 @@ func (sendable *Sendable) Send() {
 }
 
 // Set time field in the message
-func (msg *Message) SetTime(user *users.User) *string {
+func SetTime(txt string, user *users.User, refTime int64, markdownPrep bool) *string {
 	// Load user's time zone, if not already loaded
 	if user.Time == (users.UserTime{}) {
 		user.SetTimeZone()
 	}
 
 	// Convert unix time to local time in user's time zone
-	userTime := time.Unix(msg.RefTime, 0).In(user.Time.Location)
+	userTime := time.Unix(refTime, 0).In(user.Time.Location)
 
 	// Create time string, escape it
 	timeString := fmt.Sprintf("%02d:%02d %s",
 		userTime.Hour(), userTime.Minute(), user.Time.UtcOffset)
-	timeString = utils.PrepareInputForMarkdown(timeString, "text")
+
+	// Monospace
+	timeString = utils.Monospaced(timeString)
+
+	if markdownPrep {
+		timeString = utils.PrepareInputForMarkdown(timeString, "text")
+	}
 
 	// Set time, return
-	txt := strings.ReplaceAll(*msg.TextContent, "$USERTIME", timeString)
+	txt = strings.ReplaceAll(txt, "$USERTIME", timeString)
 	return &txt
+}
+
+func TextOnlySendable(txt string, user *users.User) *Sendable {
+	// Construct message
+	txt = fmt.Sprintf("%s", txt)
+	msg := Message{
+		TextContent: &txt,
+		SendOptions: tb.SendOptions{ParseMode: "Markdown"},
+	}
+
+	// Wrap into a sendable
+	sendable := Sendable{
+		Type:       "command",
+		RateLimit:  5.0,
+		Message:    &msg,
+		Recipients: &users.UserList{},
+	}
+
+	// Add user
+	sendable.Recipients.Add(user, false)
+
+	return &sendable
 }
