@@ -17,7 +17,8 @@ import (
 // Notify creates and queues a notification
 func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 	// Create message, get notification type
-	text, notification := launch.NotificationMessage(database)
+	thisNotif := launch.NextNotification(database)
+	text := launch.NotificationMessage(thisNotif.Type, false)
 
 	// TODO make launch.NotificationMessage produce sendables for multiple platforms
 	// V3.1+
@@ -31,7 +32,7 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 	// TODO: implement callback handling
 	expandBtn := tb.InlineButton{
 		Text: "ℹ️ Expand description",
-		Data: fmt.Sprintf("exp/%s", launch.Id),
+		Data: fmt.Sprintf("exp/%s/%s", launch.Id, thisNotif.Type),
 	}
 
 	// Construct the keeb
@@ -51,7 +52,7 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 	}
 
 	// Send silently if not a 1-hour or 5-minute notification
-	switch notification.Type {
+	switch thisNotif.Type {
 	case "24hour", "12hour":
 		msg.SendOptions.DisableNotification = true
 	case "1hour", "5min":
@@ -59,7 +60,7 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 	}
 
 	// Get list of recipients
-	recipients := launch.GetRecipients(database, notification)
+	recipients := launch.GetRecipients(database, &thisNotif)
 
 	/*
 		Some notes on just _how_ fast we can send stuff at Telegram's API
@@ -114,7 +115,7 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 		// Get the notification type that should have been sent before this one
 		previousType, ok := iterMap[notificationType]
 
-		if !passed && notificationType == notification.Type {
+		if !passed && notificationType == thisNotif.Type {
 			// This notification was sent: set state, sprintf to correct format.
 			launch.NotificationState.Map[fmt.Sprintf("Sent%s", notificationType)] = true
 			passed = true
