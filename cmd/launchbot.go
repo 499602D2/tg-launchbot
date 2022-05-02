@@ -80,6 +80,7 @@ func initSession(version string) *config.Session {
 
 	// Initialize the Telegram bot
 	session.Telegram = &bots.TelegramBot{}
+	session.Telegram.Owner = session.Config.Owner
 	session.Telegram.Spam = session.Spam
 	session.Telegram.Cache = session.LaunchCache
 	session.Telegram.Db = session.Db
