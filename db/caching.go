@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"launchbot/users"
 	"sort"
 	"sync"
@@ -228,4 +229,37 @@ func (cache *Cache) FindNext() *Notification {
 	onlyNotif := notificationList[0]
 	onlyNotif.IDs = append(onlyNotif.IDs, onlyNotif.LaunchId)
 	return &onlyNotif
+}
+
+// Finds a launch from the cache by a launch ID. If not present in the cache,
+// checks the disk.
+func (cache *Cache) FindLaunchById(id string) (*Launch, error) {
+	// Find the launch from the LaunchMap
+	launch, ok := cache.LaunchMap[id]
+
+	if ok {
+		return launch, nil
+	}
+
+	// else {
+	// 	return nil, errors.New("Launch is no-longer cached")
+	// }
+
+	// Launch not found in cache: check the disk, avoid SQL injection
+	// https://gorm.io/docs/query.html#Retrieving-objects-with-primary-key
+	thisLaunch := Launch{}
+	result := cache.Database.Conn.First(&thisLaunch, "id = ?", id)
+
+	if result.Error != nil {
+		log.Error().Err(result.Error).Msgf("Error searching for launch in the database with id=%s", id)
+		err := errors.New("Launch not found")
+		return nil, err
+	}
+
+	if result.RowsAffected != 0 {
+		return nil, errors.New("Launch not found")
+	}
+
+	// Launch was found: return it
+	return &thisLaunch, nil
 }
