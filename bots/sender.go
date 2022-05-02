@@ -48,7 +48,7 @@ func highPrioritySender(tg *TelegramBot, message *sendables.Message, user *users
 	// If message needs to have its time set properly, do it now
 	text := message.TextContent
 	if message.AddUserTime {
-		text = message.SetTime(user)
+		text = sendables.SetTime(*text, user, message.RefTime, true)
 	}
 
 	// TODO store integer-id
@@ -164,7 +164,7 @@ func TelegramSender(tg *TelegramBot) {
 
 					// If message needs to have its time set properly, do it now
 					if sendable.Message.AddUserTime {
-						text = sendable.Message.SetTime(user)
+						text = sendables.SetTime(*text, user, sendable.Message.RefTime, true)
 					} else {
 						text = defaultText
 					}
