@@ -85,7 +85,7 @@ func (user *User) SetTimeZone() {
 }
 
 // Adds a single user to a UserList and adds a time zone if required
-func (userList *UserList) Add(user User, addTimeZone bool) {
+func (userList *UserList) Add(user *User, addTimeZone bool) {
 	userList.Mutex.Lock()
 
 	if addTimeZone {
@@ -95,17 +95,14 @@ func (userList *UserList) Add(user User, addTimeZone bool) {
 	}
 
 	// Add user to the list
-	userList.Users = append(userList.Users, &user)
+	userList.Users = append(userList.Users, user)
 	userList.Mutex.Unlock()
 }
 
 // Reduce boilterplate by creating a user-list with a single user
-func SingleUserList(id int64, addTimeZone bool, platform string) *UserList {
+func SingleUserList(user *User, addTimeZone bool, platform string) *UserList {
 	// Create list
 	list := UserList{Platform: platform}
-
-	// Create user
-	user := User{Platform: platform, Id: fmt.Sprint(id)}
 
 	// Add user, return
 	list.Add(user, addTimeZone)
