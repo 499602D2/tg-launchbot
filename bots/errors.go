@@ -79,7 +79,8 @@ func errorMonitor(err error, tg *TelegramBot) {
 	// Create a simple error message
 	errMsg := fmt.Sprintf("Processing failure: %#v", err.Error())
 	msg := sendables.Message{TextContent: &errMsg, SendOptions: tb.SendOptions{}}
-	recipients := users.SingleUserList(tg.Owner, false, "tg")
+	user := tg.Cache.FindUser(fmt.Sprintf("%d", tg.Owner), "tg")
+	recipients := users.SingleUserList(user, false, "tg")
 
 	// Wrap in a sendable
 	sendable := sendables.Sendable{
