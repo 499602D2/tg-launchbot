@@ -9,9 +9,26 @@ import (
 )
 
 // GetHighestPriorityVideoLink finds the highest-priority link for the launch
-func GetHighestPriorityVideoLink(links *[]db.ContentURL) db.ContentURL {
+func GetHighestPriorityVideoLink(links []db.ContentURL) *db.ContentURL {
+	// If no links available, return a nil
+	if len(links) == 0 {
+		return &db.ContentURL{}
+	}
 
-	return db.ContentURL{}
+	// The highest-priority link has the lowest value for Priority-field
+	highestPriorityIndex := 0
+	highestPriority := -1
+
+	for idx, link := range links {
+		log.Debug().Msgf("priority=%d, title=%s", link.Priority, link.Title)
+		if link.Priority < highestPriority || highestPriority == -1 {
+			highestPriority = link.Priority
+			highestPriorityIndex = idx
+		}
+	}
+
+	log.Debug().Msgf("Chose with prior=%d, title=%s", links[highestPriorityIndex].Priority, links[highestPriorityIndex].Title)
+	return &links[highestPriorityIndex]
 }
 
 /* Checks if any launches were postponed */
@@ -65,9 +82,9 @@ func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, 
 			launch.Launched = true
 		}
 
-		// Save new launch REMOVED
-		// cache.Launches = append(cache.Launches, launch)
-		// cache.LaunchMap[launch.Id] = launch
+		// Get the highest priority webcast URL
+		highestPriorityUrl := GetHighestPriorityVideoLink(launch.VidURL)
+		launch.WebcastLink = highestPriorityUrl.Url
 
 		// If launch slipped, set postponed flag
 		// TODO implement
