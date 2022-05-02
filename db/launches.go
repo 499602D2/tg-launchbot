@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"launchbot/sendables"
 	"launchbot/users"
 	"launchbot/utils"
 	"math"
@@ -13,6 +14,7 @@ import (
 	"github.com/dustin/go-humanize/english"
 	emoji "github.com/jayco/go-emoji-flag"
 	"github.com/rs/zerolog/log"
+	tb "gopkg.in/telebot.v3"
 	"gorm.io/gorm"
 )
 
@@ -61,7 +63,7 @@ type Launch struct {
 	Mission        Mission        `json:"mission" gorm:"embedded;embeddedPrefix:mission_"`
 	LaunchPad      LaunchPad      `json:"pad" gorm:"embedded;embeddedPrefix:pad_"`
 	WebcastIsLive  bool           `json:"webcast_live"`
-	Url            string         `json:"url"`
+	LL2Url         string         `json:"url"`
 
 	NETUnix     int64     // Calculated from NET
 	Launched    bool      // If success/failure/partial_failure
@@ -168,23 +170,21 @@ type ContentURL struct {
 }
 
 // Produces a launch notification message
-func (launch *Launch) NotificationMessage(db *Database) (string, *Notification) {
-	notification := launch.NextNotification(db)
-
+func (launch *Launch) NotificationMessage(notifType string, expanded bool) string {
 	// Map notification type to a header
 	header, ok := map[string]string{
 		"24h":  "in 24 hours",
 		"12h":  "in 12 hours",
 		"1h":   "in 60 minutes",
 		"5min": "in 5 minutes",
-	}[notification.Type]
+	}[notifType]
 
 	if !ok {
-		log.Warn().Msgf("%s not found when mapping notif.Type to header", notification.Type)
+		log.Warn().Msgf("%s not found when mapping notif.Type to header", notifType)
 	}
 
 	// If notification type is 5-minute, use real launch time for clarity
-	if notification.Type == "5min" {
+	if notifType == "5min" && !expanded {
 		untilNet := time.Until(time.Unix(launch.NETUnix, 0))
 
 		// If we're seconds away, use seconds
@@ -243,6 +243,31 @@ func (launch *Launch) NotificationMessage(db *Database) (string, *Notification) 
 		missionOrbit = "Unknown orbit"
 	}
 
+	// If this is an expanded message, add a description
+	launchDescription := ""
+	if expanded {
+		launchDescription = fmt.Sprintf("ℹ️ %s\n\n", launch.Mission.Description)
+	}
+
+	// Only add the webcast link for 1-hour and 5-minute notifications
+	var webcastLink string
+	if notifType == "1h" || notifType == "5min" {
+		if launch.WebcastLink != "" {
+
+			// Prepare link for markdown
+			link := utils.PrepareInputForMarkdown(launch.WebcastLink, "link")
+
+			// Format into a markdown link
+			linkText := utils.PrepareInputForMarkdown("🔴 Watch launch live!", "text")
+			webcastLink = fmt.Sprintf("[*%s*](%s)\n", linkText, link)
+		} else {
+			// No video available
+			webcastLink = "🔇 *No live video available*\n"
+		}
+	} else {
+		webcastLink = ""
+	}
+
 	text := fmt.Sprintf(
 		"🚀 *%s is launching %s*\n"+
 			"*Provider* %s%s\n"+
@@ -253,8 +278,10 @@ func (launch *Launch) NotificationMessage(db *Database) (string, *Notification) 
 			"*Type* %s\n"+
 			"*Orbit* %s\n\n"+
 
+			"%s"+
+
 			"🕑 *Lift-off at $USERTIME*\n"+
-			"🔴 *LAUNCHLINKGOESHERE*\n"+
+			"LAUNCHLINKHERE"+
 			"🔕 *Stop with /notify@tglaunchbot*",
 
 		// Name, launching-in, provider, rocket, launch pad
@@ -264,30 +291,28 @@ func (launch *Launch) NotificationMessage(db *Database) (string, *Notification) 
 
 		// Mission information
 		utils.Monospaced(missionType), utils.Monospaced(missionOrbit),
+
+		// Description, if expanded
+		launchDescription,
 	)
 
 	// Prepare message for Telegram's MarkdownV2 parser
 	text = utils.PrepareInputForMarkdown(text, "text")
 
-	// TODO set link properly (parse by importance and set no-vid-available)
-	linkText := utils.PrepareInputForMarkdown("Watch launch live!", "text")
-	link := utils.PrepareInputForMarkdown("https://www.youtube.com/watch?v=5nLk_Vqp7nw", "link")
-	launchLink := fmt.Sprintf("[%s](%s)", linkText, link)
-	text = strings.Replace(text, "LAUNCHLINKGOESHERE", launchLink, 1)
+	// Add a launch link if required
+	text = strings.ReplaceAll(text, "LAUNCHLINKHERE", webcastLink)
 
-	log.Debug().Msgf("Notification created: %d runes, %d bytes",
-		utf8.RuneCountInString(text), len(text))
+	if !expanded {
+		log.Debug().Msgf("Notification created: %d runes, %d bytes",
+			utf8.RuneCountInString(text), len(text))
+	}
 
-	return text, &notification
+	return text
 }
 
 // Creates a schedule message from the launch cache
 // TODO simplify, now that launch cache is truly ordered (do in one loop)
 func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string {
-	if user.Time == (users.UserTime{}) {
-		user.SetTimeZone()
-	}
-
 	// List of launch-lists, one per launch date
 	schedule := [][]*Launch{}
 
@@ -434,6 +459,143 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 	return msg
 }
 
+// Creates the text content and Telegram reply keyboard for the /next command.
+func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboard bool) (string, *tb.ReplyMarkup) {
+	// Pull launch from cache at index
+	launch := cache.Launches[index]
+
+	// If mission has no name, use the name of the launch itself (and split by `|`)
+	name := launch.Mission.Name
+	if name == "" {
+		nameSplit := strings.Split(launch.Name, "|")
+
+		if len(nameSplit) > 1 {
+			name = strings.Trim(nameSplit[1], " ")
+		} else {
+			name = strings.Trim(nameSplit[0], " ")
+		}
+	}
+
+	// Shorten long LSP names
+	providerName := launch.LaunchProvider.ShortName()
+
+	// Get country-flag
+	flag := ""
+	if launch.LaunchProvider.CountryCode != "" {
+		flag = " " + emoji.GetFlag(launch.LaunchProvider.CountryCode)
+	}
+
+	// Mission information
+	missionType := launch.Mission.Type
+	missionOrbit := launch.Mission.Orbit.Name
+
+	if missionType == "" {
+		missionType = "Unknown purpose"
+	}
+
+	if missionOrbit == "" {
+		missionOrbit = "Unknown orbit"
+	}
+
+	description := ""
+	if launch.Mission.Description != "" {
+		description = fmt.Sprintf("ℹ️ %s\n\n", launch.Mission.Description)
+	} else {
+		description = ""
+	}
+
+	text := fmt.Sprintf(
+		"🚀 *Next launch:* %s\n"+
+			"*Provider* %s%s\n"+
+			"*Rocket* %s\n"+
+			"*From* %s\n\n"+
+
+			"🌍 *Mission information*\n"+
+			"*Type* %s\n"+
+			"*Orbit* %s\n\n"+
+
+			"%s"+
+
+			"🕑 *Lift-off at $USERTIME*",
+
+		name,
+		utils.Monospaced(providerName), flag,
+		utils.Monospaced(launch.Rocket.Config.FullName),
+		utils.Monospaced(launch.LaunchPad.Name),
+		utils.Monospaced(missionType),
+		utils.Monospaced(missionOrbit),
+		description,
+	)
+
+	// Set user's time
+	text = *sendables.SetTime(text, user, launch.NETUnix, false)
+
+	if !returnKeyboard {
+		return utils.PrepareInputForMarkdown(text, "text"), nil
+	}
+
+	// Create return kb
+	var kb [][]tb.InlineButton
+
+	switch index {
+	case 0:
+		// Case: first index
+		refreshBtn := tb.InlineButton{
+			Text: "🔄 Refresh",
+			Data: "nxt/r/0",
+		}
+
+		nextBtn := tb.InlineButton{
+			Text: "➡️ Next",
+			Data: "nxt/n/1/+",
+		}
+
+		// Construct the keyboard
+		kb = [][]tb.InlineButton{{nextBtn}, {refreshBtn}}
+	case len(cache.Launches) - 1:
+		// Case: last index
+		refreshBtn := tb.InlineButton{
+			Text: "🔄 Refresh",
+			Data: fmt.Sprintf("nxt/r/%d", index),
+		}
+
+		prevBtn := tb.InlineButton{
+			Text: "⬅️ Previous launch",
+			Data: fmt.Sprintf("nxt/n/%d/-", index-1),
+		}
+
+		// Construct the keyboard
+		kb = [][]tb.InlineButton{{prevBtn}, {refreshBtn}}
+	default:
+		// Default case, i.e. not either end of the launch list
+		if index > len(cache.Launches)-1 {
+			// Make sure we don't go over the maximum index
+			index = len(cache.Launches) - 1
+		}
+
+		refreshBtn := tb.InlineButton{
+			Text: "🔄 Refresh",
+			Data: fmt.Sprintf("nxt/r/%d", index),
+		}
+
+		nextBtn := tb.InlineButton{
+			Text: "➡️ Next",
+			Data: fmt.Sprintf("nxt/n/%d/+", index+1),
+		}
+
+		prevBtn := tb.InlineButton{
+			Text: "⬅️ Previous launch",
+			Data: fmt.Sprintf("nxt/n/%d/-", index-1),
+		}
+
+		// Construct the keyboard
+		kb = [][]tb.InlineButton{{prevBtn, nextBtn}, {refreshBtn}}
+	}
+
+	return utils.PrepareInputForMarkdown(text, "text"), &tb.ReplyMarkup{InlineKeyboard: kb}
+
+}
+
 // Extends the Launch struct to add a .PostponeNotify() method.
 func (launch *Launch) PostponeNotify(postponedTo int) {
 }
@@ -444,7 +606,7 @@ func (launch *Launch) GetRecipients(db *Database, notifType *Notification) *user
 	recipients := users.UserList{Platform: "tg", Users: []*users.User{}}
 	user := users.User{Platform: recipients.Platform, Id: fmt.Sprint(db.Owner)}
 
-	recipients.Add(user, true)
+	recipients.Add(&user, true)
 
 	return &recipients
 }
@@ -544,9 +706,12 @@ func (provider *LaunchProvider) ShortName() string {
 	}
 
 	// Log long names we encounter
-	if len(provider.Name) > len("Rocket Lab") {
-		log.Warn().Msgf("Provider name '%s' not found in LSPShorthands, id=%d",
+	if len(provider.Name) > len("Virgin Orbit") {
+		log.Warn().Msgf("Provider name '%s' not found in LSPShorthands, id=%d (not warning again)",
 			provider.Name, provider.Id)
+
+		// Don't warn again until program is restarted
+		LSPShorthands[provider.Id] = provider.Abbrev
 		return provider.Abbrev
 	}
 
