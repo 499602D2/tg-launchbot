@@ -26,9 +26,8 @@
 		- [x] Catch-all type handlers
 	- [ ] Implement callbacks
 		- [ ] Notifications
-		- [ ] Commands
-	- [ ] Handle callbacks with sender (limits?)
-	- [ ] Use a dual-limiter
+		- [x] Commands
+	- [x] Use a dual-limiter
 		- Issues with sends?
 		- Only add to queue _after_ user has suffered their rate-limit -> easy
 	- [ ] Use preHandler as middleware
@@ -57,10 +56,8 @@
 		- More:
 			- dynamically generate lists for missing providers
 			- Re-think how database inserts are done: try to simplify
-	- [ ] /next
-		- Easy with launch cache
+	- [x] /next
 	- [x] /schedule
-		- TODO fix calculated days-until-launch
 	- [ ] /stats
 	- [ ] /feedback + response script
 	- [ ] Admin functions (/debug)
@@ -70,13 +67,14 @@
 ### Must-haves before 3.0.0
 - [x] "Compress" messages to improve send-rates
 	- [x] Add "More info" button
-		- [ ] Implement
+		- [x] Implement for description
+		- [ ] Implement for reuse information
 - [ ] Remove manual time zone feature to reduce complexity
 - [ ] Purge log-files when they become too large
 	- Also, be smarter about telebot's logging
 
 ### Nice-to-haves before 3.0.0
-- [ ] Notify admin on any processing failure
+- [x] Notify admin on any processing failure
 	- [x] Telegram
 
 ### Future: 3.1 and onwards
