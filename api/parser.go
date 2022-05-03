@@ -3,6 +3,7 @@ package api
 import (
 	"launchbot/db"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -81,6 +82,11 @@ func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, 
 		case 3, 4, 6, 7:
 			launch.Launched = true
 		}
+
+		// Shorten launch pad names
+		launch.LaunchPad.Name = strings.ReplaceAll(launch.LaunchPad.Name, "Satellite Launch Center ", "SLC-")
+		launch.LaunchPad.Name = strings.ReplaceAll(launch.LaunchPad.Name, "Space Launch Complex ", "SLC-")
+		launch.LaunchPad.Name = strings.ReplaceAll(launch.LaunchPad.Name, "Launch Complex ", "LC-")
 
 		// Get the highest priority webcast URL
 		highestPriorityUrl := GetHighestPriorityVideoLink(launch.VidURL)
