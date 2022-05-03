@@ -232,7 +232,7 @@ func Scheduler(session *config.Session) bool {
 	// Get time of the next notification. This will be used to
 	// determine the time of the next API update, as in how far we
 	// can push it. Returns the exact time the notification must be sent.
-	nextNotif := session.LaunchCache.FindNext()
+	nextNotif := session.LaunchCache.FindNextNotification()
 	timeUntilNotif := time.Until(time.Unix(nextNotif.SendTime, 0))
 
 	// Time of next scheduled API update
