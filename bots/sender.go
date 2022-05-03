@@ -154,6 +154,7 @@ func TelegramSender(tg *TelegramBot) {
 				for i, user := range sendable.Recipients.Users {
 					// Rate-limiter: check if we have tokens to proceed
 					if tg.Spam.Limiter.Allow() == false {
+						log.Debug().Msg("Rate-limiting...")
 						// No tokens: sleep until we can proceed
 						err := tg.Spam.Limiter.Wait(dummyCtx)
 
@@ -164,7 +165,7 @@ func TelegramSender(tg *TelegramBot) {
 
 					// If message needs to have its time set properly, do it now
 					if sendable.Message.AddUserTime {
-						text = sendables.SetTime(*text, user, sendable.Message.RefTime, true)
+						text = sendables.SetTime(*defaultText, user, sendable.Message.RefTime, true)
 					} else {
 						text = defaultText
 					}
