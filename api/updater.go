@@ -15,7 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-/* Performs an LL2 API call */
+// Performs an LL2 API call
 func apiCall(client *resty.Client, useDevEndpoint bool) (db.LaunchUpdate, error) {
 	const apiVersion = "2.2.0"
 	const requestPath = "launch/upcoming"
@@ -64,10 +64,8 @@ func apiCall(client *resty.Client, useDevEndpoint bool) (db.LaunchUpdate, error)
 	return update, nil
 }
 
-/*
-Handles the API request flow, requesting new data and updating
-the cached and on-disk data.
-*/
+// Handles the API request flow, requesting new data and updating
+// the cached and on-disk data.
 func Updater(session *config.Session, scheduleNext bool) bool {
 	log.Debug().Msg("Starting LL2 API updater...")
 
@@ -93,18 +91,6 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 		log.Error().Err(err).Msg("Error parsing launch update")
 		return false
 	}
-
-	// Uncomment to force-send notifications
-	/*
-		for _, launch := range launches {
-			if launch.Status.Abbrev == "Go" || launch.Status.Abbrev == "TBC" {
-				launch.NETUnix = time.Now().Unix() + 4*60
-				launch.Status.Abbrev = "Go"
-				log.Warn().Msgf("Launch=%s modified to launch 30 seconds from now", launch.Slug)
-				break
-			}
-		}
-	*/
 
 	// Update hot launch cache
 	session.LaunchCache.Update(launches)
@@ -146,7 +132,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	return true
 }
 
-/* Function that chrono calls when a scheduled API update runs. */
+// Function that chrono calls when a scheduled API update runs.
 func updateWrapper(session *config.Session) {
 	log.Info().Msgf("Running scheduled update...")
 
