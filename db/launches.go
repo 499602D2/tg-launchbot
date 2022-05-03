@@ -246,7 +246,11 @@ func (launch *Launch) NotificationMessage(notifType string, expanded bool) strin
 	// If this is an expanded message, add a description
 	launchDescription := ""
 	if expanded {
-		launchDescription = fmt.Sprintf("ℹ️ %s\n\n", launch.Mission.Description)
+		if launch.Mission.Description == "" {
+			launchDescription = "ℹ️ No information available\n\n"
+		} else {
+			launchDescription = fmt.Sprintf("ℹ️ %s\n\n", launch.Mission.Description)
+		}
 	}
 
 	// Only add the webcast link for 1-hour and 5-minute notifications
@@ -479,10 +483,22 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 	// Shorten long LSP names
 	providerName := launch.LaunchProvider.ShortName()
 
-	// Get country-flag
-	flag := ""
+	// Get country-flag for provider and location
+	var (
+		flag     string
+		location string
+	)
+
 	if launch.LaunchProvider.CountryCode != "" {
-		flag = " " + emoji.GetFlag(launch.LaunchProvider.CountryCode)
+		flag = fmt.Sprintf(" %s", emoji.GetFlag(launch.LaunchProvider.CountryCode))
+	}
+
+	if launch.LaunchPad.Location.CountryCode != "" {
+		if launch.LaunchPad.Location.Name != "" {
+			location = strings.Split(launch.LaunchPad.Location.Name, ",")[0] + " "
+		}
+
+		location = fmt.Sprintf(", %s%s", location, emoji.GetFlag(launch.LaunchPad.Location.CountryCode))
 	}
 
 	// Mission information
@@ -508,7 +524,7 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 		"🚀 *Next launch:* %s\n"+
 			"*Provider* %s%s\n"+
 			"*Rocket* %s\n"+
-			"*From* %s\n\n"+
+			"*From* %s%s\n\n"+
 
 			"🌍 *Mission information*\n"+
 			"*Type* %s\n"+
@@ -521,7 +537,7 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 		name,
 		utils.Monospaced(providerName), flag,
 		utils.Monospaced(launch.Rocket.Config.FullName),
-		utils.Monospaced(launch.LaunchPad.Name),
+		utils.Monospaced(launch.LaunchPad.Name), utils.Monospaced(location),
 		utils.Monospaced(missionType),
 		utils.Monospaced(missionOrbit),
 		description,
