@@ -70,8 +70,7 @@ func (cache *Cache) Populate() {
 	var launches []*Launch
 
 	// Find all launches that have not launched
-	launch := Launch{Launched: false}
-	result := cache.Database.Conn.Where(&launch).Find(&launches)
+	result := cache.Database.Conn.Model(&Launch{}).Where("launched = ?", 0).Find(&launches)
 
 	// TODO handle other database errors
 	switch result.Error {
@@ -109,7 +108,7 @@ func (cache *Cache) Populate() {
 // Function goes over the notification states, finding the next notification
 // to send. Returns a Notification-type, with the send-time and all launch
 // IDs associated with this send-time.
-func (cache *Cache) FindNext() *Notification {
+func (cache *Cache) FindNextNotification() *Notification {
 	// Find first send-time from the launch cache
 	earliestTime := int64(0)
 	tbdLaunchCount := 0
@@ -161,7 +160,7 @@ func (cache *Cache) FindNext() *Notification {
 		// Calculate time until notification(s)
 		toNotif := time.Until(time.Unix(earliestTime, 0))
 
-		log.Debug().Msgf("[cache.FindNext] Got next notification send time (%s from now), %d launch(es))",
+		log.Debug().Msgf("Got next notification send time (%s from now), %d launch(es))",
 			toNotif.String(), len(notificationTimes[earliestTime]))
 
 		// Print launch names in logs
