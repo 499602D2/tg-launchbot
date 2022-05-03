@@ -11,33 +11,27 @@ import (
 )
 
 // TODO set-up as middleware in tb.Handle definitions in telegram.go
+// In-memory struct keeping track of banned chats and per-chat activity
 type AntiSpam struct {
-	/* In-memory struct keeping track of banned chats and per-chat activity */
-	ChatBanned               map[users.User]bool    // Simple "if ChatBanned[chat] { do }" checks
-	ChatBannedUntilTimestamp map[users.User]int64   // How long banned chats are banned for
-	ChatLogs                 map[users.User]ChatLog // Map chat ID to a ChatLog struct
-	Rules                    map[string]int64       // Arbitrary rules for code flexibility
-	Limiter                  *rate.Limiter          // Main rate-limiter
-	Mutex                    sync.Mutex             // Mutex to avoid concurrent map writes
+	ChatBanned               map[*users.User]bool    // Simple "if ChatBanned[chat] { do }" checks
+	ChatBannedUntilTimestamp map[*users.User]int64   // How long banned chats are banned for
+	ChatLogs                 map[*users.User]ChatLog // Map chat ID to a ChatLog struct
+	Rules                    map[string]int64        // Arbitrary rules for code flexibility
+	Limiter                  *rate.Limiter           // Main rate-limiter
+	Mutex                    sync.Mutex              // Mutex to avoid concurrent map writes
 }
 
-/* Per-chat struct keeping track of activity for spam management */
+// Per-chat struct keeping track of activity for spam management
 type ChatLog struct {
-	/* TODO track messages sent to group as a trailing-minute array of timestamps
-
-	(No more timing out when users spam callbacks)
-	https://telegra.ph/So-your-bot-is-rate-limited-01-26
-	*/
-	NextAllowedCommandTimestamp int64         // Next time the chat is allowed to call a command
-	CommandSpamOffenses         int           // Count of spam offences (not used)
-	Limiter                     *rate.Limiter // Per-chat ratelimiter
+	Limiter *rate.Limiter // Per-chat ratelimiter
 }
 
-/* Initialize the spam struct */
+// Initialize the spam struct
 func (spam *AntiSpam) Initialize() {
-	spam.ChatBannedUntilTimestamp = make(map[users.User]int64)
-	spam.ChatLogs = make(map[users.User]ChatLog)
-	spam.ChatBanned = make(map[users.User]bool)
+	// Create all maps
+	spam.ChatBannedUntilTimestamp = make(map[*users.User]int64)
+	spam.ChatLogs = make(map[*users.User]ChatLog)
+	spam.ChatBanned = make(map[*users.User]bool)
 	spam.Rules = make(map[string]int64)
 
 	// Enforce a rate-limiter: 25 msg/sec, with 30 msg/sec bursts
@@ -47,44 +41,42 @@ func (spam *AntiSpam) Initialize() {
 	spam.Limiter = rate.NewLimiter(25, 30)
 }
 
-/* When user sends a command, verify the chat is eligible for a command parse. */
+// When user sends a command, verify the chat is eligible for a command parse.
 func PreHandler(tg *TelegramBot, user *users.User, sentAt int64) bool {
 	tg.Spam.Mutex.Lock()
-	chatLog := tg.Spam.ChatLogs[*user]
+	chatLog := tg.Spam.ChatLogs[user]
 
 	// If limiter doesn't exist, create it
 	if chatLog.Limiter == nil {
-		// 20 msg/minute limit -> every 3 seconds
 		chatLog.Limiter = rate.NewLimiter(rate.Every(time.Second*3), 2)
 	}
 
-	// Run limiter
-	if chatLog.Limiter.Allow() == false {
-		log.Debug().Msg("limiter.Allow() returned false...")
-
-		// Dummy context
-		ctx := context.Background()
+	// Reserve a token from the main pool
+	if tg.Spam.Limiter.Allow() == false {
+		log.Debug().Msg("Global limiter returned false...")
 
 		// If limiter returned false, wait until we can proceed
-		err := chatLog.Limiter.Wait(ctx)
+		err := chatLog.Limiter.Wait(context.Background())
 
 		if err != nil {
-			log.Error().Err(err).Msgf("Error using Limiter.Wait()")
+			log.Error().Err(err).Msgf("Error using global Limiter.Wait()")
 		}
 	}
 
-	/*if chatLog.NextAllowedCommandTimestamp > sentAt {
-		chatLog.CommandSpamOffenses++
-		spam.ChatLogs[*user] = chatLog
-		spam.Mutex.Unlock()
+	// Reserve a limiter for this chat
+	if chatLog.Limiter.Allow() == false {
+		log.Debug().Msg("User limiter returned false...")
 
-		log.Info().Msgf("Chat %s:%d now has %d spam offenses", user.Platform, user.Id, chatLog.CommandSpamOffenses)
-		return false
-	}*/
+		// If limiter returned false, wait until we can proceed
+		err := chatLog.Limiter.Wait(context.Background())
+
+		if err != nil {
+			log.Error().Err(err).Msgf("Error using chat's Limiter.Wait()")
+		}
+	}
 
 	// No spam, update chat's ConversionLog
-	// chatLog.NextAllowedCommandTimestamp = time.Now().Unix() + spam.Rules["TimeBetweenCommands"]
-	tg.Spam.ChatLogs[*user] = chatLog
+	tg.Spam.ChatLogs[user] = chatLog
 	tg.Spam.Mutex.Unlock()
 
 	// Bump stats
