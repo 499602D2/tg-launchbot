@@ -424,7 +424,7 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 		var row string
 		for i, launch := range launchList {
 			if i == 3 {
-				msg += fmt.Sprintf("*+ %d more flights*\n", len(launchList)-i)
+				msg += fmt.Sprintf("*+ %d more %s*\n", len(launchList)-i, english.Plural(int(len(launchList)-i), "flight", "flights"))
 				break
 			}
 
@@ -441,9 +441,8 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 				}
 
 				// Flag, status, mission name
-				row = fmt.Sprintf("%s%s %s",
-					emoji.GetFlag(launch.LaunchProvider.CountryCode),
-					utils.Monospaced(statusToIndicator[launch.Status.Abbrev]), utils.Monospaced(missionName))
+				row = fmt.Sprintf("%s %s %s",
+					utils.Monospaced(statusToIndicator[launch.Status.Abbrev]), emoji.GetFlag(launch.LaunchProvider.CountryCode), utils.Monospaced(missionName))
 			}
 
 			msg += row + "\n"
@@ -609,7 +608,6 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 	}
 
 	return utils.PrepareInputForMarkdown(text, "text"), &tb.ReplyMarkup{InlineKeyboard: kb}
-
 }
 
 // Extends the Launch struct to add a .PostponeNotify() method.
