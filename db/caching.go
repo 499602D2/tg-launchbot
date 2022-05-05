@@ -43,6 +43,12 @@ func (cache *Cache) Update(launches []*Launch) {
 
 	// Re-insert all launches into the launch list and launch map
 	for _, launch := range launches {
+		// If launch has launched, ignore
+		if launch.Launched {
+			log.Warn().Msgf("Ignoring launch with launched=1 in cache.Update(), slug=%s", launch.Slug)
+			continue
+		}
+
 		// Pull old launch
 		oldLaunch, ok := oldCache[launch.Id]
 
@@ -164,8 +170,8 @@ func (cache *Cache) FindNextNotification() *Notification {
 			toNotif.String(), len(notificationTimes[earliestTime]))
 
 		// Print launch names in logs
-		for n, l := range notificationTimes[earliestTime] {
-			log.Debug().Msgf("➙ [%d] %s (%s)", n+1, l.LaunchName, l.LaunchId)
+		for n, notif := range notificationTimes[earliestTime] {
+			log.Debug().Msgf("➙ [%d] %s (%s)", n+1, notif.LaunchName, notif.LaunchId)
 		}
 	} else {
 		log.Warn().Msgf("Could not find next notification send time. No-Go launches: %d out of %d",
