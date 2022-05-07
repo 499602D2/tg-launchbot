@@ -200,3 +200,36 @@ func (db *Database) RequiresImmediateUpdate() bool {
 
 	return false
 }
+
+func (db *Database) LoadStatisticsFromDisk(platform string) *stats.Statistics {
+	stats := stats.Statistics{Platform: "tg"}
+	result := db.Conn.First(&stats)
+
+	switch result.Error {
+	case nil:
+		// No errors: return loaded user
+		log.Info().Msg("Loaded stats from database")
+		return &stats
+	case gorm.ErrRecordNotFound:
+		// Record doesn't exist: insert as new
+		log.Info().Msg("Stats not found: creating...")
+	default:
+		// Other error: log
+		log.Fatal().Err(result.Error).Msg("Unexpected error when loading stats from disk")
+		return nil
+	}
+
+	// Error was caused by the record not existing: create it
+	result = db.Conn.Create(&stats)
+
+	if result.Error != nil {
+		log.Fatal().Err(result.Error).Msg("Loading statistics from disk failed")
+		return nil
+	}
+
+	if result.RowsAffected == 0 {
+		log.Warn().Msg("Loaded statistics from disk, but zero rows were affected")
+	}
+
+	return &stats
+}
