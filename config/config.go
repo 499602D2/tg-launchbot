@@ -30,7 +30,7 @@ type Session struct {
 	NotificationTasks map[time.Time]*chrono.ScheduledTask // Map a time to a scheduled Chrono task
 	Scheduled         []string                            // A list of launch IDs that have a notification scheduled
 	Version           string                              // Version number
-	Started           int64                               // Unix timestamp of startup time
+	Started           time.Time                           // Unix timestamp of startup time
 	UseDevEndpoint    bool                                // Configure to use LL2's development endpoint
 	Mutex             sync.Mutex                          // Avoid concurrent writes
 }
