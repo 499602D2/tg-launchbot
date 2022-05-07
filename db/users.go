@@ -18,14 +18,14 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 
 	if i < userCache.Count && userCache.Users[i].Id == id {
 		// User is in cache
-		log.Debug().Msgf("Loaded user=%s:%s from cache", userCache.Users[i].Id, userCache.Users[i].Platform)
+		//log.Debug().Msgf("Loaded user=%s:%s from cache", userCache.Users[i].Id, userCache.Users[i].Platform)
 		return userCache.Users[i]
 	}
 
 	// User is not in cache; load from db (also sets time zone)
 	user := cache.Database.LoadUser(id, platform)
 
-	// Add user to cache
+	// Add user to cache so that the cache stays ordered
 	if userCache.Count == i {
 		// Nil or empty slice, or after last element
 		userCache.Users = append(userCache.Users, user)
@@ -76,8 +76,7 @@ func (db *Database) LoadUser(id string, platform string) *users.User {
 	}
 
 	if result.Error != nil {
-		log.Error().Err(result.Error).Msgf("Failed to insert chat id=%s:%s",
-			id, platform)
+		log.Error().Err(result.Error).Msgf("Failed to insert chat id=%s:%s", id, platform)
 	}
 
 	return &user
