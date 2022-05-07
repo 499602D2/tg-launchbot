@@ -153,6 +153,8 @@ func TelegramSender(tg *TelegramBot) {
 				var i uint32
 				for i, user := range sendable.Recipients.Users {
 					// Rate-limiter: check if we have tokens to proceed
+					// TODO: if sendable's calculated size (the one perceived by TG)
+					// is large enough, take 6 tokens instead of 1 (limiter.Take(time.Now(), 6))
 					if tg.Spam.Limiter.Allow() == false {
 						log.Debug().Msg("Rate-limiting...")
 						// No tokens: sleep until we can proceed
