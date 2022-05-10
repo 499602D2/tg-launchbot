@@ -43,7 +43,7 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 		userCache.InCache[i] = user.Id
 	}
 
-	log.Debug().Msgf("Added user=%s:%s to cache", userCache.Users[i].Id, userCache.Users[i].Platform)
+	log.Debug().Msgf("Added chat=%s:%s to cache", userCache.Users[i].Id, userCache.Users[i].Platform)
 	userCache.Count++
 	return user
 }
