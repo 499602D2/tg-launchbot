@@ -4,25 +4,30 @@ import (
 	"fmt"
 	"launchbot/db"
 	"launchbot/sendables"
+	"launchbot/stats"
 	"launchbot/users"
+	"launchbot/utils"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/bradfitz/latlong"
 	"github.com/rs/zerolog/log"
 	tb "gopkg.in/telebot.v3"
 )
 
 type TelegramBot struct {
-	Bot          *tb.Bot
-	Db           *db.Database
-	Cache        *db.Cache
-	Queue        *Queue
-	HighPriority *HighPriorityQueue
-	Spam         *AntiSpam
-	Owner        int64
+	Bot             *tb.Bot
+	Db              *db.Database
+	Cache           *db.Cache
+	Queue           *Queue
+	HighPriority    *HighPriorityQueue
+	Spam            *AntiSpam
+	Stats           *stats.Statistics
+	TZSetupMessages map[int64]int64 // A map of msg_id:user_id time zone setup messages waiting for a reply
+	Owner           int64
 }
 
 type HighPriorityQueue struct {
@@ -53,14 +58,20 @@ func (tg *TelegramBot) Initialize(token string) {
 		log.Fatal().Err(err).Msg("Error creating Telegram bot")
 	}
 
-	// Set-up command and callback handlers
+	// Set-up command handlers
 	// TODO add middle-ware for spam
 	bot.Handle("/ping", tg.pingHandler)
 	bot.Handle("/start", tg.startHandler)
-	bot.Handle("/schedule", tg.scheduleHandler)
+	bot.Handle("/settings", tg.settingsHandler)
 	bot.Handle("/next", tg.nextHandler)
-	bot.Handle("/test", tg.fauxNotifHandler)
+	bot.Handle("/schedule", tg.scheduleHandler)
+	bot.Handle("/statistics", tg.statsHandler)
+
+	// Handle callbacks
 	bot.Handle(tb.OnCallback, tg.callbackHandler)
+
+	// Handle incoming locations for time zone setup messages
+	bot.Handle(tb.OnLocation, tg.locationReplyHandler)
 
 	// Assign
 	tg.Bot = bot
@@ -68,16 +79,16 @@ func (tg *TelegramBot) Initialize(token string) {
 
 func (tg *TelegramBot) pingHandler(c tb.Context) error {
 	message := c.Message()
-	user := tg.Cache.FindUser(fmt.Sprint(message.Sender.ID), "tg")
+	user := tg.Cache.FindUser(fmt.Sprint(message.Chat.ID), "tg")
 
-	if !PreHandler(tg, user, message.Unixtime) {
+	if !PreHandler(tg, user, c) {
 		return nil
 	}
 
 	// Create the sendable
 	sendable := sendables.TextOnlySendable("pong", user)
 
-	// Add to send queue
+	// Add to send queue as high-priority
 	go tg.Queue.Enqueue(sendable, tg, true)
 
 	// TODO Save stats
@@ -86,21 +97,21 @@ func (tg *TelegramBot) pingHandler(c tb.Context) error {
 
 func (tg *TelegramBot) startHandler(c tb.Context) error {
 	message := c.Message()
-	user := *tg.Cache.FindUser(fmt.Sprint(message.Sender.ID), "tg")
+	user := tg.Cache.FindUser(fmt.Sprint(message.Chat.ID), "tg")
 
-	if !PreHandler(tg, &user, message.Unixtime) {
+	if !PreHandler(tg, user, c) {
 		return nil
 	}
 
 	// Create the sendable
-	sendable := sendables.TextOnlySendable("pong", &user)
+	sendable := sendables.TextOnlySendable("pong", user)
 
-	// Add to send queue
+	// Add to send queue as high-priority
 	go tg.Queue.Enqueue(sendable, tg, true)
 
 	// Check if the chat is actually new, or just calling /start again
-	//if !stats.ChatExists(&message.Sender.ID, session.Config) {
-	//	log.Println("🌟", message.Sender.ID, "bot added to new chat!")
+	//if !stats.ChatExists(&message.Chat.ID, session.Config) {
+	//	log.Println("🌟", message.Chat.ID, "bot added to new chat!")
 	//}
 
 	// TODO Save stats
@@ -109,9 +120,9 @@ func (tg *TelegramBot) startHandler(c tb.Context) error {
 
 func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
 	message := c.Message()
-	user := tg.Cache.FindUser(fmt.Sprint(message.Sender.ID), "tg")
+	user := tg.Cache.FindUser(fmt.Sprint(message.Chat.ID), "tg")
 
-	if !PreHandler(tg, user, message.Unixtime) {
+	if !PreHandler(tg, user, c) {
 		return nil
 	}
 
@@ -151,7 +162,7 @@ func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
 
 	sendable.Recipients.Add(user, false)
 
-	// Add to send queue
+	// Add to send queue as high-priority
 	go tg.Queue.Enqueue(&sendable, tg, true)
 
 	// TODO Save stats
@@ -160,24 +171,22 @@ func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
 
 func (tg *TelegramBot) nextHandler(c tb.Context) error {
 	message := c.Message()
-	user := tg.Cache.FindUser(fmt.Sprint(message.Sender.ID), "tg")
+	user := tg.Cache.FindUser(fmt.Sprint(message.Chat.ID), "tg")
 
-	if !PreHandler(tg, user, message.Unixtime) {
+	if !PreHandler(tg, user, c) {
 		return nil
 	}
 
 	// Get text for the message
 	textContent, _ := tg.Cache.LaunchListMessage(user, 0, false)
 
-	// Refresh button (schedule/refresh/vehicles)
 	refreshBtn := tb.InlineButton{
 		Text: "🔄 Refresh",
 		Data: "nxt/r/0",
 	}
 
-	// Mode toggle button (schedule/mode/missions)
 	nextBtn := tb.InlineButton{
-		Text: "➡️ Next",
+		Text: "Next launch ➡️",
 		Data: "nxt/n/1/+",
 	}
 
@@ -204,82 +213,258 @@ func (tg *TelegramBot) nextHandler(c tb.Context) error {
 
 	sendable.Recipients.Add(user, false)
 
-	// Add to send queue
+	// Add to send queue as high-priority
 	go tg.Queue.Enqueue(&sendable, tg, true)
 
 	// TODO Save stats
 	return nil
 }
 
-// Test notification sends
-func (tg *TelegramBot) fauxNotifHandler(c tb.Context) error {
-	// Admin-only function
-	if c.Message().Sender.ID != tg.Owner {
-		log.Error().Msgf("/test called by non-admin (%d)", c.Message().Sender.ID)
+func (tg *TelegramBot) statsHandler(c tb.Context) error {
+	message := c.Message()
+	user := tg.Cache.FindUser(fmt.Sprint(message.Chat.ID), "tg")
+
+	if !PreHandler(tg, user, c) {
 		return nil
 	}
 
-	// Load user from cache
-	user := tg.Cache.FindUser(fmt.Sprint(c.Message().Sender.ID), "tg")
+	textContent := tg.Stats.String()
 
-	// Create message, get notification type
-	testId := c.Data()
-
-	if len(testId) == 0 {
-		sendable := sendables.TextOnlySendable("No launch ID entered", user)
-		go tg.Queue.Enqueue(sendable, tg, true)
-		return nil
+	// Construct the keyboard and send-options
+	kb := [][]tb.InlineButton{{
+		tb.InlineButton{
+			Text: "🔄 Refresh data",
+			Data: "stat/r",
+		}},
 	}
 
-	launch, err := tg.Cache.FindLaunchById(testId)
-
-	if err != nil {
-		log.Error().Err(err).Msgf("Could not find launch by id=%s", testId)
-		return nil
-	}
-
-	notifType := "1h"
-	text := launch.NotificationMessage(notifType, false)
-
-	muteBtn := tb.InlineButton{
-		Text: "🔇 Mute launch",
-		Data: fmt.Sprintf("mute/%s", launch.Id),
-	}
-
-	expandBtn := tb.InlineButton{
-		Text: "ℹ️ Expand description",
-		Data: fmt.Sprintf("exp/%s/%s", launch.Id, notifType),
-	}
-
-	// Construct the keeb
-	kb := [][]tb.InlineButton{
-		{muteBtn}, {expandBtn},
-	}
-
-	// Message
+	// Construct message
 	msg := sendables.Message{
-		TextContent: &text,
-		AddUserTime: true,
-		RefTime:     launch.NETUnix,
+		TextContent: &textContent,
 		SendOptions: tb.SendOptions{
 			ParseMode:   "MarkdownV2",
 			ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
 		},
 	}
 
-	recipients := users.SingleUserList(user, true, "tg")
-
-	// Create sendable
+	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type: "notification", Message: &msg, Recipients: recipients,
-		RateLimit: 20,
+		Type: "command", RateLimit: 5.0,
+		Message:    &msg,
+		Recipients: &users.UserList{},
 	}
 
-	// Add to send queue
+	sendable.Recipients.Add(user, false)
+
+	// Add to send queue as high-priority
 	go tg.Queue.Enqueue(&sendable, tg, true)
 
 	// TODO Save stats
 	return nil
+}
+
+func (tg *TelegramBot) settingsHandler(c tb.Context) error {
+	message := c.Message()
+	user := tg.Cache.FindUser(fmt.Sprint(message.Chat.ID), "tg")
+
+	if !PreHandler(tg, user, c) {
+		return nil
+	}
+
+	text := "🚀 *LaunchBot* | *User settings*\n" +
+		"Use these settings to choose the launches you subscribe to, " +
+		"like SpaceX or Rocket Lab, and when you receive notifications.\n\n" +
+		"You can also set your time zone, so all dates and times are in your correct local time."
+
+	subscribeButton := tb.InlineButton{
+		Text: "🔔 Subscription settings",
+		Data: "set/sub/view",
+	}
+
+	tzButton := tb.InlineButton{
+		Text: "🌍 Set your time zone",
+		Data: "set/tz/view",
+	}
+
+	exitButton := tb.InlineButton{
+		Text: "✅ Exit settings",
+		Data: "set/exit",
+	}
+
+	// Construct the keyboard and send-options
+	kb := [][]tb.InlineButton{{subscribeButton}, {tzButton}, {exitButton}}
+
+	text = utils.PrepareInputForMarkdown(text, "text")
+
+	// Construct message
+	msg := sendables.Message{
+		TextContent: &text,
+		SendOptions: tb.SendOptions{
+			ParseMode:   "MarkdownV2",
+			ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
+		},
+	}
+
+	// Wrap into a sendable
+	sendable := sendables.Sendable{
+		Type: "command", RateLimit: 5.0,
+		Message:    &msg,
+		Recipients: &users.UserList{},
+	}
+
+	sendable.Recipients.Add(user, false)
+
+	// Add to send queue as high-priority
+	go tg.Queue.Enqueue(&sendable, tg, true)
+
+	return nil
+}
+
+// Handler for settings callback requests
+func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot) string {
+	callbackData := strings.Split(cb.Data, "/")
+
+	switch callbackData[1] {
+	case "main": // User requested main settings menu
+		text := "🚀 *LaunchBot* | *User settings*\n" +
+			"Use these settings to choose the launches you subscribe to, " +
+			"like SpaceX or Rocket Lab, and when you receive notifications.\n\n" +
+			"You can also set your time zone, so all dates and times are in your correct local time."
+
+		text = utils.PrepareInputForMarkdown(text, "text")
+
+		subscribeButton := tb.InlineButton{
+			Text: "🔔 Subscription settings",
+			Data: "set/sub/view",
+		}
+
+		tzButton := tb.InlineButton{
+			Text: "🌍 Set your time zone",
+			Data: "set/tz/view",
+		}
+
+		exitButton := tb.InlineButton{
+			Text: "✅ Exit settings",
+			Data: "set/exit",
+		}
+
+		// Construct the keyboard and send-options
+		kb := [][]tb.InlineButton{{subscribeButton}, {tzButton}, {exitButton}}
+
+		sendOptions := tb.SendOptions{
+			ParseMode:             "MarkdownV2",
+			DisableWebPagePreview: true,
+			ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+		}
+
+		editCbMessage(tg, cb, text, sendOptions)
+		return "⚙️ Loaded settings"
+	case "tz":
+		switch callbackData[2] {
+		case "view":
+			// Check what time zone information user has saved
+			userTimeZone := user.SavedTimeZoneInfo()
+
+			link := fmt.Sprintf("[a time zone database entry](%s)", utils.PrepareInputForMarkdown("https://en.wikipedia.org/wiki/List_of_tz_database_time_zones", "link"))
+			text := "🌍 *LaunchBot* | *Time zone settings*\n" +
+				"LaunchBot sets your time zone with the help of Telegram's location sharing feature.\n\n" +
+				"This is entirely privacy preserving, as your exact location is not required. Only the general " +
+				"location is stored in the form of LINKHERE, such as Europe/Berlin or America/Lima.\n\n" +
+				fmt.Sprintf("*Your current time zone is: %s.* You can remove your time zone information from LaunchBot's server at any time.",
+					userTimeZone,
+				)
+
+			text = utils.PrepareInputForMarkdown(text, "text")
+			text = strings.ReplaceAll(text, "LINKHERE", link)
+
+			// Construct the keyboard and send-options
+			setBtn := tb.InlineButton{
+				Text: "🌍 Begin time zone set-up",
+				Data: "set/tz/begin",
+			}
+
+			delBtn := tb.InlineButton{
+				Text: "❌ Delete your time zone",
+				Data: "set/tz/del",
+			}
+
+			retBtn := tb.InlineButton{
+				Text: "⬅️ Back to settings",
+				Data: "set/main",
+			}
+
+			kb := [][]tb.InlineButton{{setBtn}, {delBtn}, {retBtn}}
+
+			sendOptions := tb.SendOptions{
+				ParseMode:             "MarkdownV2",
+				DisableWebPagePreview: true,
+				ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+			}
+
+			editCbMessage(tg, cb, text, sendOptions)
+			return "🌍 Loaded time zone settings"
+		case "begin": // User requested time zone setup
+			text := "🌍 *LaunchBot* | *Time zone set-up*\n" +
+				"To complete the time zone setup, follow the instructions below using your phone:\n\n" +
+				"*1.* Make sure you are *replying* to *this message!*\n" +
+				"*2.* Tap 📎 next to the text field, then choose 📍 Location.\n" +
+				"*3.* As a reply, send the bot a location that is in your time zone. This can be a different city, or even a different country!" +
+				"\n\n*Note:* location sharing is not supported in Telegram Desktop, so use your phone or tablet!"
+
+			text = utils.PrepareInputForMarkdown(text, "text")
+
+			retBtn := tb.InlineButton{
+				Text: "⬅️ Cancel set-up",
+				Data: "set/tz/view",
+			}
+
+			kb := [][]tb.InlineButton{{retBtn}}
+
+			sendOptions := tb.SendOptions{
+				ParseMode:             "MarkdownV2",
+				DisableWebPagePreview: true,
+				ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+				Protected:             true,
+			}
+
+			// Capture the message ID of this setup message
+			msg := editCbMessage(tg, cb, text, sendOptions)
+
+			// Store in list of TZ setup messages
+			tg.TZSetupMessages[int64(msg.ID)] = cb.Sender.ID
+
+			return "🌍 Loaded time zone set-up"
+		case "del":
+			// Delete tz info, dump to disk
+			user.DeleteTimeZone()
+			tg.Db.SaveUser(user)
+
+			text := "🌍 *LaunchBot* | *Time zone settings*\n" +
+				"Your time zone information was successfully deleted! " +
+				fmt.Sprintf("Your current time zone is: *%s.*", user.SavedTimeZoneInfo())
+
+			text = utils.PrepareInputForMarkdown(text, "text")
+
+			retBtn := tb.InlineButton{
+				Text: "⬅️ Back to settings",
+				Data: "set/main",
+			}
+
+			kb := [][]tb.InlineButton{{retBtn}}
+
+			sendOptions := tb.SendOptions{
+				ParseMode:             "MarkdownV2",
+				DisableWebPagePreview: true,
+				ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+			}
+
+			editCbMessage(tg, cb, text, sendOptions)
+
+			return "🌍 Deleted time zone information"
+		}
+	}
+
+	return ""
 }
 
 func (tg *TelegramBot) callbackHandler(c tb.Context) error {
@@ -287,10 +472,10 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 	cb := c.Callback()
 
 	// User
-	user := tg.Cache.FindUser(fmt.Sprint(cb.Sender.ID), "tg")
+	user := tg.Cache.FindUser(fmt.Sprint(cb.Message.Chat.ID), "tg")
 
 	// Enforce rate-limits
-	if !PreHandler(tg, user, time.Now().Unix()) {
+	if !PreHandler(tg, user, c) {
 		return nil
 	}
 
@@ -408,6 +593,8 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 				cbRespStr = "Next launch ➡️"
 			case "-":
 				cbRespStr = "⬅️ Previous launch"
+			case "0":
+				cbRespStr = "↩️ Returned to beginning"
 			default:
 				log.Error().Msgf("Undefined behavior for callbackData in nxt/n (cbd[3]=%s)", callbackData[3])
 				cbRespStr = "⚠️ Please do not send arbitrary data to the bot"
@@ -462,7 +649,38 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 				return nil
 			}
 		}
+	case "stat":
+		switch callbackData[1] {
+		case "r":
+			newText := tg.Stats.String()
 
+			// Construct the keyboard and send-options
+			kb := [][]tb.InlineButton{{
+				tb.InlineButton{
+					Text: "🔄 Refresh data",
+					Data: "stat/r",
+				}},
+			}
+
+			sendOptions := tb.SendOptions{
+				ParseMode:   "MarkdownV2",
+				ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
+			}
+
+			// Edit message
+			_, err := tg.Bot.Edit(cb.Message, newText, &sendOptions)
+
+			if err != nil {
+				// If not recoverable, return
+				if !handleTelegramError(err, tg) {
+					return nil
+				}
+			}
+
+			cbRespStr = "🔄 Refreshed stats"
+		}
+	case "set":
+		cbRespStr = settingsCallbackHandler(cb, user, tg)
 	default:
 		// Handle invalid callback data
 		log.Warn().Msgf("Invalid callback data: %s", cb.Data)
@@ -484,6 +702,118 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 		log.Error().Err(err).Msg("Error responding to callback")
 		handleTelegramError(err, tg)
 	}
+
+	return nil
+}
+
+func editCbMessage(tg *TelegramBot, cb *tb.Callback, text string, sendOptions tb.SendOptions) *tb.Message {
+	// Edit message
+	msg, err := tg.Bot.Edit(cb.Message, text, &sendOptions)
+
+	if err != nil {
+		// If not recoverable, return
+		if !handleTelegramError(err, tg) {
+			return nil
+		}
+	}
+
+	return msg
+}
+
+func (tg *TelegramBot) locationReplyHandler(c tb.Context) error {
+	// If not a reply, return immediately
+	if c.Message().ReplyTo == nil {
+		log.Debug().Msg("Not a reply")
+		return nil
+	}
+
+	// If it's a reply, verify it's a reply to a time zone setup message
+	uid, ok := tg.TZSetupMessages[int64(c.Message().ReplyTo.ID)]
+
+	if !ok {
+		// If the message we are replying to is from LaunchBot, check the text content
+		if c.Message().ReplyTo.Sender.ID == tg.Bot.Me.ID {
+			// Verify the text content matches a tz setup message
+			if strings.Contains(c.Message().ReplyTo.Text, "🌍 LaunchBot | Time zone set-up") {
+				// If the chat is private, we can ignore the strict TZSetupMessages map
+				if c.Chat().Type == tb.ChatPrivate {
+					ok = true
+				}
+			}
+		}
+
+		if !ok {
+			return nil
+		}
+	}
+
+	// This is a reply to a tz setup message: verify sender == initiator
+	if uid != c.Message().Sender.ID {
+		log.Debug().Msg("Sender != initiator")
+		return nil
+	}
+
+	// Check if message contains location information
+	if c.Message().Location == (&tb.Location{}) {
+		log.Debug().Msg("Message location is nil")
+		return nil
+	}
+
+	// Extract lat and lng
+	lat := c.Message().Location.Lat
+	lng := c.Message().Location.Lng
+
+	// Pull locale
+	locale := latlong.LookupZoneName(float64(lat), float64(lng))
+
+	if locale == "" {
+		log.Error().Msgf("Coordinates %.4f, %.4f yielded an empty locale", lat, lng)
+		return nil
+	}
+
+	// Save locale to user's struct
+	chat := tg.Cache.FindUser(fmt.Sprint(c.Message().Chat.ID), "tg")
+	chat.Locale = locale
+	tg.Db.SaveUser(chat)
+
+	log.Info().Msgf("Saved locale=%s for chat=%s", locale, chat.Id)
+
+	// Notify user of success
+	successText := "🌍 *LaunchBot* | *Time zone set-up*\n" +
+		fmt.Sprintf("Time zone setup completed! Your time zone was set to *%s*.\n\n",
+			chat.SavedTimeZoneInfo()) +
+		"If you ever want to remove this, simply use the same menu as you did previously. Stopping the bot " +
+		"also removes all your saved data."
+
+	successText = utils.PrepareInputForMarkdown(successText, "text")
+
+	retBtn := tb.InlineButton{
+		Text: "⬅️ Back to settings",
+		Data: "set/main",
+	}
+
+	kb := [][]tb.InlineButton{{retBtn}}
+
+	// Construct message
+	msg := sendables.Message{
+		TextContent: &successText,
+		SendOptions: tb.SendOptions{
+			ParseMode:   "MarkdownV2",
+			ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
+		},
+	}
+
+	// Wrap into a sendable
+	sendable := sendables.Sendable{
+		Type: "command", RateLimit: 5.0,
+		Message:    &msg,
+		Recipients: &users.UserList{},
+	}
+
+	sendable.Recipients.Add(chat, false)
+
+	// Add to send queue as high-priority
+	go tg.Queue.Enqueue(&sendable, tg, true)
 
 	return nil
 }
