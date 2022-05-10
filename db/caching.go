@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hako/durafmt"
 	"github.com/rs/zerolog/log"
 )
 
@@ -164,10 +165,9 @@ func (cache *Cache) FindNextNotification() *Notification {
 	// If time is non-zero, there's at least one non-TBD launch
 	if earliestTime != 0 {
 		// Calculate time until notification(s)
-		toNotif := time.Until(time.Unix(earliestTime, 0))
-
+		toNext := durafmt.Parse(time.Until(time.Unix(earliestTime, 0))).LimitFirstN(2)
 		log.Debug().Msgf("Got next notification send time (%s from now), %d launch(es))",
-			toNotif.String(), len(notificationTimes[earliestTime]))
+			toNext, len(notificationTimes[earliestTime]))
 
 		// Print launch names in logs
 		for n, notif := range notificationTimes[earliestTime] {
@@ -234,6 +234,49 @@ func (cache *Cache) FindNextNotification() *Notification {
 	onlyNotif := notificationList[0]
 	onlyNotif.IDs = append(onlyNotif.IDs, onlyNotif.LaunchId)
 	return &onlyNotif
+}
+
+// Computes the time interval until next scheduled API update
+func (cache *Cache) NextScheduledUpdateIn() (time.Duration, *Notification) {
+	// Get next notification
+	notification := cache.FindNextNotification()
+	timeUntil := time.Until(time.Unix(notification.SendTime, 0))
+
+	// The time interval to wait until next API update
+	var autoUpdateIn time.Duration
+
+	/* Decide next update time based on the notification's type, and based on
+	the time until said notification. Do note, that this is only a regular,
+	scheduled check. A final check will be performed just before a notification
+	is sent, independent of these scheduled checks. */
+	switch notification.Type {
+	case "24h":
+		// 24-hour window (?h ... 24h)
+		if timeUntil.Hours() >= 6 {
+			autoUpdateIn = time.Hour * 6
+		} else {
+			autoUpdateIn = time.Hour * 3
+		}
+	case "12h":
+		// 12-hour window (24h ... 12h)
+		autoUpdateIn = time.Hour * 3
+	case "1h":
+		// 1-hour window (12h ... 1h)
+		if timeUntil.Hours() >= 4 {
+			autoUpdateIn = time.Hour * 2
+		} else {
+			autoUpdateIn = time.Hour
+		}
+	case "5min":
+		// 5-min window (1h ... 5 min), less than 55 minutes
+		autoUpdateIn = time.Minute * 15
+	default:
+		// Default case, needed for debugging without a working database
+		log.Error().Msgf("Next notification's type fell through: %#v", notification)
+		autoUpdateIn = time.Hour * 6
+	}
+
+	return autoUpdateIn, notification
 }
 
 // Finds a launch from the cache by a launch ID. If not present in the cache,

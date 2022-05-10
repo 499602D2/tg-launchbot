@@ -204,7 +204,7 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification) 
 		notificationWrapper(session, notifTime.IDs, true)
 
 		// Schedule next API update with some margin for an API call
-		Scheduler(session)
+		Scheduler(session, false)
 	}, chrono.WithTime(scheduledTime))
 
 	if err != nil {
@@ -229,46 +229,26 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification) 
 
 // Schedules the next API call through Chrono, and delegates calls to
 // the notification scheduler.
-func Scheduler(session *config.Session) bool {
-	/* Get time of the next notification. This will be used to
-	determine the time of the next API update, as in how far we
-	can push it. Returns the exact time the notification must be sent. */
-	nextNotif := session.LaunchCache.FindNextNotification()
-	timeUntilNotif := time.Until(time.Unix(nextNotif.SendTime, 0))
+func Scheduler(session *config.Session, startup bool) bool {
+	// Get interval until next API update and the next upcoming notification
+	untilNextUpdate, notification := session.LaunchCache.NextScheduledUpdateIn()
 
-	// Time of next scheduled API update
-	var autoUpdateTime time.Time
+	if startup {
+		// On startup, check if database needs an immediate update
+		updateNow, sinceLast := session.Db.RequiresImmediateUpdate(untilNextUpdate)
 
-	/* Decide next update time based on the notification's type, and based on
-	the time until said notification. Do note, that this is only a regular,
-	scheduled check. A final check will be performed just before a notification
-	is sent, independent of these scheduled checks. */
-	switch nextNotif.Type {
-	case "24h":
-		// 24-hour window (?h ... 24h)
-		if timeUntilNotif.Hours() >= 6 {
-			autoUpdateTime = time.Now().Add(time.Hour * 6)
-		} else {
-			autoUpdateTime = time.Now().Add(time.Hour * 3)
+		if updateNow {
+			// Database is out of date: update now
+			return Updater(session, true)
 		}
-	case "12h":
-		// 12-hour window (24h ... 12h)
-		autoUpdateTime = time.Now().Add(time.Hour * 3)
-	case "1h":
-		// 1-hour window (12h ... 1h)
-		if timeUntilNotif.Hours() >= 4 {
-			autoUpdateTime = time.Now().Add(time.Hour * 2)
-		} else {
-			autoUpdateTime = time.Now().Add(time.Hour)
-		}
-	case "5min":
-		// 5-min window (1h ... 5 min), less than 55 minutes
-		autoUpdateTime = time.Now().Add(time.Minute * 15)
-	default:
-		// Default case, needed for debugging without a working database
-		log.Error().Msgf("nextNotif.Type fell through: %#v", nextNotif)
-		autoUpdateTime = time.Now().Add(time.Hour * 6)
+
+		// No need to update now, but deduct the time since last update from next update
+		untilNextUpdate = untilNextUpdate - sinceLast
 	}
+
+	// Time of next scheduled API update and time until next notification
+	autoUpdateTime := time.Now().Add(untilNextUpdate)
+	untilSendTime := time.Until(time.Unix(notification.SendTime, 0))
 
 	/* Compare the scheduled update to the notification send-time, and use
 	whichever comes first.
@@ -279,11 +259,11 @@ func Scheduler(session *config.Session) bool {
 
 	This is due to the fact that the notification sender needs to check that the
 	data is still up to date, and has not changed from the last update. */
-	if (time.Until(autoUpdateTime) > timeUntilNotif) && (timeUntilNotif.Minutes() > -5.0) {
+	if (time.Until(autoUpdateTime) > untilSendTime) && (untilSendTime.Minutes() > -5.0) {
 		log.Info().Msgf("A notification (type=%s) is coming up before next API update, scheduling...",
-			nextNotif.Type,
+			notification.Type,
 		)
-		return NotificationScheduler(session, nextNotif)
+		return NotificationScheduler(session, notification)
 	}
 
 	// Schedule next auto-update, since no notifications are incoming soon
@@ -302,7 +282,7 @@ func Scheduler(session *config.Session) bool {
 	session.Mutex.Unlock()
 
 	untilAutoUpdate := durafmt.Parse(time.Until(autoUpdateTime)).LimitFirstN(2)
-	log.Info().Msgf("Next auto-update in %s (%s)", untilAutoUpdate, autoUpdateTime.String())
+	log.Info().Msgf("Next auto-update in %s (%s)", untilAutoUpdate, autoUpdateTime.Format(time.RFC1123))
 
 	return true
 }
