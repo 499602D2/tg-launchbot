@@ -16,6 +16,7 @@
 🌟 **Improve performance** by simply switching to Go
 
 ### To-do before 3.0.0
+- [ ] Architecture overview diagram in readme
 - [ ] Verify no maps are used where the read is expected to be ordered
 - [ ] LaunchLibrary2 API
 	- [x] `/launch/upcoming`
@@ -28,9 +29,6 @@
 		- [ ] Notifications
 		- [x] Commands
 	- [x] Use a dual-limiter
-		- Issues with sends?
-		- Only add to queue _after_ user has suffered their rate-limit -> easy
-	- [ ] Use preHandler as middleware
 
 - [ ] Add database functions
 	- [x] Create database, auto-migrations
@@ -38,7 +36,7 @@
 	- [ ] Stats updates
 	- [ ] User functions
 		- [ ] Statistics
-		- [ ] Time zone  
+		- [x] Time zone  
 		- [ ] Notification updates
 		- [ ] Chat migrations
 
@@ -58,7 +56,7 @@
 			- Re-think how database inserts are done: try to simplify
 	- [x] /next
 	- [x] /schedule
-	- [ ] /stats
+	- [x] /stats
 	- [ ] /feedback + response script
 	- [ ] Admin functions (/debug)
 
