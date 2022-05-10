@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hako/durafmt"
 	"github.com/procyon-projects/chrono"
 	"github.com/rs/zerolog/log"
 	tb "gopkg.in/telebot.v3"
@@ -229,9 +230,9 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification) 
 // Schedules the next API call through Chrono, and delegates calls to
 // the notification scheduler.
 func Scheduler(session *config.Session) bool {
-	// Get time of the next notification. This will be used to
-	// determine the time of the next API update, as in how far we
-	// can push it. Returns the exact time the notification must be sent.
+	/* Get time of the next notification. This will be used to
+	determine the time of the next API update, as in how far we
+	can push it. Returns the exact time the notification must be sent. */
 	nextNotif := session.LaunchCache.FindNextNotification()
 	timeUntilNotif := time.Until(time.Unix(nextNotif.SendTime, 0))
 
@@ -244,7 +245,7 @@ func Scheduler(session *config.Session) bool {
 	is sent, independent of these scheduled checks. */
 	switch nextNotif.Type {
 	case "24h":
-		// 24-hour window (??? ... 24h)
+		// 24-hour window (?h ... 24h)
 		if timeUntilNotif.Hours() >= 6 {
 			autoUpdateTime = time.Now().Add(time.Hour * 6)
 		} else {
@@ -279,12 +280,10 @@ func Scheduler(session *config.Session) bool {
 	This is due to the fact that the notification sender needs to check that the
 	data is still up to date, and has not changed from the last update. */
 	if (time.Until(autoUpdateTime) > timeUntilNotif) && (timeUntilNotif.Minutes() > -5.0) {
-		log.Info().Msgf("A notification (type=%s) is coming up before next API update: scheduling",
+		log.Info().Msgf("A notification (type=%s) is coming up before next API update, scheduling...",
 			nextNotif.Type,
 		)
 		return NotificationScheduler(session, nextNotif)
-	} else {
-		log.Debug().Msgf("autoUpdateTime set to %s (type=%s)", autoUpdateTime.String(), nextNotif.Type)
 	}
 
 	// Schedule next auto-update, since no notifications are incoming soon
@@ -293,7 +292,7 @@ func Scheduler(session *config.Session) bool {
 	}, chrono.WithTime(autoUpdateTime))
 
 	if err != nil {
-		log.Error().Err(err).Msgf("Error scheduling next update")
+		log.Error().Err(err).Msgf("Scheduling next update failed")
 		return false
 	}
 
@@ -302,9 +301,8 @@ func Scheduler(session *config.Session) bool {
 	session.Tasks = append(session.Tasks, &task)
 	session.Mutex.Unlock()
 
-	log.Info().Msgf("Next auto-update scheduled for %s",
-		autoUpdateTime.String(),
-	)
+	untilAutoUpdate := durafmt.Parse(time.Until(autoUpdateTime)).LimitFirstN(2)
+	log.Info().Msgf("Next auto-update in %s (%s)", untilAutoUpdate, autoUpdateTime.String())
 
 	return true
 }
