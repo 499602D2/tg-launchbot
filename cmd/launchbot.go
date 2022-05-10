@@ -51,7 +51,7 @@ func setupSignalHandler(session *config.Session) {
 func initSession(version string) *config.Session {
 	// Create session
 	session := config.Session{
-		Started:           time.Now().Unix(),
+		Started:           time.Now(),
 		Version:           fmt.Sprintf("%s (%s)", version, GitSHA[0:7]),
 		NotificationTasks: make(map[time.Time]*chrono.ScheduledTask),
 	}
@@ -84,13 +84,20 @@ func initSession(version string) *config.Session {
 	session.Telegram.Spam = session.Spam
 	session.Telegram.Cache = session.LaunchCache
 	session.Telegram.Db = session.Db
+	session.Telegram.TZSetupMessages = make(map[int64]int64)
+
+	// Init stats
+	session.Telegram.Stats = session.Db.LoadStatisticsFromDisk("tg")
+	session.Telegram.Stats.RunningVersion = session.Version
+	session.Telegram.Stats.StartedAt = session.Started
+
 	session.Telegram.Initialize(session.Config.Token.Telegram)
 
 	return &session
 }
 
 func main() {
-	const version = "3.0.0-pre"
+	const version = "3.0.0"
 
 	// CLI flags
 	var (
