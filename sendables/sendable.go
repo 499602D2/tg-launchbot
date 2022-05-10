@@ -5,7 +5,6 @@ import (
 	"launchbot/users"
 	"launchbot/utils"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog/log"
 	tb "gopkg.in/telebot.v3"
@@ -30,7 +29,12 @@ type Message struct {
 	SendOptions tb.SendOptions
 }
 
-/* Switches according to the recipient platform and the sendable type. */
+// TODO implement so limiter can have more granularity and avoid rate-limits
+func (sendable *Sendable) CalculateTgApiByteSize() float32 {
+	return 0
+}
+
+// Switches according to the recipient platform and the sendable type.
 func (sendable *Sendable) Send() {
 	// Loop over the users, distribute into appropriate send queues
 	switch sendable.Recipients.Platform {
@@ -48,12 +52,8 @@ func SetTime(txt string, user *users.User, refTime int64, markdownPrep bool) *st
 		user.SetTimeZone()
 	}
 
-	// Convert unix time to local time in user's time zone
-	userTime := time.Unix(refTime, 0).In(user.Time.Location)
-
-	// Create time string, escape it
-	timeString := fmt.Sprintf("%02d:%02d %s",
-		userTime.Hour(), userTime.Minute(), user.Time.UtcOffset)
+	// Get time string in user's location
+	timeString := utils.TimeInUserLocation(refTime, user.Time.Location, user.Time.UtcOffset)
 
 	// Monospace
 	timeString = utils.Monospaced(timeString)
