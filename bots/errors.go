@@ -102,7 +102,7 @@ Returns:
 - bool: indicates if the error is recoverable, as in if the previous execution
 				can still proceed after the error.
 */
-func handleTelegramError(err error, tg *TelegramBot) bool {
+func handleTelegramError(sent *tb.Message, err error, tg *TelegramBot) bool {
 	switch err {
 	case nil:
 		log.Warn().Msg("handleTelegramError called with nil error")
@@ -134,8 +134,8 @@ func handleTelegramError(err error, tg *TelegramBot) bool {
 	case tb.ErrEmptyText:
 		log.Trace().Err(err).Msg("Empty text in message")
 	case tb.ErrGroupMigrated:
-		// TODO implement handler
-		log.Error().Err(err).Msg("GROUP MIGRATION NOT IMPLEMENTED")
+		tg.Db.MigrateGroup(sent.MigrateFrom, sent.MigrateTo, "tg")
+		log.Info().Err(err).Msgf("Migrating group from %d to %d...", sent.MigrateFrom, sent.MigrateTo)
 	case tb.ErrNoRightsToSend:
 		log.Trace().Err(err).Msg("No rights to send message to chat")
 	case tb.ErrTooLongMarkup:
