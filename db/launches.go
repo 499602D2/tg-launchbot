@@ -19,16 +19,53 @@ import (
 	"gorm.io/gorm"
 )
 
-// TODO save in a database table + cache
-// V3.1 (load IDs from LL2)
-var LSPShorthands = map[int]string{
-	63:  "ROSCOSMOS",
-	96:  "KhSC",
-	115: "Arianespace",
-	124: "ULA",
-	147: "Rocket Lab",
-	265: "Firefly",
-	285: "Astra",
+// TODO save in a database table + cache (V3.1)
+// TODO: add iSpace, LandSpace
+var LSPShorthands = map[int]LSP{
+	31:   {Name: "ISRO", Flag: "🇮🇳", Cc: "IND"},
+	37:   {Name: "JAXA", Flag: "🇯🇵", Cc: "JPN"},
+	44:   {Name: "NASA", Flag: "🇺🇸", Cc: "USA"},
+	63:   {Name: "ROSCOSMOS", Flag: "🇷🇺", Cc: "RUS"},
+	96:   {Name: "KhSC", Flag: "🇷🇺", Cc: "RUS"},
+	98:   {Name: "Mitsubishi HI", Flag: "🇯🇵", Cc: "JPN"},
+	99:   {Name: "Northrop Grumman", Flag: "🇺🇸", Cc: "USA"},
+	115:  {Name: "Arianespace", Flag: "🇪🇺", Cc: "EU"},
+	121:  {Name: "SpaceX", Flag: "🇺🇸", Cc: "USA"},
+	124:  {Name: "ULA", Flag: "🇺🇸", Cc: "USA"},
+	141:  {Name: "Blue Origin", Flag: "🇺🇸", Cc: "USA"},
+	147:  {Name: "Rocket Lab", Flag: "🇺🇸", Cc: "USA"},
+	189:  {Name: "CASC", Flag: "🇨🇳", Cc: "CHN"},
+	190:  {Name: "Antrix Corp.", Flag: "🇮🇳", Cc: "IND"},
+	194:  {Name: "ExPace", Flag: "🇨🇳", Cc: "CHN"},
+	199:  {Name: "Virgin Orbit", Flag: "🇺🇸", Cc: "USA"},
+	265:  {Name: "Firefly", Flag: "🇺🇸", Cc: "USA"},
+	285:  {Name: "Astra", Flag: "🇺🇸", Cc: "USA"},
+	1002: {Name: "Interstellar tech.", Flag: "🇯🇵", Cc: "JPN"},
+	1021: {Name: "Galactic Energy", Flag: "🇨🇳", Cc: "CHN"},
+	1024: {Name: "Virgin Galactic", Flag: "🇺🇸", Cc: "USA"},
+	1029: {Name: "TiSPACE", Flag: "🇹🇼", Cc: "TWN"},
+}
+
+// TODO add ispace, landspace
+var IdByCountryCode = map[string][]int{
+	"USA": {44, 99, 121, 124, 141, 147, 199, 265, 285, 1024},
+	"EU":  {115},
+	"CHN": {189, 194, 1021},
+	"RUS": {63, 96},
+	"IND": {31, 190},
+	"JPN": {37, 98, 1002},
+	"TWN": {1029},
+}
+
+var CountryCodes = []string{"USA", "EU", "CHN", "RUS", "IND", "JPN", "TWN"}
+var CountryCodeToName = map[string]string{
+	"USA": "USA 🇺🇸", "EU": "EU 🇪🇺", "CHN": "China 🇨🇳", "RUS": "Russia 🇷🇺", "IND": "India 🇮🇳", "JPN": "Japan 🇯🇵", "TWN": "Taiwan 🇹🇼",
+}
+
+type LSP struct {
+	Name string
+	Flag string
+	Cc   string
 }
 
 type Notification struct {
@@ -740,7 +777,7 @@ func (provider *LaunchProvider) ShortName() string {
 	_, ok := LSPShorthands[provider.Id]
 
 	if ok {
-		return LSPShorthands[provider.Id]
+		return LSPShorthands[provider.Id].Name
 	}
 
 	// Log long names we encounter
@@ -748,8 +785,6 @@ func (provider *LaunchProvider) ShortName() string {
 		log.Warn().Msgf("Provider name '%s' not found in LSPShorthands, id=%d (not warning again)",
 			provider.Name, provider.Id)
 
-		// Don't warn again until program is restarted
-		LSPShorthands[provider.Id] = provider.Abbrev
 		return provider.Abbrev
 	}
 
