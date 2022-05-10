@@ -8,6 +8,7 @@ import (
 
 	"launchbot/stats"
 
+	"github.com/hako/durafmt"
 	"github.com/rs/zerolog/log"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -174,31 +175,27 @@ func (db *Database) CleanSlippedLaunches() error {
 }
 
 // Check if DB needs to be updated immediately
-func (db *Database) RequiresImmediateUpdate() bool {
+func (db *Database) RequiresImmediateUpdate(untilNextUpdate time.Duration) (bool, time.Duration) {
 	// Pull largest LastUpdated value from the database
 	dest := Launch{}
 	result := db.Conn.Limit(1).Order("api_update desc, id").Find(&dest)
 
 	if result.RowsAffected == 0 {
 		log.Info().Msg("Tried to pull last update, got nothing: updating now")
-		return true
+		return true, time.Second * 0
 	}
 
 	// Set database's field
 	db.LastUpdated = dest.ApiUpdate
 
-	// If more than an hour since last update, update now
-	// TODO use a function in scheduler to determine if we need to update
-	if time.Since(db.LastUpdated) > time.Hour {
-		log.Info().Msg("More than an hour since last API update: updating now")
-		return true
+	// If database is outdated, update now
+	if time.Since(db.LastUpdated) > untilNextUpdate {
+		log.Info().Msg("Database outdated: updating now...")
+		return true, time.Since(db.LastUpdated)
 	}
 
-	log.Info().Msgf("%.0f minutes since last API update, not updating",
-		time.Since(db.LastUpdated).Minutes(),
-	)
-
-	return false
+	log.Info().Msgf("%s since last API update, not updating", durafmt.Parse(time.Since(db.LastUpdated)).LimitFirstN(2))
+	return false, time.Since(db.LastUpdated)
 }
 
 func (db *Database) LoadStatisticsFromDisk(platform string) *stats.Statistics {
