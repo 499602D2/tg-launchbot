@@ -55,12 +55,12 @@ func highPrioritySender(tg *TelegramBot, message *sendables.Message, user *users
 	id, _ := strconv.Atoi(user.Id)
 
 	// TODO: use sendable.Send()
-	_, err := tg.Bot.Send(tb.ChatID(id),
+	sent, err := tg.Bot.Send(tb.ChatID(id),
 		*text, &message.SendOptions,
 	)
 
 	if err != nil {
-		if !handleTelegramError(err, tg) {
+		if !handleTelegramError(sent, err, tg) {
 			// If error is non-recoverable, continue the loop
 			log.Warn().Msg("Unrecoverable error in high-priority sender")
 			return false
@@ -182,7 +182,7 @@ func TelegramSender(tg *TelegramBot) {
 					)
 
 					if err != nil {
-						if !handleTelegramError(err, tg) {
+						if !handleTelegramError(sent, err, tg) {
 							// If error is non-recoverable, continue the loop
 							log.Warn().Msg("Non-recoverable error in sender, continuing loop")
 							delete(tg.Queue.Sendables, hash)
