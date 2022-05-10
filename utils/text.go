@@ -48,7 +48,7 @@ func PrepareInputForMarkdown(input string, mode string) string {
 	return output
 }
 
-/* Converts text to back-ticked, code-formatted text for improved density. */
+// Converts text to back-ticked, code-formatted text for improved density.
 func Monospaced(input string) string {
 	output := []string{}
 
