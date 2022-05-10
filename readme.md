@@ -27,6 +27,8 @@
 		- [x] Catch-all type handlers
 	- [ ] Implement callbacks
 		- [ ] Notifications
+			- [ ] Mute
+			- [x] Expand description
 		- [x] Commands
 	- [x] Use a dual-limiter
 
@@ -37,8 +39,8 @@
 	- [ ] User functions
 		- [ ] Statistics
 		- [x] Time zone  
-		- [ ] Notification updates
-		- [ ] Chat migrations
+		- [x] Notification updates
+		- [x] Chat migrations
 
 - [ ] Caching
 	- [x] Launches
@@ -47,13 +49,7 @@
 			- gochron
 
 - [ ] Add commands
-	- [ ] /notify
-		- Replace /notify with /settings?
-		- Database required
-			- Use provider IDs (requires reverse mapping, trivial to do manually)
-		- More:
-			- dynamically generate lists for missing providers
-			- Re-think how database inserts are done: try to simplify
+	- [x] /notify
 	- [x] /next
 	- [x] /schedule
 	- [x] /stats
@@ -67,13 +63,14 @@
 	- [x] Add "More info" button
 		- [x] Implement for description
 		- [ ] Implement for reuse information
-- [ ] Remove manual time zone feature to reduce complexity
+- [x] Remove manual time zone feature to reduce complexity
 - [ ] Purge log-files when they become too large
 	- Also, be smarter about telebot's logging
 
 ### Nice-to-haves before 3.0.0
 - [x] Notify admin on any processing failure
 	- [x] Telegram
+- [x] Allow postpone notifications to be disabled
 
 ### Future: 3.1 and onwards
 - [ ] Handle window starts/ends
