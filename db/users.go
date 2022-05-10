@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"launchbot/users"
 	"sort"
 
@@ -122,5 +123,36 @@ func (db *Database) RemoveUser(user *users.User) {
 	} else {
 		log.Info().Msgf("Deleted user=%s:%s, RowsAffected=%d",
 			user.Id, user.Platform, result.RowsAffected)
+	}
+}
+
+func (db *Database) MigrateGroup(fromId int64, toId int64, platform string) {
+	// Find existing chat row
+	chat := users.User{}
+	result := db.Conn.First(&chat, "Id = ? AND platform = ?", fromId, platform)
+
+	switch result.Error {
+	case gorm.ErrRecordNotFound:
+		// Nothing found?
+		log.Debug().Msgf("Chat with fromId=%d not found during migration to id=%d?", fromId, toId)
+		chat.Id = fmt.Sprintf("%d", toId)
+		chat.Platform = platform
+		db.SaveUser(&chat)
+		return
+
+	case nil:
+		// No errors, so existing chat row is found
+		log.Debug().Msg("No errors encountered during migration")
+
+	default:
+		// Default error handler
+		log.Error().Err(result.Error).Msg("Unexpected error encountered during migration")
+	}
+
+	// Swap out the IDs
+	result = db.Conn.Model(&users.User{}).Where("id = ?", fromId).Update("id", toId)
+
+	if result.Error != nil {
+		log.Error().Err(result.Error).Msgf("Migrating chat from id=%d to id=%d failed", fromId, toId)
 	}
 }
