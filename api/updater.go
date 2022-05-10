@@ -6,6 +6,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"launchbot/config"
 	"launchbot/db"
@@ -46,7 +47,8 @@ func apiCall(client *resty.Client, useDevEndpoint bool) (db.LaunchUpdate, error)
 
 	// Check status code
 	if resp.StatusCode() != 200 {
-		log.Warn().Msgf("Got status code %d", resp.StatusCode())
+		err = errors.New(fmt.Sprintf("Status code != 200 (code %d)", resp.StatusCode()))
+		return db.LaunchUpdate{}, err
 	}
 
 	// Unmarshal into a launch update struct
@@ -78,7 +80,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	update, err := apiCall(client, session.UseDevEndpoint)
 
 	// TODO use api.errors
-	if err != nil {
+	if err != nil || len(update.Launches) == 0 {
 		log.Error().Err(err).Msg("Error performing API update")
 		return false
 	}
@@ -126,7 +128,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 
 	// Schedule next API update, if configured
 	if scheduleNext {
-		return Scheduler(session)
+		return Scheduler(session, false)
 	}
 
 	return true
@@ -140,22 +142,20 @@ func updateWrapper(session *config.Session) {
 	success := Updater(session, true)
 
 	if !success {
-		// TODO define retry time-limit based on error codes (api/errors.go)
-		log.Warn().Msg("Running updater failed: retrying in 60 seconds...")
+		log.Warn().Msg("Updater failed: re-trying in 60 seconds...")
 
 		// Retry twice
-		// TODO use expontential back-off?)
-		for i := 1; i <= 3; i++ {
+		for i := 1; ; i++ {
 			success = Updater(session, true)
+
 			if !success {
-				log.Warn().Msgf("Re-try number %d failed, trying again in %d seconds", i, 60)
-				time.Sleep(time.Second * 60)
+				retryAfter := 60*i ^ 2
+				log.Warn().Msgf("Re-try number %d failed, trying again in %d minutes", i, retryAfter)
+				time.Sleep(time.Duration(retryAfter) * time.Second)
 			} else {
 				log.Info().Msgf("Success after %d retries", i)
 				break
 			}
 		}
-
-		// TODO if failed, notify admin + logs
 	}
 }
