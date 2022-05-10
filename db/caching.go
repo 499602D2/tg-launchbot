@@ -127,8 +127,8 @@ func (cache *Cache) FindNextNotification() *Notification {
 	allowedNetSlip := time.Duration(-5) * time.Minute
 
 	for _, launch := range cache.Launches {
-		// If launch time is TBD/TBC or in the past, don't notify
-		if launch.Status.Abbrev == "Go" {
+		// If launch time is TBD or in the past, don't notify
+		if launch.Status.Abbrev == "Go" || launch.Status.Abbrev == "TBC" {
 			// Calculate the next upcoming send time for this launch
 			next := launch.NextNotification(cache.Database)
 
