@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"golang.org/x/time/rate"
+	tb "gopkg.in/telebot.v3"
 )
 
 // TODO set-up as middleware in tb.Handle definitions in telegram.go
@@ -42,7 +43,23 @@ func (spam *AntiSpam) Initialize() {
 }
 
 // When user sends a command, verify the chat is eligible for a command parse.
-func PreHandler(tg *TelegramBot, user *users.User, sentAt int64) bool {
+func PreHandler(tg *TelegramBot, user *users.User, c tb.Context) bool {
+	if c.Chat().Type != tb.ChatPrivate {
+		// If chat is not private, ensure sender is an admin
+		member, err := tg.Bot.ChatMemberOf(c.Chat(), c.Sender())
+
+		if err != nil {
+			handleTelegramError(err, tg)
+		}
+
+		if member.Role != tb.Administrator && member.Role != tb.Creator {
+			return false
+		}
+	}
+
+	// TODO handle admin checks
+	// TODO users should be chat IDs, not users (verify when calling preHandler)
+
 	tg.Spam.Mutex.Lock()
 	chatLog := tg.Spam.ChatLogs[user]
 
