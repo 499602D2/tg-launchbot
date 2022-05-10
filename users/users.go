@@ -84,6 +84,21 @@ func (user *User) SetTimeZone() {
 	}
 }
 
+// Deletes the time zone from cache
+func (user *User) DeleteTimeZone() {
+	user.Locale = ""
+	user.SetTimeZone()
+}
+
+// Returns either the current time zone locale, or a string to indicate the lack of stored info
+func (user *User) SavedTimeZoneInfo() string {
+	if user.Locale == "" {
+		return "None (UTC+0)"
+	}
+
+	return fmt.Sprintf("%s (%s)", user.Locale, user.Time.UtcOffset)
+}
+
 // Adds a single user to a UserList and adds a time zone if required
 func (userList *UserList) Add(user *User, addTimeZone bool) {
 	userList.Mutex.Lock()
