@@ -151,22 +151,16 @@ func main() {
 		// Create a new task scheduler, assign to session
 		session.Scheduler = chrono.NewDefaultTaskScheduler()
 
-		// Before doing finer scheduling, check if we need to update immediately
-		if updateNow || session.Db.RequiresImmediateUpdate() {
-			// Run API update manually and enable auto-scheduler.
-			// Running this in a go-routine might cause the cache to not be initialized,
-			// so we're doing this synchronously.
-			if updateNow {
-				log.Info().Msg("--Update-now specified, running API update")
-			}
+		// Populate the cache
+		session.LaunchCache.Populate()
 
-			api.Updater(session, true)
+		if updateNow {
+			// Run API update manually and enable auto-scheduler
+			log.Info().Msg("--Update-now specified, running API update")
+			go api.Updater(session, true)
 		} else {
-			// Since db won't be immediately updated, we will need to load the cache
-			session.LaunchCache.Populate()
-
-			// Start scheduler normally: cache is now populated
-			api.Scheduler(session)
+			// Start scheduler normally, but use the startup flag
+			go api.Scheduler(session, true)
 		}
 	} else {
 		log.Warn().Msg("API updates disabled")
