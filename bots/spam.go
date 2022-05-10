@@ -49,7 +49,7 @@ func PreHandler(tg *TelegramBot, user *users.User, c tb.Context) bool {
 		member, err := tg.Bot.ChatMemberOf(c.Chat(), c.Sender())
 
 		if err != nil {
-			handleTelegramError(err, tg)
+			handleTelegramError(nil, err, tg)
 		}
 
 		if member.Role != tb.Administrator && member.Role != tb.Creator {
