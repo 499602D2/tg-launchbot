@@ -1,6 +1,7 @@
 package bots
 
 import (
+	"errors"
 	"fmt"
 	"launchbot/db"
 	"launchbot/sendables"
@@ -36,6 +37,32 @@ type HighPriorityQueue struct {
 	Mutex           sync.Mutex
 }
 
+const (
+	settingsMainText = "*LaunchBot* | *User settings*\n" +
+		"🔔 Subscription settings allow you to choose what launches you receive notifications for, " +
+		"like SpaceX's or Rocket Lab's launches, and when you receive these notifications.\n\n" +
+		"🌍 You can also set your time zone, so all dates and times are in your local time, instead of UTC+0."
+
+	settingsSubscriptionText = "*LaunchBot* | *Subscription settings*\n" +
+		"🔔 Launch notification settings allow you to subscribe to entire countries' notifications, or just one launch provider like SpaceX.\n\n" +
+		"⏲️ You can also choose when you receive notifications, from four different time instances!"
+
+	notificationSettingsByCountryCode = "🔔 *LaunchBot* | *Notification settings*\n" +
+		"You can search for specific launch-providers by the country flags, or simply enable notifications for all launch providers.\n\n" +
+		"As an example, SpaceX can be found under the 🇺🇸-flag, and ISRO can be found under 🇮🇳-flag.\n\n" +
+		"✅ *Notifications enabled*\n" +
+		"🔕 *Notifications disabled*"
+)
+
+// Map a boolean status to a bell
+var statusBell = map[bool]string{
+	true: "✅", false: "🔕",
+}
+
+var boolToStringToggle = map[bool]string{
+	true: "0", false: "1",
+}
+
 // Simple method to initialize the TelegramBot object
 func (tg *TelegramBot) Initialize(token string) {
 	// Create primary Telegram queue
@@ -59,16 +86,22 @@ func (tg *TelegramBot) Initialize(token string) {
 	}
 
 	// Set-up command handlers
-	// TODO add middle-ware for spam
-	bot.Handle("/ping", tg.pingHandler)
 	bot.Handle("/start", tg.startHandler)
-	bot.Handle("/settings", tg.settingsHandler)
 	bot.Handle("/next", tg.nextHandler)
 	bot.Handle("/schedule", tg.scheduleHandler)
 	bot.Handle("/statistics", tg.statsHandler)
+	bot.Handle("/settings", tg.settingsHandler)
 
 	// Handle callbacks
 	bot.Handle(tb.OnCallback, tg.callbackHandler)
+
+	// Callback buttons that are handled directly
+	// TODO handle schedule, stats, settings callbacks this way
+	countryCodeSettings := tb.InlineButton{Unique: "countryCodeView"}
+	notificationToggle := tb.InlineButton{Unique: "notificationToggle"}
+
+	bot.Handle(&countryCodeSettings, tg.countryCodeListCallback)
+	bot.Handle(&notificationToggle, tg.notificationToggleCallback)
 
 	// Handle incoming locations for time zone setup messages
 	bot.Handle(tb.OnLocation, tg.locationReplyHandler)
@@ -77,27 +110,8 @@ func (tg *TelegramBot) Initialize(token string) {
 	tg.Bot = bot
 }
 
-func (tg *TelegramBot) pingHandler(c tb.Context) error {
-	message := c.Message()
-	user := tg.Cache.FindUser(fmt.Sprint(message.Chat.ID), "tg")
-
-	if !PreHandler(tg, user, c) {
-		return nil
-	}
-
-	// Create the sendable
-	sendable := sendables.TextOnlySendable("pong", user)
-
-	// Add to send queue as high-priority
-	go tg.Queue.Enqueue(sendable, tg, true)
-
-	// TODO Save stats
-	return nil
-}
-
 func (tg *TelegramBot) startHandler(c tb.Context) error {
-	message := c.Message()
-	user := tg.Cache.FindUser(fmt.Sprint(message.Chat.ID), "tg")
+	user := tg.Cache.FindUser(fmt.Sprint(c.Message().Chat.ID), "tg")
 
 	if !PreHandler(tg, user, c) {
 		return nil
@@ -115,12 +129,12 @@ func (tg *TelegramBot) startHandler(c tb.Context) error {
 	//}
 
 	// TODO Save stats
+	// TODO send keyboards on start
 	return nil
 }
 
 func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
-	message := c.Message()
-	user := tg.Cache.FindUser(fmt.Sprint(message.Chat.ID), "tg")
+	user := tg.Cache.FindUser(fmt.Sprint(c.Message().Chat.ID), "tg")
 
 	if !PreHandler(tg, user, c) {
 		return nil
@@ -170,8 +184,7 @@ func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
 }
 
 func (tg *TelegramBot) nextHandler(c tb.Context) error {
-	message := c.Message()
-	user := tg.Cache.FindUser(fmt.Sprint(message.Chat.ID), "tg")
+	user := tg.Cache.FindUser(fmt.Sprint(c.Message().Chat.ID), "tg")
 
 	if !PreHandler(tg, user, c) {
 		return nil
@@ -221,8 +234,7 @@ func (tg *TelegramBot) nextHandler(c tb.Context) error {
 }
 
 func (tg *TelegramBot) statsHandler(c tb.Context) error {
-	message := c.Message()
-	user := tg.Cache.FindUser(fmt.Sprint(message.Chat.ID), "tg")
+	user := tg.Cache.FindUser(fmt.Sprint(c.Message().Chat.ID), "tg")
 
 	if !PreHandler(tg, user, c) {
 		return nil
@@ -264,37 +276,27 @@ func (tg *TelegramBot) statsHandler(c tb.Context) error {
 }
 
 func (tg *TelegramBot) settingsHandler(c tb.Context) error {
-	message := c.Message()
-	user := tg.Cache.FindUser(fmt.Sprint(message.Chat.ID), "tg")
+	user := tg.Cache.FindUser(fmt.Sprint(c.Message().Chat.ID), "tg")
 
 	if !PreHandler(tg, user, c) {
 		return nil
 	}
 
-	text := "🚀 *LaunchBot* | *User settings*\n" +
-		"Use these settings to choose the launches you subscribe to, " +
-		"like SpaceX or Rocket Lab, and when you receive notifications.\n\n" +
-		"You can also set your time zone, so all dates and times are in your correct local time."
+	// Text content
+	text := utils.PrepareInputForMarkdown(settingsMainText, "text")
 
 	subscribeButton := tb.InlineButton{
 		Text: "🔔 Subscription settings",
-		Data: "set/sub/view",
+		Data: "set/sub/main",
 	}
 
 	tzButton := tb.InlineButton{
-		Text: "🌍 Set your time zone",
-		Data: "set/tz/view",
-	}
-
-	exitButton := tb.InlineButton{
-		Text: "✅ Exit settings",
-		Data: "set/exit",
+		Text: "🌍 Time zone settings",
+		Data: "set/tz/main",
 	}
 
 	// Construct the keyboard and send-options
-	kb := [][]tb.InlineButton{{subscribeButton}, {tzButton}, {exitButton}}
-
-	text = utils.PrepareInputForMarkdown(text, "text")
+	kb := [][]tb.InlineButton{{subscribeButton}, {tzButton}}
 
 	// Construct message
 	msg := sendables.Message{
@@ -320,36 +322,181 @@ func (tg *TelegramBot) settingsHandler(c tb.Context) error {
 	return nil
 }
 
+// Handles requests to view a list of launch providers associated with a country code
+func (tg *TelegramBot) countryCodeListCallback(c tb.Context) error {
+	// Ensure callback data is valid
+	data := strings.Split(c.Callback().Data, "/")
+
+	if len(data) != 2 {
+		err := errors.New(fmt.Sprintf("Got arbitrary data at cc/.. endpoint with length=%d", len(data)))
+		log.Error().Err(err)
+		return err
+	}
+
+	// Get chat
+	user := tg.Cache.FindUser(fmt.Sprint(c.Chat().ID), "tg")
+
+	// Status of all being enabled for this country code
+	allEnabled := true
+
+	// A dynamically generated keyboard array
+	kb := [][]tb.InlineButton{}
+	row := []tb.InlineButton{}
+
+	// Country-code we want to view is at index 1: build the keyboard, and get status for all
+	for i, id := range db.IdByCountryCode[data[1]] {
+		enabled := user.GetNotificationStatusById(id)
+
+		// If not enabled, set allEnabled to false
+		if !enabled {
+			allEnabled = false
+		}
+
+		row = append(row,
+			tb.InlineButton{
+				Unique: "notificationToggle",
+				Text:   fmt.Sprintf("%s %s", statusBell[enabled], db.LSPShorthands[id].Name),
+				Data:   fmt.Sprintf("id/%d/%s", id, map[bool]string{true: "0", false: "1"}[enabled]),
+			})
+
+		if len(row) == 2 || i == len(db.IdByCountryCode[data[1]])-1 {
+			kb = append(kb, row)
+			row = []tb.InlineButton{}
+		}
+	}
+
+	// Add the return key
+	kb = append(kb, []tb.InlineButton{{
+		Text: "⬅️ Return",
+		Data: "set/sub/bycountry",
+	}})
+
+	// Insert the toggle-all key at the beginning
+	toggleAllBtn := tb.InlineButton{
+		Unique: "notificationToggle",
+		Text:   fmt.Sprintf("%s", map[bool]string{true: "🔕 Tap to disable all", false: "🔔 Tap to enable all"}[allEnabled]),
+		Data:   fmt.Sprintf("cc/%s/%s", data[1], map[bool]string{true: "0", false: "1"}[allEnabled]),
+	}
+
+	// Insert at the beginning of the keyboard
+	kb = append([][]tb.InlineButton{{toggleAllBtn}}, kb...)
+
+	sendOptions := tb.SendOptions{
+		ParseMode:             "MarkdownV2",
+		DisableWebPagePreview: true,
+		ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+	}
+
+	// Edit message
+	text := utils.PrepareInputForMarkdown(notificationSettingsByCountryCode, "text")
+	editCbMessage(tg, c.Callback(), text, sendOptions)
+
+	// Create callback response
+	cbResp := tb.CallbackResponse{
+		CallbackID: c.Callback().ID,
+		Text:       fmt.Sprintf("Loaded %s", db.CountryCodeToName[data[1]]),
+	}
+
+	// Respond to callback
+	err := tg.Bot.Respond(c.Callback(), &cbResp)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Error responding to callback")
+		handleTelegramError(nil, err, tg)
+	}
+
+	return nil
+}
+
+func (tg *TelegramBot) notificationToggleCallback(c tb.Context) error {
+	// Callback is of form (id, cc, all, time)/(id, cc, time-type, all-state)/(id-state, cc-state, time-state)
+	data := strings.Split(c.Callback().Data, "/")
+
+	// Get chat
+	user := tg.Cache.FindUser(fmt.Sprint(c.Chat().ID), "tg")
+
+	// Map a string 0/1 to a boolean status
+	boolFlag := map[string]bool{
+		"0": false, "1": true,
+	}
+
+	switch data[0] {
+	case "all":
+		user.SetAllFlag(boolFlag[data[1]])
+		c.Callback().Data = "set/sub/bycountry"
+
+	case "id":
+		user.ToggleIdSubscription([]string{data[1]}, boolFlag[data[2]])
+		intId, _ := strconv.Atoi(data[1])
+		c.Callback().Data = fmt.Sprintf("cc/%s", db.LSPShorthands[intId].Cc)
+
+	case "cc":
+		// Convert all IDs associated with this country code to strings
+		ids := []string{}
+		for _, id := range db.IdByCountryCode[data[1]] {
+			ids = append(ids, fmt.Sprint(id))
+		}
+
+		// Toggle all IDs
+		user.ToggleIdSubscription(ids, boolFlag[data[2]])
+		c.Callback().Data = fmt.Sprintf("cc/%s", data[1])
+
+	case "time":
+		// User is toggling a notification receive time
+		user.SetNotificationTimeFlag(data[1], boolFlag[data[2]])
+		c.Callback().Data = "set/sub/times"
+	}
+
+	// Save user in a go-routine
+	go tg.Db.SaveUser(user)
+
+	// Update view depending on input
+	if data[0] == "all" || data[0] == "time" {
+		cbRespText, _ := settingsCallbackHandler(c.Callback(), user, tg)
+
+		// Create callback response
+		cbResp := tb.CallbackResponse{
+			CallbackID: c.Callback().ID,
+			Text:       cbRespText,
+		}
+
+		// Respond to callback
+		err := tg.Bot.Respond(c.Callback(), &cbResp)
+
+		if err != nil {
+			log.Error().Err(err).Msg("Error responding to callback")
+			handleTelegramError(nil, err, tg)
+		}
+	} else {
+		_ = tg.countryCodeListCallback(c)
+	}
+
+	return nil
+}
+
 // Handler for settings callback requests
-func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot) string {
+func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot) (string, bool) {
 	callbackData := strings.Split(cb.Data, "/")
+
+	// TODO use the "Unique" property of inline buttons to do better callback handling
 
 	switch callbackData[1] {
 	case "main": // User requested main settings menu
-		text := "🚀 *LaunchBot* | *User settings*\n" +
-			"Use these settings to choose the launches you subscribe to, " +
-			"like SpaceX or Rocket Lab, and when you receive notifications.\n\n" +
-			"You can also set your time zone, so all dates and times are in your correct local time."
-
-		text = utils.PrepareInputForMarkdown(text, "text")
+		// Text content
+		text := utils.PrepareInputForMarkdown(settingsMainText, "text")
 
 		subscribeButton := tb.InlineButton{
 			Text: "🔔 Subscription settings",
-			Data: "set/sub/view",
+			Data: "set/sub/main",
 		}
 
 		tzButton := tb.InlineButton{
-			Text: "🌍 Set your time zone",
-			Data: "set/tz/view",
-		}
-
-		exitButton := tb.InlineButton{
-			Text: "✅ Exit settings",
-			Data: "set/exit",
+			Text: "🌍 Time zone settings",
+			Data: "set/tz/main",
 		}
 
 		// Construct the keyboard and send-options
-		kb := [][]tb.InlineButton{{subscribeButton}, {tzButton}, {exitButton}}
+		kb := [][]tb.InlineButton{{subscribeButton}, {tzButton}}
 
 		sendOptions := tb.SendOptions{
 			ParseMode:             "MarkdownV2",
@@ -358,10 +505,10 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 		}
 
 		editCbMessage(tg, cb, text, sendOptions)
-		return "⚙️ Loaded settings"
+		return "⚙️ Loaded settings", false
 	case "tz":
 		switch callbackData[2] {
-		case "view":
+		case "main":
 			// Check what time zone information user has saved
 			userTimeZone := user.SavedTimeZoneInfo()
 
@@ -402,7 +549,7 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 			}
 
 			editCbMessage(tg, cb, text, sendOptions)
-			return "🌍 Loaded time zone settings"
+			return "🌍 Loaded time zone settings", false
 		case "begin": // User requested time zone setup
 			text := "🌍 *LaunchBot* | *Time zone set-up*\n" +
 				"To complete the time zone setup, follow the instructions below using your phone:\n\n" +
@@ -433,7 +580,7 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 			// Store in list of TZ setup messages
 			tg.TZSetupMessages[int64(msg.ID)] = cb.Sender.ID
 
-			return "🌍 Loaded time zone set-up"
+			return "🌍 Loaded time zone set-up", false
 		case "del":
 			// Delete tz info, dump to disk
 			user.DeleteTimeZone()
@@ -441,7 +588,7 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 
 			text := "🌍 *LaunchBot* | *Time zone settings*\n" +
 				"Your time zone information was successfully deleted! " +
-				fmt.Sprintf("Your current time zone is: *%s.*", user.SavedTimeZoneInfo())
+				fmt.Sprintf("Your new time zone is: *%s.*", user.SavedTimeZoneInfo())
 
 			text = utils.PrepareInputForMarkdown(text, "text")
 
@@ -460,11 +607,156 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 
 			editCbMessage(tg, cb, text, sendOptions)
 
-			return "🌍 Deleted time zone information"
+			return "✅ Successfully deleted your time zone information", true
+		}
+	case "sub": // User requested subscription settings
+		switch callbackData[2] {
+		case "main":
+			// Text content
+			text := utils.PrepareInputForMarkdown(settingsSubscriptionText, "text")
+
+			// Construct the keyboard and send-options
+			subBtn := tb.InlineButton{
+				Text: "🔔 Subscribe to launches",
+				Data: "set/sub/bycountry",
+			}
+
+			timeBtn := tb.InlineButton{
+				Text: "⏲️ Adjust notification times",
+				Data: "set/sub/times",
+			}
+
+			retBtn := tb.InlineButton{
+				Text: "⬅️ Back to settings",
+				Data: "set/main",
+			}
+
+			kb := [][]tb.InlineButton{{subBtn}, {timeBtn}, {retBtn}}
+
+			sendOptions := tb.SendOptions{
+				ParseMode:             "MarkdownV2",
+				DisableWebPagePreview: true,
+				ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+			}
+
+			editCbMessage(tg, cb, text, sendOptions)
+			return "🔔 Loaded subscription settings", false
+		case "times":
+			text := "⏲️ *LaunchBot* | *Notification time settings*\n" +
+				"Notifications are delivered 24 hours, 12 hours, 60 minutes, and 5 minutes before a launch.\n\n" +
+				"By default, you will receive a notification 24 hours and 5 minutes before a launch. You can adjust this behavior here.\n\n" +
+				"You can also toggle postpone notifications, which are sent when a launch has its launch time moved (if a notification has already been sent)."
+
+			text = utils.PrepareInputForMarkdown(text, "text")
+
+			// Construct the keyboard and send-options
+			time24hBtn := tb.InlineButton{
+				Unique: "notificationToggle",
+				Text:   fmt.Sprintf("%s 24-hour", map[bool]string{true: "✅", false: "🔕"}[user.Enabled24h]),
+				Data:   fmt.Sprintf("time/24h/%s", boolToStringToggle[user.Enabled24h]),
+			}
+
+			time12hBtn := tb.InlineButton{
+				Unique: "notificationToggle",
+				Text:   fmt.Sprintf("%s 12-hour", map[bool]string{true: "✅", false: "🔕"}[user.Enabled12h]),
+				Data:   fmt.Sprintf("time/12h/%s", boolToStringToggle[user.Enabled12h]),
+			}
+
+			time1hBtn := tb.InlineButton{
+				Unique: "notificationToggle",
+				Text:   fmt.Sprintf("%s 1-hour", map[bool]string{true: "✅", false: "🔕"}[user.Enabled1h]),
+				Data:   fmt.Sprintf("time/1h/%s", boolToStringToggle[user.Enabled1h]),
+			}
+
+			time5minBtn := tb.InlineButton{
+				Unique: "notificationToggle",
+				Text:   fmt.Sprintf("%s 5-minute", map[bool]string{true: "✅", false: "🔕"}[user.Enabled5min]),
+				Data:   fmt.Sprintf("time/5min/%s", boolToStringToggle[user.Enabled5min]),
+			}
+
+			postponeBtn := tb.InlineButton{
+				Unique: "notificationToggle",
+				Text:   fmt.Sprintf("%s Postponements", map[bool]string{true: "✅", false: "🔕"}[user.EnabledPostpone]),
+				Data:   fmt.Sprintf("time/postpone/%s", boolToStringToggle[user.EnabledPostpone]),
+			}
+
+			retBtn := tb.InlineButton{
+				Text: "⬅️ Return",
+				Data: "set/sub/main",
+			}
+
+			kb := [][]tb.InlineButton{{time24hBtn, time12hBtn}, {time1hBtn, time5minBtn}, {postponeBtn}, {retBtn}}
+
+			sendOptions := tb.SendOptions{
+				ParseMode:             "MarkdownV2",
+				DisableWebPagePreview: true,
+				ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+			}
+
+			editCbMessage(tg, cb, text, sendOptions)
+			return "⏲️ Loaded notification time settings", false
+		case "bycountry": // Dynamically generated notification preferences
+			// Pull user's current notification preferences (we get lists of IDs)
+			// enabled, disabled := user.GetNotificationStates()
+
+			// Map boolean status toggle to a string status
+			// As in, if currently enabled, the new status is disabled
+			strStatus := map[bool]string{true: "0", false: "1"}
+
+			// The SubscribedAll flag can be set, alongside with the user having _some_ flags disabled.
+			// Ensure user has no flags disabled.
+			allEnabled := false
+			if len(user.UnsubscribedFrom) != 0 {
+				allEnabled = false
+			} else {
+				allEnabled = user.SubscribedAll
+			}
+
+			toggleAllBtn := tb.InlineButton{
+				Unique: "notificationToggle",
+				Text:   map[bool]string{true: "🔕 Tap to disable all", false: "🔔 Tap to enable all"}[allEnabled],
+				Data:   fmt.Sprintf("all/%s", strStatus[allEnabled]),
+			}
+
+			// A dynamically generated keyboard array
+			kb := [][]tb.InlineButton{{toggleAllBtn}}
+			row := []tb.InlineButton{}
+
+			// Generate the keyboard dynamically from available country-codes
+			for i, countryCode := range db.CountryCodes {
+				row = append(row,
+					tb.InlineButton{
+						Unique: "countryCodeView",
+						Text:   db.CountryCodeToName[countryCode],
+						Data:   fmt.Sprintf("cc/%s", countryCode),
+					})
+
+				if len(row) == 2 || i == len(db.CountryCodes)-1 {
+					kb = append(kb, row)
+					row = []tb.InlineButton{}
+				}
+			}
+
+			// Add the return key
+			kb = append(kb, []tb.InlineButton{{
+				Text: "⬅️ Return",
+				Data: "set/sub/main",
+			}})
+
+			text := utils.PrepareInputForMarkdown(notificationSettingsByCountryCode, "text")
+
+			sendOptions := tb.SendOptions{
+				ParseMode:             "MarkdownV2",
+				DisableWebPagePreview: true,
+				ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+			}
+
+			editCbMessage(tg, cb, text, sendOptions)
+			return "🔔 Notification settings loaded", false
 		}
 	}
 
-	return ""
+	return "", false
 }
 
 func (tg *TelegramBot) callbackHandler(c tb.Context) error {
@@ -550,18 +842,20 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 		}
 
 		// Edit message
-		_, err := tg.Bot.Edit(cb.Message, newText, &sendOptions)
+		sent, err := tg.Bot.Edit(cb.Message, newText, &sendOptions)
 
 		if err != nil {
-			if !handleTelegramError(err, tg) {
+			if !handleTelegramError(sent, err, tg) {
 				return nil
 			}
 		}
 	case "nxt":
 		// Get new text for the refresh
 		idx, err := strconv.Atoi(callbackData[2])
+
 		if err != nil {
 			log.Error().Err(err).Msgf("Unable to convert nxt/r cbdata to int: %s", callbackData[2])
+			idx = 0
 		}
 
 		newText, keyboard := tg.Cache.LaunchListMessage(user, idx, true)
@@ -573,11 +867,11 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 		}
 
 		// Edit message
-		_, err = tg.Bot.Edit(cb.Message, newText, &sendOptions)
+		sent, err := tg.Bot.Edit(cb.Message, newText, &sendOptions)
 
 		if err != nil {
 			// If not recoverable, return
-			if !handleTelegramError(err, tg) {
+			if !handleTelegramError(sent, err, tg) {
 				return nil
 			}
 		}
@@ -641,11 +935,11 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 		}
 
 		// Edit message
-		_, err = tg.Bot.Edit(cb.Message, newText, &sendOptions)
+		sent, err := tg.Bot.Edit(cb.Message, newText, &sendOptions)
 
 		if err != nil {
 			// If not recoverable, return
-			if !handleTelegramError(err, tg) {
+			if !handleTelegramError(sent, err, tg) {
 				return nil
 			}
 		}
@@ -668,11 +962,11 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 			}
 
 			// Edit message
-			_, err := tg.Bot.Edit(cb.Message, newText, &sendOptions)
+			sent, err := tg.Bot.Edit(cb.Message, newText, &sendOptions)
 
 			if err != nil {
 				// If not recoverable, return
-				if !handleTelegramError(err, tg) {
+				if !handleTelegramError(sent, err, tg) {
 					return nil
 				}
 			}
@@ -680,7 +974,7 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 			cbRespStr = "🔄 Refreshed stats"
 		}
 	case "set":
-		cbRespStr = settingsCallbackHandler(cb, user, tg)
+		cbRespStr, showAlert = settingsCallbackHandler(cb, user, tg)
 	default:
 		// Handle invalid callback data
 		log.Warn().Msgf("Invalid callback data: %s", cb.Data)
@@ -700,7 +994,7 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error responding to callback")
-		handleTelegramError(err, tg)
+		handleTelegramError(nil, err, tg)
 	}
 
 	return nil
@@ -712,7 +1006,7 @@ func editCbMessage(tg *TelegramBot, cb *tb.Callback, text string, sendOptions tb
 
 	if err != nil {
 		// If not recoverable, return
-		if !handleTelegramError(err, tg) {
+		if !handleTelegramError(msg, err, tg) {
 			return nil
 		}
 	}
@@ -814,6 +1108,15 @@ func (tg *TelegramBot) locationReplyHandler(c tb.Context) error {
 
 	// Add to send queue as high-priority
 	go tg.Queue.Enqueue(&sendable, tg, true)
+
+	// Delete the setup message
+	err := tg.Bot.Delete(tb.Editable(c.Message().ReplyTo))
+
+	if err != nil {
+		if !handleTelegramError(nil, err, tg) {
+			log.Warn().Msg("Deleting time zone setup message failed")
+		}
+	}
 
 	return nil
 }
