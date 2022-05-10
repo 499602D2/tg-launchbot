@@ -12,6 +12,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/dustin/go-humanize/english"
+	"github.com/hako/durafmt"
 	emoji "github.com/jayco/go-emoji-flag"
 	"github.com/rs/zerolog/log"
 	tb "gopkg.in/telebot.v3"
@@ -430,8 +431,8 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 
 			if !showMissions {
 				// Create the row (vehicle-mode)
-				row = fmt.Sprintf("%s%s %s %s", emoji.GetFlag(launch.LaunchProvider.CountryCode),
-					utils.Monospaced(statusToIndicator[launch.Status.Abbrev]), utils.Monospaced(launch.LaunchProvider.ShortName()),
+				row = fmt.Sprintf("%s%s %s %s", utils.Monospaced(statusToIndicator[launch.Status.Abbrev]), emoji.GetFlag(launch.LaunchProvider.CountryCode),
+					utils.Monospaced(launch.LaunchProvider.ShortName()),
 					utils.Monospaced(launch.Rocket.Config.Name))
 			} else {
 				// Create the row (mission-mode)
@@ -441,7 +442,7 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 				}
 
 				// Flag, status, mission name
-				row = fmt.Sprintf("%s %s %s",
+				row = fmt.Sprintf("%s%s %s",
 					utils.Monospaced(statusToIndicator[launch.Status.Abbrev]), emoji.GetFlag(launch.LaunchProvider.CountryCode), utils.Monospaced(missionName))
 			}
 
@@ -519,24 +520,37 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 		description = ""
 	}
 
+	// Time until launch in a string format
+	launchTime := time.Unix(launch.NETUnix, 0)
+
+	nthDay := humanize.Ordinal(launchTime.Day())
+	userTime := utils.TimeInUserLocation(launch.NETUnix, user.Time.Location, user.Time.UtcOffset)
+	launchDate := fmt.Sprintf("%s %s, %s", launchTime.Month().String(), nthDay, userTime)
+
+	timeUntil := fmt.Sprintf("T-%s", durafmt.Parse(time.Until(launchTime)).LimitFirstN(2))
+
 	text := fmt.Sprintf(
 		"🚀 *Next launch:* %s\n"+
 			"*Provider* %s%s\n"+
 			"*Rocket* %s\n"+
 			"*From* %s%s\n\n"+
 
+			"🕙 *Launch-time*\n"+
+			"*Date* %s\n"+
+			"*Until* %s\n\n"+
+
 			"🌍 *Mission information*\n"+
 			"*Type* %s\n"+
 			"*Orbit* %s\n\n"+
 
-			"%s"+
-
-			"🕑 *Lift-off at $USERTIME*",
+			"%s",
 
 		name,
 		utils.Monospaced(providerName), flag,
 		utils.Monospaced(launch.Rocket.Config.FullName),
 		utils.Monospaced(launch.LaunchPad.Name), utils.Monospaced(location),
+		utils.Monospaced(launchDate),
+		utils.Monospaced(timeUntil),
 		utils.Monospaced(missionType),
 		utils.Monospaced(missionOrbit),
 		description,
@@ -556,12 +570,12 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 	case 0:
 		// Case: first index
 		refreshBtn := tb.InlineButton{
-			Text: "🔄 Refresh",
+			Text: "Refresh 🔄",
 			Data: "nxt/r/0",
 		}
 
 		nextBtn := tb.InlineButton{
-			Text: "➡️ Next",
+			Text: "Next launch ➡️",
 			Data: "nxt/n/1/+",
 		}
 
@@ -570,8 +584,13 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 	case len(cache.Launches) - 1:
 		// Case: last index
 		refreshBtn := tb.InlineButton{
-			Text: "🔄 Refresh",
+			Text: "Refresh 🔄",
 			Data: fmt.Sprintf("nxt/r/%d", index),
+		}
+
+		returnBtn := tb.InlineButton{
+			Text: "↩️ Back to first",
+			Data: fmt.Sprintf("nxt/n/0/0"),
 		}
 
 		prevBtn := tb.InlineButton{
@@ -580,7 +599,7 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 		}
 
 		// Construct the keyboard
-		kb = [][]tb.InlineButton{{prevBtn}, {refreshBtn}}
+		kb = [][]tb.InlineButton{{prevBtn}, {returnBtn, refreshBtn}}
 	default:
 		// Default case, i.e. not either end of the launch list
 		if index > len(cache.Launches)-1 {
@@ -589,12 +608,17 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 		}
 
 		refreshBtn := tb.InlineButton{
-			Text: "🔄 Refresh",
+			Text: "Refresh 🔄",
 			Data: fmt.Sprintf("nxt/r/%d", index),
 		}
 
+		returnBtn := tb.InlineButton{
+			Text: "↩️ Back to first",
+			Data: fmt.Sprintf("nxt/n/0/0"),
+		}
+
 		nextBtn := tb.InlineButton{
-			Text: "➡️ Next",
+			Text: "Next launch ➡️",
 			Data: fmt.Sprintf("nxt/n/%d/+", index+1),
 		}
 
@@ -604,7 +628,7 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 		}
 
 		// Construct the keyboard
-		kb = [][]tb.InlineButton{{prevBtn, nextBtn}, {refreshBtn}}
+		kb = [][]tb.InlineButton{{prevBtn, nextBtn}, {returnBtn, refreshBtn}}
 	}
 
 	return utils.PrepareInputForMarkdown(text, "text"), &tb.ReplyMarkup{InlineKeyboard: kb}
