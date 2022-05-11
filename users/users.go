@@ -9,27 +9,27 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"gorm.io/gorm"
 )
 
 type User struct {
-	Id                   string   `gorm:"primaryKey;index:enabled;index:disabled"`
-	Platform             string   `gorm:"primaryKey"`
-	Locale               string   // E.g. "Europe/Berlin"
-	Time                 UserTime `gorm:"-:all"`
-	Enabled24h           bool     `gorm:"index:enabled;index:disabled;default:1"`
-	Enabled12h           bool     `gorm:"index:enabled;index:disabled;default:0"`
-	Enabled1h            bool     `gorm:"index:enabled;index:disabled;default:0"`
-	Enabled5min          bool     `gorm:"index:enabled;index:disabled;default:1"`
-	EnabledPostpone      bool     `gorm:"index:enabled;index:disabled;default:1"`
-	SubscribedAll        bool     `gorm:"index:enabled;index:disabled"`
-	SubscribedTo         string   // List of comma-separated LSP IDs
-	UnsubscribedFrom     string   // List of comma-separated LSP IDs
-	SubscribedNewsletter bool
-	Stats                stats.User `gorm:"embedded"`
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-	DeletedAt            gorm.DeletedAt `gorm:"index"`
+	Id                    string   `gorm:"primaryKey;index:enabled;index:disabled"`
+	Platform              string   `gorm:"primaryKey"`
+	Locale                string   // E.g. "Europe/Berlin"
+	Time                  UserTime `gorm:"-:all"`
+	Enabled24h            bool     `gorm:"index:enabled;index:disabled;default:1"`
+	Enabled12h            bool     `gorm:"index:enabled;index:disabled;default:0"`
+	Enabled1h             bool     `gorm:"index:enabled;index:disabled;default:0"`
+	Enabled5min           bool     `gorm:"index:enabled;index:disabled;default:1"`
+	EnabledPostpone       bool     `gorm:"index:enabled;index:disabled;default:1"`
+	AnyoneCanSendCommands bool     // Group setting to enable non-admins to call commands
+	SubscribedAll         bool     `gorm:"index:enabled;index:disabled"`
+	SubscribedTo          string   // List of comma-separated LSP IDs
+	UnsubscribedFrom      string   // List of comma-separated LSP IDs
+	SubscribedNewsletter  bool
+	MigratedFromId        string     // If the chat has been migrated, keep its original id
+	Stats                 stats.User `gorm:"embedded"`
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 // User-time, to help with caching and minimize DB reads
@@ -42,6 +42,7 @@ type UserCache struct {
 	Users   []*User
 	InCache []string
 	Count   int
+	Mutex   sync.Mutex
 }
 
 // Extends the User type by creating a list of users.
@@ -129,14 +130,17 @@ func (user *User) SetNotificationTimeFlag(flagName string, newState bool) {
 	case "postpone":
 		user.EnabledPostpone = newState
 	}
+
+	// Disable postpone notifications if user disables all other notification types
+	if !user.Enabled24h && !user.Enabled12h && !user.Enabled1h && !user.Enabled5min {
+		if flagName != "postpone" {
+			user.EnabledPostpone = false
+		}
+	}
 }
 
 func (user *User) AllNotificationTimesEnabled() bool {
-	if user.Enabled24h && user.Enabled12h && user.Enabled1h && user.Enabled5min && user.EnabledPostpone {
-		return true
-	}
-
-	return false
+	return user.Enabled24h && user.Enabled12h && user.Enabled1h && user.Enabled5min && user.EnabledPostpone
 }
 
 func (user *User) ToggleIdSubscription(ids []string, newState bool) {
