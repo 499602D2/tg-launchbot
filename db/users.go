@@ -18,13 +18,16 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 	i := sort.SearchStrings(userCache.InCache, id)
 
 	if i < userCache.Count && userCache.Users[i].Id == id {
-		// User is in cache
-		//log.Debug().Msgf("Loaded user=%s:%s from cache", userCache.Users[i].Id, userCache.Users[i].Platform)
+		// User is in cache, return
 		return userCache.Users[i]
 	}
 
 	// User is not in cache; load from db (also sets time zone)
 	user := cache.Database.LoadUser(id, platform)
+
+	// Lock mutex for insert
+	userCache.Mutex.Lock()
+	defer userCache.Mutex.Unlock()
 
 	// Add user to cache so that the cache stays ordered
 	if userCache.Count == i {
@@ -44,9 +47,30 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 		userCache.InCache[i] = user.Id
 	}
 
-	log.Debug().Msgf("Added chat=%s:%s to cache", userCache.Users[i].Id, userCache.Users[i].Platform)
+	// log.Debug().Msgf("Added chat=%s:%s to cache", userCache.Users[i].Id, userCache.Users[i].Platform)
 	userCache.Count++
 	return user
+}
+
+// Flushes a single user from the user cache
+func (cache *Cache) FlushUser(id string, platform string) {
+	// Lock mutex while doing cache ops
+	cache.Users.Mutex.Lock()
+	defer cache.Users.Mutex.Unlock()
+
+	// Extract current cache
+	userCache := cache.Users
+
+	// Checks if the chat ID already exists
+	i := sort.SearchStrings(userCache.InCache, id)
+
+	if i < userCache.Count && userCache.Users[i].Id == id {
+		// User is in cache: flush from list of user pointers
+		userCache.Users = append(userCache.Users[:i], userCache.Users[i+1:]...)
+
+		// Flush from slice of user IDs in cache
+		userCache.InCache = append(userCache.InCache[:i], userCache.InCache[i+1:]...)
+	}
 }
 
 // Load a user from the database. If the user is not found, initialize it in
@@ -64,7 +88,7 @@ func (db *Database) LoadUser(id string, platform string) *users.User {
 	switch result.Error {
 	case nil:
 		// No errors: return loaded user
-		log.Info().Msgf("Loaded chat=%s:%s from db", id, platform)
+		// log.Info().Msgf("Loaded chat=%s:%s from db", id, platform)
 		return &user
 	case gorm.ErrRecordNotFound:
 		// Record doesn't exist: insert as new
@@ -111,7 +135,8 @@ func (db *Database) SaveUser(user *users.User) {
 }
 
 func (db *Database) RemoveUser(user *users.User) {
-	result := db.Conn.Delete(user)
+	// Do an unscoped delete so we aren't left with ghost entries
+	result := db.Conn.Unscoped().Delete(user)
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msgf("Error deleting user=%s:%s",
 			user.Id, user.Platform)
@@ -121,9 +146,11 @@ func (db *Database) RemoveUser(user *users.User) {
 		log.Warn().Msgf("Tried to delete user=%s:%s, but no rows were affected",
 			user.Id, user.Platform)
 	} else {
-		log.Info().Msgf("Deleted user=%s:%s, RowsAffected=%d",
-			user.Id, user.Platform, result.RowsAffected)
+		log.Info().Msgf("Deleted user=%s:%s", user.Id, user.Platform)
 	}
+
+	// Flush user from the cache so it doesn't linger around
+	db.Cache.FlushUser(user.Id, user.Platform)
 }
 
 func (db *Database) MigrateGroup(fromId int64, toId int64, platform string) {
@@ -135,24 +162,37 @@ func (db *Database) MigrateGroup(fromId int64, toId int64, platform string) {
 	case gorm.ErrRecordNotFound:
 		// Nothing found?
 		log.Debug().Msgf("Chat with fromId=%d not found during migration to id=%d?", fromId, toId)
-		chat.Id = fmt.Sprintf("%d", toId)
+		chat.Id = fmt.Sprint(toId)
 		chat.Platform = platform
+		chat.MigratedFromId = fmt.Sprint(fromId)
 		db.SaveUser(&chat)
 		return
-
 	case nil:
-		// No errors, so existing chat row is found
-		log.Debug().Msg("No errors encountered during migration")
-
+		break
 	default:
 		// Default error handler
 		log.Error().Err(result.Error).Msg("Unexpected error encountered during migration")
 	}
 
-	// Swap out the IDs
-	result = db.Conn.Model(&users.User{}).Where("id = ?", fromId).Update("id", toId)
+	// Delete the chat from the database
+	db.RemoveUser(&chat)
 
-	if result.Error != nil {
-		log.Error().Err(result.Error).Msgf("Migrating chat from id=%d to id=%d failed", fromId, toId)
-	}
+	// Set new ID and migratedFrom
+	chat.Id = fmt.Sprint(toId)
+	chat.MigratedFromId = fmt.Sprint(fromId)
+
+	// Save new chat
+	db.SaveUser(&chat)
+
+	log.Info().Msgf("Migrated chat from id=%s to id=%s", chat.MigratedFromId, chat.Id)
+}
+
+func (db *Database) GetSubscriberCount() int {
+	// Select all chats with any notifications enabled, and at least one notification time enabled
+	result := db.Conn.Where(
+		"(subscribed_all = ? OR subscribed_to != ?) AND "+
+			"(enabled24h != ? OR enabled12h != ? OR enabled1h != ? OR enabled5min != ?)",
+		1, "", 0, 0, 0, 0).Find(&[]users.User{})
+
+	return int(result.RowsAffected)
 }
