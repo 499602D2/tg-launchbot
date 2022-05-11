@@ -38,6 +38,17 @@ type HighPriorityQueue struct {
 }
 
 const (
+	startMessage = "🌟 *Welcome to LaunchBot!* LaunchBot is your one-stop shop into the world of rocket launches. Subscribe to the launches of your favorite " +
+		"space agency, or follow that one rocket company you're a fan of.\n\n" +
+		"🐙 *LaunchBot is open-source, 100 % free, and will never ask you for anything.* If you're a developer and want to see a new feature, " +
+		"you can open a pull request in GITHUBLINK.\n\n" +
+		"🌠 *To get started, you can subscribe to some notifications, or try out the commands.* If you have feedback or a request for improvement, " +
+		"you can use the feedback command."
+
+	startMessageGroupExtra = "\n\n👷 *Note for group admins!* To reduce spam, LaunchBot only responds to requests by admins. " +
+		"LaunchBot can also automatically delete commands it won't reply to, if given the permission to delete messages. " +
+		"If you'd like everyone to be able to send commands, just flip a switch in the settings!"
+
 	settingsMainText = "*LaunchBot* | *User settings*\n" +
 		"🔔 Subscription settings allow you to choose what launches you receive notifications for, " +
 		"like SpaceX's or Rocket Lab's launches, and when you receive these notifications.\n\n" +
@@ -45,13 +56,11 @@ const (
 
 	settingsSubscriptionText = "*LaunchBot* | *Subscription settings*\n" +
 		"🔔 Launch notification settings allow you to subscribe to entire countries' notifications, or just one launch provider like SpaceX.\n\n" +
-		"⏲️ You can also choose when you receive notifications, from four different time instances!"
+		"⏰ You can also choose when you receive notifications, from four different time instances."
 
 	notificationSettingsByCountryCode = "🔔 *LaunchBot* | *Notification settings*\n" +
-		"You can search for specific launch-providers by the country flags, or simply enable notifications for all launch providers.\n\n" +
-		"As an example, SpaceX can be found under the 🇺🇸-flag, and ISRO can be found under 🇮🇳-flag.\n\n" +
-		"✅ *Notifications enabled*\n" +
-		"🔕 *Notifications disabled*"
+		"You can search for specific launch-providers with the country flags, or simply enable notifications for all launch providers.\n\n" +
+		"As an example, SpaceX can be found under the 🇺🇸-flag, and ISRO can be found under 🇮🇳-flag."
 )
 
 // Map a boolean status to a bell
@@ -74,8 +83,8 @@ func (tg *TelegramBot) Initialize(token string) {
 	// Create the high-priority queue
 	tg.HighPriority = &HighPriorityQueue{HasItemsInQueue: false}
 
-	// Create the tb.Bot object
-	bot, err := tb.NewBot(tb.Settings{
+	var err error
+	tg.Bot, err = tb.NewBot(tb.Settings{
 		Token:  token,
 		Poller: &tb.LongPoller{Timeout: time.Second * 60},
 		Client: &http.Client{Timeout: time.Second * 60},
@@ -86,55 +95,109 @@ func (tg *TelegramBot) Initialize(token string) {
 	}
 
 	// Set-up command handlers
-	bot.Handle("/start", tg.startHandler)
-	bot.Handle("/next", tg.nextHandler)
-	bot.Handle("/schedule", tg.scheduleHandler)
-	bot.Handle("/statistics", tg.statsHandler)
-	bot.Handle("/settings", tg.settingsHandler)
+	tg.Bot.Handle("/start", tg.startHandler)
+	tg.Bot.Handle("/next", tg.nextHandler)
+	tg.Bot.Handle("/schedule", tg.scheduleHandler)
+	tg.Bot.Handle("/statistics", tg.statsHandler)
+	tg.Bot.Handle("/settings", tg.settingsHandler)
 
 	// Handle callbacks
-	bot.Handle(tb.OnCallback, tg.callbackHandler)
+	tg.Bot.Handle(tb.OnCallback, tg.callbackHandler)
 
 	// Callback buttons that are handled directly
 	// TODO handle schedule, stats, settings callbacks this way
-	countryCodeSettings := tb.InlineButton{Unique: "countryCodeView"}
-	notificationToggle := tb.InlineButton{Unique: "notificationToggle"}
-
-	bot.Handle(&countryCodeSettings, tg.countryCodeListCallback)
-	bot.Handle(&notificationToggle, tg.notificationToggleCallback)
+	tg.Bot.Handle(&tb.InlineButton{Unique: "countryCodeView"}, tg.countryCodeListCallback)
+	tg.Bot.Handle(&tb.InlineButton{Unique: "notificationToggle"}, tg.notificationToggleCallback)
 
 	// Handle incoming locations for time zone setup messages
-	bot.Handle(tb.OnLocation, tg.locationReplyHandler)
+	tg.Bot.Handle(tb.OnLocation, tg.locationReplyHandler)
 
-	// Assign
-	tg.Bot = bot
+	// Catch service messages as they happen
+	tg.Bot.Handle(tb.OnMigration, tg.migrationHandler)
+	tg.Bot.Handle(tb.OnAddedToGroup, tg.startHandler)
+	tg.Bot.Handle(tb.OnGroupCreated, tg.startHandler)
+	tg.Bot.Handle(tb.OnSuperGroupCreated, tg.startHandler)
+	tg.Bot.Handle(tb.OnMyChatMember, tg.botMemberChangeHandler)
 }
 
-func (tg *TelegramBot) startHandler(c tb.Context) error {
-	user := tg.Cache.FindUser(fmt.Sprint(c.Message().Chat.ID), "tg")
+func (tg *TelegramBot) startHandler(ctx tb.Context) error {
+	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
-	if !PreHandler(tg, user, c) {
+	if !PreHandler(tg, chat, ctx) {
 		return nil
 	}
 
-	// Create the sendable
-	sendable := sendables.TextOnlySendable("pong", user)
+	var textContent string
 
-	// Add to send queue as high-priority
-	go tg.Queue.Enqueue(sendable, tg, true)
+	if ctx.Chat().Type == tb.ChatGroup || ctx.Chat().Type == tb.ChatSuperGroup {
+		// If a group, add extra information for admins
+		textContent = utils.PrepareInputForMarkdown(startMessage+startMessageGroupExtra, "text")
+	} else {
+		// Otherwise, use the standard message format
+		textContent = utils.PrepareInputForMarkdown(startMessage, "text")
+	}
 
-	// Check if the chat is actually new, or just calling /start again
-	//if !stats.ChatExists(&message.Chat.ID, session.Config) {
-	//	log.Println("🌟", message.Chat.ID, "bot added to new chat!")
-	//}
+	// Set the Github link
+	link := utils.PrepareInputForMarkdown("https://github.com/499602D2/tg-launchbot", "link")
+	linkText := utils.PrepareInputForMarkdown("LaunchBot's GitHub repository", "text")
+	textContent = strings.ReplaceAll(textContent, "GITHUBLINK", fmt.Sprintf("[*%s*](%s)", linkText, link))
 
-	// TODO Save stats
-	// TODO send keyboards on start
+	// Set buttons
+	settingsBtn := tb.InlineButton{
+		Text: "🔔 Go to notification settings",
+		Data: "set/main/newMessage",
+	}
+
+	kb := [][]tb.InlineButton{{settingsBtn}}
+
+	msg := sendables.Message{
+		TextContent: &textContent,
+		SendOptions: tb.SendOptions{
+			ParseMode:   "MarkdownV2",
+			ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
+		},
+	}
+
+	// Wrap into a sendable
+	sendable := sendables.Sendable{
+		Type: "command", RateLimit: 5.0,
+		Message:    &msg,
+		Recipients: &users.UserList{},
+	}
+
+	// Add the user
+	sendable.Recipients.Add(chat, false)
+
+	// Add to queue as a high-priority message
+	go tg.Queue.Enqueue(&sendable, tg, true)
+
+	// Check if chat is new
+	if chat.Stats.SentCommands == 0 {
+		log.Debug().Msgf("🌟 Bot added to a new chat! (id=%s)", chat.Id)
+
+		if ctx.Chat().Type != tb.ChatPrivate {
+			// Since the chat is new, get its member count
+			memberCount, err := tg.Bot.Len(ctx.Chat())
+
+			if err != nil {
+				handleTelegramError(ctx, err, tg)
+				return nil
+			}
+
+			chat.Stats.MemberCount = memberCount
+			tg.Db.SaveUser(chat)
+		}
+	}
+
+	// Update stats
+	chat.Stats.SentCommands++
+
 	return nil
 }
 
+// Handles the /schedule command
 func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
-	user := tg.Cache.FindUser(fmt.Sprint(c.Message().Chat.ID), "tg")
+	user := tg.Cache.FindUser(fmt.Sprint(c.Chat().ID), "tg")
 
 	if !PreHandler(tg, user, c) {
 		return nil
@@ -183,8 +246,9 @@ func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
 	return nil
 }
 
+// Handles the /next command
 func (tg *TelegramBot) nextHandler(c tb.Context) error {
-	user := tg.Cache.FindUser(fmt.Sprint(c.Message().Chat.ID), "tg")
+	user := tg.Cache.FindUser(fmt.Sprint(c.Chat().ID), "tg")
 
 	if !PreHandler(tg, user, c) {
 		return nil
@@ -233,14 +297,16 @@ func (tg *TelegramBot) nextHandler(c tb.Context) error {
 	return nil
 }
 
+// Handles the /stats command
 func (tg *TelegramBot) statsHandler(c tb.Context) error {
-	user := tg.Cache.FindUser(fmt.Sprint(c.Message().Chat.ID), "tg")
+	user := tg.Cache.FindUser(fmt.Sprint(c.Chat().ID), "tg")
 
 	if !PreHandler(tg, user, c) {
 		return nil
 	}
 
-	textContent := tg.Stats.String()
+	subscribers := tg.Db.GetSubscriberCount()
+	textContent := tg.Stats.String(subscribers)
 
 	// Construct the keyboard and send-options
 	kb := [][]tb.InlineButton{{
@@ -275,8 +341,9 @@ func (tg *TelegramBot) statsHandler(c tb.Context) error {
 	return nil
 }
 
+// Handles the /settings command
 func (tg *TelegramBot) settingsHandler(c tb.Context) error {
-	user := tg.Cache.FindUser(fmt.Sprint(c.Message().Chat.ID), "tg")
+	user := tg.Cache.FindUser(fmt.Sprint(c.Chat().ID), "tg")
 
 	if !PreHandler(tg, user, c) {
 		return nil
@@ -402,12 +469,13 @@ func (tg *TelegramBot) countryCodeListCallback(c tb.Context) error {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error responding to callback")
-		handleTelegramError(nil, err, tg)
+		handleTelegramError(c, err, tg)
 	}
 
 	return nil
 }
 
+// Handles callbacks related to toggling notification settings
 func (tg *TelegramBot) notificationToggleCallback(c tb.Context) error {
 	// Callback is of form (id, cc, all, time)/(id, cc, time-type, all-state)/(id-state, cc-state, time-state)
 	data := strings.Split(c.Callback().Data, "/")
@@ -445,6 +513,10 @@ func (tg *TelegramBot) notificationToggleCallback(c tb.Context) error {
 		// User is toggling a notification receive time
 		user.SetNotificationTimeFlag(data[1], boolFlag[data[2]])
 		c.Callback().Data = "set/sub/times"
+
+	default:
+		log.Warn().Msgf("Received arbitrary data in notificationToggle: %s", c.Callback().Data)
+		return errors.New("Received arbitrary data")
 	}
 
 	// Save user in a go-routine
@@ -504,7 +576,29 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 			ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
 		}
 
-		editCbMessage(tg, cb, text, sendOptions)
+		if len(callbackData) == 3 && callbackData[2] == "newMessage" {
+			// If a new message is requested, wrap into a sendable and send as new
+			msg := sendables.Message{
+				TextContent: &text,
+				SendOptions: tb.SendOptions{
+					ParseMode:   "MarkdownV2",
+					ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
+				},
+			}
+
+			// Wrap into a sendable
+			sendable := sendables.Sendable{
+				Type: "command", RateLimit: 5.0,
+				Message:    &msg,
+				Recipients: &users.UserList{},
+			}
+
+			sendable.Recipients.Add(user, false)
+			go tg.Queue.Enqueue(&sendable, tg, true)
+		} else {
+			editCbMessage(tg, cb, text, sendOptions)
+		}
+
 		return "⚙️ Loaded settings", false
 	case "tz":
 		switch callbackData[2] {
@@ -622,7 +716,7 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 			}
 
 			timeBtn := tb.InlineButton{
-				Text: "⏲️ Adjust notification times",
+				Text: "⏰ Adjust notification times",
 				Data: "set/sub/times",
 			}
 
@@ -642,9 +736,9 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 			editCbMessage(tg, cb, text, sendOptions)
 			return "🔔 Loaded subscription settings", false
 		case "times":
-			text := "⏲️ *LaunchBot* | *Notification time settings*\n" +
+			text := "⏰ *LaunchBot* | *Notification time settings*\n" +
 				"Notifications are delivered 24 hours, 12 hours, 60 minutes, and 5 minutes before a launch.\n\n" +
-				"By default, you will receive a notification 24 hours and 5 minutes before a launch. You can adjust this behavior here.\n\n" +
+				"By default, you will receive a notification 24 hours before, and 5 minutes before a launch. You can adjust this behavior here.\n\n" +
 				"You can also toggle postpone notifications, which are sent when a launch has its launch time moved (if a notification has already been sent)."
 
 			text = utils.PrepareInputForMarkdown(text, "text")
@@ -759,6 +853,8 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 	return "", false
 }
 
+// A catch-all type callback handler
+// TODO: handle each callback type individually
 func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 	// Pointer to received callback
 	cb := c.Callback()
@@ -845,7 +941,7 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 		sent, err := tg.Bot.Edit(cb.Message, newText, &sendOptions)
 
 		if err != nil {
-			if !handleTelegramError(sent, err, tg) {
+			if !handleSendError(sent, err, tg) {
 				return nil
 			}
 		}
@@ -871,7 +967,7 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 
 		if err != nil {
 			// If not recoverable, return
-			if !handleTelegramError(sent, err, tg) {
+			if !handleSendError(sent, err, tg) {
 				return nil
 			}
 		}
@@ -939,14 +1035,14 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 
 		if err != nil {
 			// If not recoverable, return
-			if !handleTelegramError(sent, err, tg) {
+			if !handleSendError(sent, err, tg) {
 				return nil
 			}
 		}
 	case "stat":
 		switch callbackData[1] {
 		case "r":
-			newText := tg.Stats.String()
+			newText := tg.Stats.String(tg.Db.GetSubscriberCount())
 
 			// Construct the keyboard and send-options
 			kb := [][]tb.InlineButton{{
@@ -966,7 +1062,7 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 
 			if err != nil {
 				// If not recoverable, return
-				if !handleTelegramError(sent, err, tg) {
+				if !handleSendError(sent, err, tg) {
 					return nil
 				}
 			}
@@ -1006,7 +1102,7 @@ func editCbMessage(tg *TelegramBot, cb *tb.Callback, text string, sendOptions tb
 
 	if err != nil {
 		// If not recoverable, return
-		if !handleTelegramError(msg, err, tg) {
+		if !handleSendError(msg, err, tg) {
 			return nil
 		}
 	}
@@ -1014,6 +1110,7 @@ func editCbMessage(tg *TelegramBot, cb *tb.Callback, text string, sendOptions tb
 	return msg
 }
 
+// Handles locations that the bot receives in a chat
 func (tg *TelegramBot) locationReplyHandler(c tb.Context) error {
 	// If not a reply, return immediately
 	if c.Message().ReplyTo == nil {
@@ -1116,6 +1213,29 @@ func (tg *TelegramBot) locationReplyHandler(c tb.Context) error {
 		if !handleTelegramError(nil, err, tg) {
 			log.Warn().Msg("Deleting time zone setup message failed")
 		}
+	}
+
+	return nil
+}
+
+// Handles migration service messages
+func (tg *TelegramBot) migrationHandler(ctx tb.Context) error {
+	from, to := ctx.Migration()
+	log.Info().Msgf("Chat upgraded to a supergroup: migrating chat from %d to %d...", from, to)
+
+	tg.Db.MigrateGroup(from, to, "tg")
+	return nil
+}
+
+// Handles changes related to the bot's member status in a chat
+func (tg *TelegramBot) botMemberChangeHandler(ctx tb.Context) error {
+	// Chat associated with this update
+	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+
+	// If we were kicked or somehow managed to leave the chat, remove the chat from the db
+	if ctx.ChatMember().NewChatMember.Role == tb.Kicked || ctx.ChatMember().NewChatMember.Role == tb.Left {
+		log.Info().Msgf("Kicked or left from chat=%s, deleting from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
 	}
 
 	return nil
