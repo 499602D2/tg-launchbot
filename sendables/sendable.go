@@ -72,7 +72,7 @@ func TextOnlySendable(txt string, user *users.User) *Sendable {
 	txt = fmt.Sprintf("%s", txt)
 	msg := Message{
 		TextContent: &txt,
-		SendOptions: tb.SendOptions{ParseMode: "Markdown"},
+		SendOptions: tb.SendOptions{ParseMode: "MarkdownV2"},
 	}
 
 	// Wrap into a sendable
