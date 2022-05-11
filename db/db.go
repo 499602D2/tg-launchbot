@@ -61,7 +61,7 @@ func (db *Database) Open(dbFolder string) bool {
 	}
 
 	// Open DB connection
-	log.Debug().Msgf("Opening sqlite3 database at %s", relDbPath)
+	log.Debug().Msgf("Opening sqlite3 database at %s", filepath.Join(dbFolder, dbName))
 
 	gormZerolog := logger.New(
 		&log.Logger, // IO.writer
