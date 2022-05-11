@@ -236,6 +236,7 @@ func Scheduler(session *config.Session, startup bool) bool {
 	if startup {
 		// On startup, check if database needs an immediate update
 		updateNow, sinceLast := session.Db.RequiresImmediateUpdate(untilNextUpdate)
+		session.Telegram.Stats.LastApiUpdate = time.Now().Add(-sinceLast)
 
 		if updateNow {
 			// Database is out of date: update now
@@ -263,6 +264,9 @@ func Scheduler(session *config.Session, startup bool) bool {
 		log.Info().Msgf("A notification (type=%s) is coming up before next API update, scheduling...",
 			notification.Type,
 		)
+
+		// Save stats
+		session.Telegram.Stats.NextApiUpdate = time.Now().Add(untilSendTime)
 		return NotificationScheduler(session, notification)
 	}
 
@@ -283,6 +287,9 @@ func Scheduler(session *config.Session, startup bool) bool {
 
 	untilAutoUpdate := durafmt.Parse(time.Until(autoUpdateTime)).LimitFirstN(2)
 	log.Info().Msgf("Next auto-update in %s (%s)", untilAutoUpdate, autoUpdateTime.Format(time.RFC1123))
+
+	// Save stats
+	session.Telegram.Stats.NextApiUpdate = autoUpdateTime
 
 	return true
 }

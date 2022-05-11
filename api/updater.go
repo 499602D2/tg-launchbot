@@ -126,6 +126,9 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 		log.Debug().Msg("No launches were postponed")
 	}
 
+	// Save stats
+	session.Telegram.Stats.LastApiUpdate = time.Now()
+
 	// Schedule next API update, if configured
 	if scheduleNext {
 		return Scheduler(session, false)
