@@ -3,9 +3,11 @@ package stats
 import (
 	"fmt"
 	"launchbot/utils"
+	"strings"
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/hako/durafmt"
 )
 
 /* TODO
@@ -51,20 +53,20 @@ type StatsCmdStats struct {
 type User struct {
 	ReceivedNotifications int64
 	SentCommands          int64
-	MemberCount           int64
+	MemberCount           int `gorm:"default:2"`
 	SubscribedSince       int64
 }
 
-func (stats *Statistics) String() string {
+func (stats *Statistics) String(subscribers int) string {
 	//cpuPerc, err := cpu.Percent(time.Minute, false)
 	//if err != nil {
 	//	log.Error().Err(err).Msg("Getting CPU usage failed")
 	//	cpuPerc = []float64{0.00}
 	//}
 
-	// Get subscriber count from disk
-	subscribers := 0
-
+	// Time-related stats
+	dbLastUpdated := durafmt.Parse(time.Since(stats.LastApiUpdate)).LimitFirstN(2)
+	dbNextUpdate := durafmt.Parse(time.Until(stats.NextApiUpdate)).LimitFirstN(1)
 	sinceStartup := humanize.Time(stats.StartedAt)
 
 	text := fmt.Sprintf(
@@ -73,16 +75,28 @@ func (stats *Statistics) String() string {
 			"Active subscribers: %d\n"+
 			"Commands parsed: %d\n\n"+
 
-			"🌍 *Backend information*\n"+
+			"💾 *Database information*\n"+
+			"Updated %s ago\n"+
+			"Next update in %s\n\n"+
+
+			"🌍 *Server information*\n"+
 			"Bot started %s\n"+
-			"LaunchBot %s",
+			"GITHUBLINK",
 
 		stats.Notifications,
 		subscribers,
 		stats.Commands,
+		dbLastUpdated,
+		dbNextUpdate,
 		sinceStartup,
-		stats.RunningVersion,
 	)
 
-	return utils.PrepareInputForMarkdown(text, "text")
+	text = utils.PrepareInputForMarkdown(text, "text")
+
+	// Set the link
+	link := utils.PrepareInputForMarkdown("https://github.com/499602D2/tg-launchbot", "link")
+	linkText := utils.PrepareInputForMarkdown(stats.RunningVersion, "text")
+	text = strings.ReplaceAll(text, "GITHUBLINK", fmt.Sprintf("[*LaunchBot %s*](%s)", linkText, link))
+
+	return text
 }
