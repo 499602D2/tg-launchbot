@@ -49,10 +49,42 @@ func PreHandler(tg *TelegramBot, user *users.User, c tb.Context) bool {
 		member, err := tg.Bot.ChatMemberOf(c.Chat(), c.Sender())
 
 		if err != nil {
-			handleTelegramError(nil, err, tg)
+			log.Warn().Msgf("Running pre-handler failed when requesting ChatMemberOf")
+
+			handleTelegramError(c, err, tg)
+			return false
 		}
 
-		if member.Role != tb.Administrator && member.Role != tb.Creator {
+		// If user is not an admin, check if we can remove the message before returning
+		// TODO: simply add a check here for "user.AllCanSendCommands" -> add an option in /settings
+		if member.Role != tb.Administrator && member.Role != tb.Creator && !user.AnyoneCanSendCommands {
+			// Get bot's member status
+			botMember, err := tg.Bot.ChatMemberOf(c.Chat(), tg.Bot.Me)
+
+			if err != nil {
+				log.Error().Msg("Loading bot's permissions in chat failed")
+
+				handleTelegramError(c, err, tg)
+				return false
+			}
+
+			// If we have permission to delete messages, delete the command message
+			if botMember.CanDeleteMessages {
+				err = tg.Bot.Delete(c.Message())
+			} else {
+				// If no permission, delete the message
+				log.Debug().Msgf("Cannot delete messages in chat=%d", c.Chat().ID)
+				return false
+			}
+
+			// Check errors
+			if err != nil {
+				log.Error().Msg("Deleting message sent by a non-admin failed")
+				handleTelegramError(c, err, tg)
+				return false
+			}
+
+			log.Debug().Msgf("Deleted message by non-admin in chat=%d", c.Chat().ID)
 			return false
 		}
 	}
@@ -95,13 +127,6 @@ func PreHandler(tg *TelegramBot, user *users.User, c tb.Context) bool {
 	// No spam, update chat's ConversionLog
 	tg.Spam.ChatLogs[user] = chatLog
 	tg.Spam.Mutex.Unlock()
-
-	// Bump stats
-	user.Stats.SentCommands++
-
-	// Save stats
-	// TODO save automatically whenever chat cache is cleaned
-	go tg.Db.SaveUser(user)
 
 	return true
 }
