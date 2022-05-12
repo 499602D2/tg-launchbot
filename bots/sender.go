@@ -1,7 +1,6 @@
 package bots
 
 import (
-	"context"
 	"launchbot/sendables"
 	"launchbot/users"
 	"strconv"
@@ -25,6 +24,13 @@ func (queue *Queue) Enqueue(sendable *sendables.Sendable, tg *TelegramBot, highP
 	// Unique ID for this sendable
 	uuid := uuid.NewV4().String()
 
+	// Calculate size and set token count
+	sendable.Tokens = 1
+	if sendable.PerceivedByteSize() >= 512 && !highPriority {
+		sendable.Tokens = 6
+		log.Debug().Msgf("Reserved %d token(s) for sendable", sendable.Tokens)
+	}
+
 	// If sendable is high-priority, add it to the high-priority queue
 	if highPriority {
 		tg.HighPriority.Mutex.Lock()
@@ -47,6 +53,7 @@ func (queue *Queue) Enqueue(sendable *sendables.Sendable, tg *TelegramBot, highP
 func highPrioritySender(tg *TelegramBot, message *sendables.Message, user *users.User) bool {
 	// If message needs to have its time set properly, do it now
 	text := message.TextContent
+
 	if message.AddUserTime {
 		text = sendables.SetTime(*text, user, message.RefTime, true)
 	}
@@ -60,7 +67,7 @@ func highPrioritySender(tg *TelegramBot, message *sendables.Message, user *users
 	)
 
 	if err != nil {
-		if !handleTelegramError(sent, err, tg) {
+		if !handleSendError(sent, err, tg) {
 			// If error is non-recoverable, continue the loop
 			log.Warn().Msg("Unrecoverable error in high-priority sender")
 			return false
@@ -75,33 +82,15 @@ func highPrioritySender(tg *TelegramBot, message *sendables.Message, user *users
 }
 
 // Clears the priority queue.
-func clearPriorityQueue(tg *TelegramBot, sleep bool) {
+func clearPriorityQueue(tg *TelegramBot) {
 	// Lock the high-priority queue
 	tg.HighPriority.Mutex.Lock()
 
 	// TODO: sort before looping over (according to priority)
 	for _, prioritySendable := range tg.HighPriority.Queue {
 		for _, priorityUser := range prioritySendable.Recipients.Users {
-			/*log.Info().Msgf("Sending high-priority sendable for %s:%d",
-				priorityUser.Platform, priorityUser.Id,
-			)*/
-
-			if tg.Spam.Limiter.Allow() == false {
-				err := tg.Spam.Limiter.Wait(context.Background())
-
-				if err != nil {
-					log.Error().Err(err).Msgf("Error using Limiter.Wait()")
-				}
-			}
-
 			// Loop over users, send high-priority message
 			highPrioritySender(tg, prioritySendable.Message, priorityUser)
-
-			// Stay within limits if needed
-			if sleep || len(prioritySendable.Recipients.Users) > 1 {
-				// TODO use a sleeper function that implements back-off and re-try
-				time.Sleep(time.Millisecond * time.Duration(1.0/prioritySendable.RateLimit*1000.0))
-			}
 		}
 	}
 
@@ -134,36 +123,30 @@ func TelegramSender(tg *TelegramBot) {
 		priorityQueueClearInterval = 3
 	)
 
-	// Dummy context for ratelimiting
-	dummyCtx := context.Background()
-
 	for {
 		// Check notification queue
 		if len(tg.Queue.Sendables) != 0 {
 			tg.Queue.Mutex.Lock()
 
 			for hash, sendable := range tg.Queue.Sendables {
-				log.Info().Msgf("Sending sendable with hash=%s", hash)
+				// Keep track of sent IDs
 				sentIds := make(map[users.User]int)
 
 				// Keep pointer, simplifies handling if time needs to be set in message
 				defaultText := sendable.Message.TextContent
 				var text *string
 
+				// Calculate how many tokens each message requires
+				if sendable.PerceivedByteSize() >= 512 {
+					log.Warn().Msgf("Sendable is more than 512 bytes long, taking 6 tokens per send")
+				}
+
+				log.Info().Msgf("Sending sendable with hash=%s", hash)
+
 				var i uint32
 				for i, user := range sendable.Recipients.Users {
 					// Rate-limiter: check if we have tokens to proceed
-					// TODO: if sendable's calculated size (the one perceived by TG)
-					// is large enough, take 6 tokens instead of 1 (limiter.Take(time.Now(), 6))
-					if tg.Spam.Limiter.Allow() == false {
-						log.Debug().Msg("Rate-limiting...")
-						// No tokens: sleep until we can proceed
-						err := tg.Spam.Limiter.Wait(dummyCtx)
-
-						if err != nil {
-							log.Error().Err(err).Msgf("Error using Limiter.Wait()")
-						}
-					}
+					tg.Spam.GlobalLimiter(sendable.Tokens)
 
 					// If message needs to have its time set properly, do it now
 					if sendable.Message.AddUserTime {
@@ -176,13 +159,10 @@ func TelegramSender(tg *TelegramBot) {
 					// Use the tb.Sendable interface?
 					// https://pkg.go.dev/gopkg.in/telebot.v3@v3.0.0?utm_source=gopls#Sendable
 					id, _ := strconv.Atoi(user.Id)
-					sent, err := tg.Bot.Send(
-						tb.ChatID(id), *text,
-						&sendable.Message.SendOptions,
-					)
+					sent, err := tg.Bot.Send(tb.ChatID(id), *text, &sendable.Message.SendOptions)
 
 					if err != nil {
-						if !handleTelegramError(sent, err, tg) {
+						if !handleSendError(sent, err, tg) {
 							// If error is non-recoverable, continue the loop
 							log.Warn().Msg("Non-recoverable error in sender, continuing loop")
 							delete(tg.Queue.Sendables, hash)
@@ -213,13 +193,16 @@ func TelegramSender(tg *TelegramBot) {
 					*/
 					if (tg.HighPriority.HasItemsInQueue) && (i%priorityQueueClearInterval == 0) {
 						log.Debug().Msg("High-priority messages in queue during long send")
-						clearPriorityQueue(tg, true)
+						clearPriorityQueue(tg)
 					}
 				}
 
 				// db.SaveSentNotificationIds()
 				if sendable.Type == "notification" {
 					// TODO save notification IDs to database
+
+					// Save statistics
+					tg.Stats.Notifications += len(sentIds)
 				}
 
 				// Send done, log
@@ -232,7 +215,7 @@ func TelegramSender(tg *TelegramBot) {
 		// Check if priority queue is populated (and skip sleeping if one entry)
 		if tg.HighPriority.HasItemsInQueue {
 			//log.Debug().Msg("High-priority messages in queue")
-			clearPriorityQueue(tg, false)
+			clearPriorityQueue(tg)
 		}
 
 		// Clear queue every 50 ms
