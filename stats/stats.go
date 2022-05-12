@@ -58,12 +58,6 @@ type User struct {
 }
 
 func (stats *Statistics) String(subscribers int) string {
-	//cpuPerc, err := cpu.Percent(time.Minute, false)
-	//if err != nil {
-	//	log.Error().Err(err).Msg("Getting CPU usage failed")
-	//	cpuPerc = []float64{0.00}
-	//}
-
 	// Time-related stats
 	dbLastUpdated := durafmt.Parse(time.Since(stats.LastApiUpdate)).LimitFirstN(2)
 	dbNextUpdate := durafmt.Parse(time.Until(stats.NextApiUpdate)).LimitFirstN(1)
@@ -83,12 +77,8 @@ func (stats *Statistics) String(subscribers int) string {
 			"Bot started %s\n"+
 			"GITHUBLINK",
 
-		stats.Notifications,
-		subscribers,
-		stats.Commands,
-		dbLastUpdated,
-		dbNextUpdate,
-		sinceStartup,
+		stats.Notifications, subscribers, stats.Commands,
+		dbLastUpdated, dbNextUpdate, sinceStartup,
 	)
 
 	text = utils.PrepareInputForMarkdown(text, "text")
