@@ -6,7 +6,6 @@ import (
 	"launchbot/config"
 	"launchbot/db"
 	"launchbot/sendables"
-	"strings"
 	"time"
 
 	"github.com/hako/durafmt"
@@ -17,8 +16,10 @@ import (
 
 // Notify creates and queues a notification
 func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
-	// Create message, get notification type
+	// Pull the notification type we are sending (could be e.g. cached)
 	thisNotif := launch.NextNotification(database)
+
+	// Text content of the notification
 	text := launch.NotificationMessage(thisNotif.Type, false)
 
 	// TODO make launch.NotificationMessage produce sendables for multiple platforms
@@ -43,9 +44,7 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 
 	// Message
 	msg := sendables.Message{
-		TextContent: &text,
-		AddUserTime: true,
-		RefTime:     launch.NETUnix,
+		TextContent: &text, AddUserTime: true, RefTime: launch.NETUnix,
 		SendOptions: tb.SendOptions{
 			ParseMode:   "MarkdownV2",
 			ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
@@ -53,44 +52,19 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 	}
 
 	// Send silently if not a 1-hour or 5-minute notification
-	switch thisNotif.Type {
-	case "24hour", "12hour":
-		msg.SendOptions.DisableNotification = true
-	case "1hour", "5min":
-		msg.SendOptions.DisableNotification = false
-	}
+	// switch thisNotif.Type {
+	// case "24hour", "12hour":
+	// 	msg.SendOptions.DisableNotification = true
+	// case "1hour", "5min":
+	// 	msg.SendOptions.DisableNotification = false
+	// }
 
 	// Get list of recipients
 	recipients := launch.GetRecipients(database, &thisNotif)
 
-	/*
-		Some notes on just _how_ fast we can send stuff at Telegram's API
-
-		- link tags []() do _not_ count towards the perceived byte-size of
-			the message.
-		- new-lines are counted as 5 bytes (!)
-			- some other symbols, such as '&' or '"" may also count as 5 B
-
-		https://telegra.ph/So-your-bot-is-rate-limited-01-26
-	*/
-
-	/* Set rate-limit based on text length
-	TODO count markdown, ignore links (insert link later?)
-	- does markdown formatting count? */
-	perceivedByteLen := len(text)
-	perceivedByteLen += strings.Count(text, "\n") * 4 // Additional 4 B per newline
-
-	rateLimit := 30
-	if perceivedByteLen >= 512 {
-		// TODO update bot's limiter...?
-		log.Warn().Msgf("Large message (%d bytes): lowering send-rate to 6 msg/s", perceivedByteLen)
-		rateLimit = rateLimit / 5
-	}
-
 	// Create sendable
 	sendable := sendables.Sendable{
 		Type: "notification", Message: &msg, Recipients: recipients,
-		RateLimit: rateLimit,
 	}
 
 	/*

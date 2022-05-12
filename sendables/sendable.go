@@ -5,6 +5,7 @@ import (
 	"launchbot/users"
 	"launchbot/utils"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/rs/zerolog/log"
 	tb "gopkg.in/telebot.v3"
@@ -17,7 +18,8 @@ type Sendable struct {
 	Type       string          // in ("remove", "notification", "command", "callback")
 	Message    *Message        // Message (may be empty)
 	Recipients *users.UserList // Recipients of this sendable
-	RateLimit  int             // Ratelimits this sendable should obey
+	Tokens     int             // Amount of tokens required
+	LaunchId   string          // Launch ID associated with this sendable
 }
 
 // The message content of a sendable
@@ -30,8 +32,39 @@ type Message struct {
 }
 
 // TODO implement so limiter can have more granularity and avoid rate-limits
-func (sendable *Sendable) CalculateTgApiByteSize() float32 {
-	return 0
+func (sendable *Sendable) PerceivedByteSize() int {
+	// Raw rune- and byte-count
+	runeCount := utf8.RuneCountInString(*sendable.Message.TextContent)
+	byteCount := len(*sendable.Message.TextContent)
+
+	/* Some notes on just _how_ fast we can send stuff at Telegram's API
+
+	- link tags []() do _not_ count towards the perceived byte-size of
+		the message.
+	- new-lines are counted as 5 bytes (!)
+		- some other symbols, such as '&' or '"" may also count as 5 B
+
+	https://telegra.ph/So-your-bot-is-rate-limited-01-26 */
+
+	/* Set rate-limit based on text length
+	- TODO count markdown, ignore links (calculate before link insertion? Ignore link tag?)
+	- does markdown formatting count?
+	- other considerations? */
+	perceivedByteCount := byteCount
+
+	// Additional 4 bytes per newline (a newline counts as 5 bytes)
+	perceivedByteCount += strings.Count(*sendable.Message.TextContent, "\n") * 4
+
+	// Count &-symbols
+	perceivedByteCount += strings.Count(*sendable.Message.TextContent, "&") * 4
+
+	// Calculate everything between link tags, remove from final length...?
+	// Pretty easy to do, as link-tag always starts with "Watch live now" (or something)
+
+	log.Debug().Msgf("Rune-count: %d, byte-count: %d, perceived: %d",
+		runeCount, byteCount, perceivedByteCount)
+
+	return perceivedByteCount
 }
 
 // Switches according to the recipient platform and the sendable type.
@@ -78,7 +111,6 @@ func TextOnlySendable(txt string, user *users.User) *Sendable {
 	// Wrap into a sendable
 	sendable := Sendable{
 		Type:       "command",
-		RateLimit:  5.0,
 		Message:    &msg,
 		Recipients: &users.UserList{},
 	}
