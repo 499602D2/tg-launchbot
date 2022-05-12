@@ -42,8 +42,57 @@ func (spam *AntiSpam) Initialize() {
 	spam.Limiter = rate.NewLimiter(25, 30)
 }
 
+func (spam *AntiSpam) UserLimiter(user *users.User, tokens int) {
+	spam.Mutex.Lock()
+	defer spam.Mutex.Unlock()
+
+	chatLog := spam.ChatLogs[user]
+
+	// If limiter doesn't exist, create it
+	if chatLog.Limiter == nil {
+		chatLog.Limiter = rate.NewLimiter(rate.Every(time.Second*3), 2)
+	}
+
+	// Reserve a limiter for this chat
+	if chatLog.Limiter.AllowN(time.Now(), tokens) == false {
+		log.Debug().Msg("User limiter returned false...")
+
+		// If limiter returned false, wait until we can proceed
+		err := chatLog.Limiter.WaitN(context.Background(), tokens)
+
+		if err != nil {
+			log.Error().Err(err).Msgf("Error using chat's Limiter.Wait()")
+		}
+	}
+
+	// No spam, update chat's ConversionLog
+	spam.ChatLogs[user] = chatLog
+}
+
+func (spam *AntiSpam) GlobalLimiter(tokens int) {
+	spam.Mutex.Lock()
+	defer spam.Mutex.Unlock()
+
+	// Reserve a token from the main pool
+	if spam.Limiter.AllowN(time.Now(), tokens) == false {
+		log.Debug().Msg("Global limiter returned false...")
+
+		// If limiter returned false, wait until we can proceed
+		err := spam.Limiter.WaitN(context.Background(), tokens)
+
+		if err != nil {
+			log.Error().Err(err).Msgf("Error using global Limiter.Wait()")
+		}
+	}
+}
+
+func (spam *AntiSpam) RunBothLimiters(user *users.User, tokens int) {
+	spam.GlobalLimiter(tokens)
+	spam.UserLimiter(user, tokens)
+}
+
 // When user sends a command, verify the chat is eligible for a command parse.
-func PreHandler(tg *TelegramBot, user *users.User, c tb.Context) bool {
+func PreHandler(tg *TelegramBot, user *users.User, c tb.Context, tokens int) bool {
 	if c.Chat().Type != tb.ChatPrivate {
 		// If chat is not private, ensure sender is an admin
 		member, err := tg.Bot.ChatMemberOf(c.Chat(), c.Sender())
@@ -89,44 +138,9 @@ func PreHandler(tg *TelegramBot, user *users.User, c tb.Context) bool {
 		}
 	}
 
-	// TODO handle admin checks
-	// TODO users should be chat IDs, not users (verify when calling preHandler)
-
-	tg.Spam.Mutex.Lock()
-	chatLog := tg.Spam.ChatLogs[user]
-
-	// If limiter doesn't exist, create it
-	if chatLog.Limiter == nil {
-		chatLog.Limiter = rate.NewLimiter(rate.Every(time.Second*3), 2)
-	}
-
-	// Reserve a token from the main pool
-	if tg.Spam.Limiter.Allow() == false {
-		log.Debug().Msg("Global limiter returned false...")
-
-		// If limiter returned false, wait until we can proceed
-		err := chatLog.Limiter.Wait(context.Background())
-
-		if err != nil {
-			log.Error().Err(err).Msgf("Error using global Limiter.Wait()")
-		}
-	}
-
-	// Reserve a limiter for this chat
-	if chatLog.Limiter.Allow() == false {
-		log.Debug().Msg("User limiter returned false...")
-
-		// If limiter returned false, wait until we can proceed
-		err := chatLog.Limiter.Wait(context.Background())
-
-		if err != nil {
-			log.Error().Err(err).Msgf("Error using chat's Limiter.Wait()")
-		}
-	}
-
-	// No spam, update chat's ConversionLog
-	tg.Spam.ChatLogs[user] = chatLog
-	tg.Spam.Mutex.Unlock()
+	// Run limiters for global token pool + user's token pool
+	log.Debug().Msgf("Taking %d tokens from both pools...", tokens)
+	tg.Spam.RunBothLimiters(user, tokens)
 
 	return true
 }
