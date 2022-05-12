@@ -170,8 +170,8 @@ func (cache *Cache) FindNextNotification() *Notification {
 			toNext, len(notificationTimes[earliestTime]))
 
 		// Print launch names in logs
-		for n, notif := range notificationTimes[earliestTime] {
-			log.Debug().Msgf("➙ [%d] %s (%s)", n+1, notif.LaunchName, notif.LaunchId)
+		for _, notif := range notificationTimes[earliestTime] {
+			log.Debug().Msgf("➙ %s (%s)", notif.LaunchName, notif.LaunchId)
 		}
 	} else {
 		log.Warn().Msgf("Could not find next notification send time. No-Go launches: %d out of %d",
