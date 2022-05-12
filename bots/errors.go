@@ -84,7 +84,7 @@ func errorMonitor(err error, tg *TelegramBot) {
 
 	// Wrap in a sendable
 	sendable := sendables.Sendable{
-		Message: &msg, Recipients: recipients, RateLimit: 30,
+		Message: &msg, Recipients: recipients,
 	}
 
 	// Enqueue message as high-priority
@@ -102,70 +102,97 @@ Returns:
 - bool: indicates if the error is recoverable, as in if the previous execution
 				can still proceed after the error.
 */
-func handleTelegramError(sent *tb.Message, err error, tg *TelegramBot) bool {
-	switch err {
-	case nil:
+
+// Handle errors associated with outgoing data, such as sends and edits
+func handleSendError(sent *tb.Message, err error, tg *TelegramBot) bool {
+	return true
+}
+
+// Handle errors associated with incoming requests
+func handleTelegramError(ctx tb.Context, err error, tg *TelegramBot) bool {
+	switch err.Error() {
+	case "":
 		log.Warn().Msg("handleTelegramError called with nil error")
 		return true
 
 	// General errors (400, 401, 404, 500) [all handled]
-	case tb.ErrTooLarge:
+	case tb.ErrTooLarge.Error():
 		warnUnhandled(err)
-	case tb.ErrUnauthorized:
+	case tb.ErrUnauthorized.Error():
 		warnUnhandled(err)
-	case tb.ErrNotFound:
+	case tb.ErrNotFound.Error():
 		warnUnhandled(err)
-	case tb.ErrInternal:
+	case tb.ErrInternal.Error():
 		warnUnhandled(err)
 
 	/* 400 (bad request)
 
 	TODO: handle non-send related errors */
-	case tb.ErrMessageNotModified:
+	case tb.ErrMessageNotModified.Error():
 		return true
-	case tb.ErrSameMessageContent:
+
+	case tb.ErrSameMessageContent.Error():
 		return true
-	case tb.ErrChatNotFound:
+
+	case tb.ErrChatNotFound.Error():
 		warnUnhandled(err)
-	case tb.ErrEmptyChatID:
+
+	case tb.ErrEmptyChatID.Error():
 		log.Trace().Err(err).Msg("Empty chat ID in message")
-	case tb.ErrEmptyMessage:
+
+	case tb.ErrEmptyMessage.Error():
 		log.Trace().Err(err).Msg("Empty message")
-	case tb.ErrEmptyText:
+
+	case tb.ErrEmptyText.Error():
 		log.Trace().Err(err).Msg("Empty text in message")
-	case tb.ErrGroupMigrated:
-		tg.Db.MigrateGroup(sent.MigrateFrom, sent.MigrateTo, "tg")
-		log.Info().Err(err).Msgf("Migrating group from %d to %d...", sent.MigrateFrom, sent.MigrateTo)
-	case tb.ErrNoRightsToSend:
+
+	case tb.ErrGroupMigrated.Error():
+		log.Error().Err(err).Msg("Group migrated")
+
+	case tb.ErrNoRightsToSend.Error():
 		log.Trace().Err(err).Msg("No rights to send message to chat")
-	case tb.ErrTooLongMarkup:
+
+	case tb.ErrTooLongMarkup.Error():
 		log.Trace().Err(err).Msg("Markup is too long")
-	case tb.ErrTooLongMessage:
+
+	case tb.ErrTooLongMessage.Error():
 		log.Trace().Err(err).Msg("Message is too long")
-	case tb.ErrWrongURL:
+
+	case tb.ErrWrongURL.Error():
 		log.Trace().Err(err).Msg("Wrong URL")
 
 	// Error 403 (forbidden) [all handled]
-	case tb.ErrBlockedByUser:
-		warnUnhandled(err)
-	case tb.ErrKickedFromGroup:
-		warnUnhandled(err)
-	case tb.ErrKickedFromSuperGroup:
-		warnUnhandled(err)
-	case tb.ErrNotStartedByUser:
-		// TODO clean database
-		warnUnhandled(err)
-	case tb.ErrUserIsDeactivated:
-		// TODO clean database
-		warnUnhandled(err)
+	case tb.ErrBlockedByUser.Error():
+		user := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+		log.Debug().Msgf("Bot was blocked by user=%s, removing from database...", user.Id)
+		tg.Db.RemoveUser(user)
+
+	case tb.ErrKickedFromGroup.Error():
+		user := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+		log.Debug().Msgf("Bot was kicked from group=%s, removing from database...", user.Id)
+		tg.Db.RemoveUser(user)
+
+	case tb.ErrKickedFromSuperGroup.Error():
+		user := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+		log.Debug().Msgf("Bot was kicked from supergroup=%s, removing from database...", user.Id)
+		tg.Db.RemoveUser(user)
+
+	case tb.ErrNotStartedByUser.Error():
+		user := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+		log.Debug().Msgf("Bot was never started by user=%s, removing from database...", user.Id)
+		tg.Db.RemoveUser(user)
+
+	case tb.ErrUserIsDeactivated.Error():
+		user := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+		log.Debug().Msgf("User=%s has been deactivated, removing from database...", user.Id)
+		tg.Db.RemoveUser(user)
 
 	// If the error is not in the cases, default to unhandled
 	default:
-		log.Trace().Msg("Error case fell through (defaulted)")
+		log.Trace().Err(err).Msg("Error case fell through (defaulted)")
 		warnUnhandled(err)
+		errorMonitor(err, tg)
 	}
 
-	// Default to returning false, but first notify admin
-	errorMonitor(err, tg)
 	return false
 }
