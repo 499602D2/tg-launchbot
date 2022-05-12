@@ -20,37 +20,46 @@ import (
 )
 
 // TODO save in a database table + cache (V3.1)
-// TODO: add iSpace, LandSpace
+// Currently contains all featured launch providers + a couple extra
+// https://ll.thespacedevs.com/2.2.0/agencies/?featured=true&limit=50
 var LSPShorthands = map[int]LSP{
-	31:   {Name: "ISRO", Flag: "🇮🇳", Cc: "IND"},
-	37:   {Name: "JAXA", Flag: "🇯🇵", Cc: "JPN"},
-	44:   {Name: "NASA", Flag: "🇺🇸", Cc: "USA"},
-	63:   {Name: "ROSCOSMOS", Flag: "🇷🇺", Cc: "RUS"},
-	96:   {Name: "KhSC", Flag: "🇷🇺", Cc: "RUS"},
-	98:   {Name: "Mitsubishi HI", Flag: "🇯🇵", Cc: "JPN"},
-	99:   {Name: "Northrop Grumman", Flag: "🇺🇸", Cc: "USA"},
-	115:  {Name: "Arianespace", Flag: "🇪🇺", Cc: "EU"},
-	121:  {Name: "SpaceX", Flag: "🇺🇸", Cc: "USA"},
-	124:  {Name: "ULA", Flag: "🇺🇸", Cc: "USA"},
-	141:  {Name: "Blue Origin", Flag: "🇺🇸", Cc: "USA"},
-	147:  {Name: "Rocket Lab", Flag: "🇺🇸", Cc: "USA"},
-	189:  {Name: "CASC", Flag: "🇨🇳", Cc: "CHN"},
-	190:  {Name: "Antrix Corp.", Flag: "🇮🇳", Cc: "IND"},
-	194:  {Name: "ExPace", Flag: "🇨🇳", Cc: "CHN"},
-	199:  {Name: "Virgin Orbit", Flag: "🇺🇸", Cc: "USA"},
-	265:  {Name: "Firefly", Flag: "🇺🇸", Cc: "USA"},
-	285:  {Name: "Astra", Flag: "🇺🇸", Cc: "USA"},
+	// Agencies
+	17: {Name: "CNSA", Flag: "🇨🇳", Cc: "CHN"},
+	31: {Name: "ISRO", Flag: "🇮🇳", Cc: "IND"},
+	37: {Name: "JAXA", Flag: "🇯🇵", Cc: "JPN"},
+	44: {Name: "NASA", Flag: "🇺🇸", Cc: "USA"},
+	63: {Name: "ROSCOSMOS", Flag: "🇷🇺", Cc: "RUS"},
+
+	// Corporations, including state and commercial
+	96:  {Name: "KhSC", Flag: "🇷🇺", Cc: "RUS"},
+	98:  {Name: "Mitsubishi H.I.", Flag: "🇯🇵", Cc: "JPN"},
+	115: {Name: "Arianespace", Flag: "🇪🇺", Cc: "EU"},
+	121: {Name: "SpaceX", Flag: "🇺🇸", Cc: "USA"},
+	124: {Name: "ULA", Flag: "🇺🇸", Cc: "USA"},
+	141: {Name: "Blue Origin", Flag: "🇺🇸", Cc: "USA"},
+	147: {Name: "Rocket Lab", Flag: "🇺🇸", Cc: "USA"},
+	189: {Name: "CASC", Flag: "🇨🇳", Cc: "CHN"},
+	190: {Name: "Antrix Corp.", Flag: "🇮🇳", Cc: "IND"},
+	194: {Name: "ExPace", Flag: "🇨🇳", Cc: "CHN"},
+	199: {Name: "Virgin Orbit", Flag: "🇺🇸", Cc: "USA"},
+	257: {Name: "Northrop Grumman", Flag: "🇺🇸", Cc: "USA"},
+	259: {Name: "LandSpace", Flag: "🇨🇳", Cc: "CHN"},
+	265: {Name: "Firefly", Flag: "🇺🇸", Cc: "USA"},
+	274: {Name: "iSpace", Flag: "🇨🇳", Cc: "CHN"},
+	285: {Name: "Astra", Flag: "🇺🇸", Cc: "USA"},
+
+	// Small-scale providers, incl. sub-orbital operators
 	1002: {Name: "Interstellar tech.", Flag: "🇯🇵", Cc: "JPN"},
 	1021: {Name: "Galactic Energy", Flag: "🇨🇳", Cc: "CHN"},
 	1024: {Name: "Virgin Galactic", Flag: "🇺🇸", Cc: "USA"},
 	1029: {Name: "TiSPACE", Flag: "🇹🇼", Cc: "TWN"},
 }
 
-// TODO add ispace, landspace
+// Map country codes to a list of provider IDs under this country code
 var IdByCountryCode = map[string][]int{
-	"USA": {44, 99, 121, 124, 141, 147, 199, 265, 285, 1024},
+	"USA": {44, 121, 124, 141, 147, 199, 257, 265, 285, 1024},
 	"EU":  {115},
-	"CHN": {189, 194, 1021},
+	"CHN": {189, 194, 259, 274, 1021},
 	"RUS": {63, 96},
 	"IND": {31, 190},
 	"JPN": {37, 98, 1002},
@@ -59,7 +68,8 @@ var IdByCountryCode = map[string][]int{
 
 var CountryCodes = []string{"USA", "EU", "CHN", "RUS", "IND", "JPN", "TWN"}
 var CountryCodeToName = map[string]string{
-	"USA": "USA 🇺🇸", "EU": "EU 🇪🇺", "CHN": "China 🇨🇳", "RUS": "Russia 🇷🇺", "IND": "India 🇮🇳", "JPN": "Japan 🇯🇵", "TWN": "Taiwan 🇹🇼",
+	"USA": "USA 🇺🇸", "EU": "EU 🇪🇺", "CHN": "China 🇨🇳", "RUS": "Russia 🇷🇺",
+	"IND": "India 🇮🇳", "JPN": "Japan 🇯🇵", "TWN": "Taiwan 🇹🇼",
 }
 
 type LSP struct {
@@ -211,10 +221,8 @@ type ContentURL struct {
 func (launch *Launch) NotificationMessage(notifType string, expanded bool) string {
 	// Map notification type to a header
 	header, ok := map[string]string{
-		"24h":  "in 24 hours",
-		"12h":  "in 12 hours",
-		"1h":   "in 60 minutes",
-		"5min": "in 5 minutes",
+		"24h": "in 24 hours", "12h": "in 12 hours",
+		"1h": "in 60 minutes", "5min": "in 5 minutes",
 	}[notifType]
 
 	if !ok {
@@ -353,16 +361,15 @@ func (launch *Launch) NotificationMessage(notifType string, expanded bool) strin
 }
 
 // Creates a schedule message from the launch cache
-// TODO simplify, now that launch cache is truly ordered (do in one loop)
 func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string {
 	// List of launch-lists, one per launch date
 	schedule := [][]*Launch{}
 
 	// Maps in Go don't preserve order on iteration: stash the indices of each date
 	dateToIndex := make(map[string]int)
-
-	// The launch cache is always ordered (sorted when API update is parsed)
 	freeIdx := 0
+
+	// Loop over all launches and build a launchDate:listOfLaunches map
 	for _, launch := range cache.Launches {
 		// Ignore bad launches (only really with LL2's development endpoint)
 		delta := time.Until(time.Unix(launch.NETUnix, 0))
@@ -374,12 +381,14 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 		yy, mm, dd := time.Unix(launch.NETUnix, 0).In(user.Time.Location).Date()
 		dateStr := fmt.Sprintf("%d-%d-%d", yy, mm, dd)
 
+		// Keep track of dates we have in the message
 		idx, ok := dateToIndex[dateStr]
+
 		if ok {
-			// If index exists, use it
+			// If this date has already been added, use it
 			schedule[idx] = append(schedule[idx], launch)
 		} else {
-			// If 5 dates, don't add a new one
+			// If date does not exist, create a new one, but limit to 5.
 			if len(schedule) == 5 {
 				continue
 			}
@@ -387,117 +396,76 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 			// Index does not exist, use first free index
 			schedule = append(schedule, []*Launch{launch})
 
-			// Keep track of the index we added the launch to
+			// Keep track of the index we added the launch-date to
 			dateToIndex[dateStr] = freeIdx
 			freeIdx++
 		}
 	}
 
-	// https://ll.thespacedevs.com/2.2.0/config/launchstatus/
-	statusToIndicator := map[string]string{
-		"Partial Failure": "💥",
-		"Failure":         "💥",
-		"Success":         "🚀",
-		"In Flight":       "🚀",
-		"Hold":            "⏸️",
-		"Go":              "🟢", // Go, as in a verified launch time
-		"TBC":             "🟡", // Unconfirmed launch time
-		"TBD":             "🔴", // Unverified launch time
-	}
-
-	// Loop over the schedule map and create the message
-	msg := "📅 *5-day flight schedule*\n" +
+	// User message
+	message := "📅 *5-day flight schedule*\n" +
 		fmt.Sprintf("_Dates are relative to %s. ", user.Time.UtcOffset) +
 		"For detailed flight information, use /next@rocketrybot._\n\n"
 
-	i := 0
-	for _, launchList := range schedule {
+	// Loop over the created map and create the message
+	for listIterCount, launchList := range schedule {
 		// Add date header
 		userLaunchTime := time.Unix(launchList[0].NETUnix, 0).In(user.Time.Location)
 
 		// Time until launch date, relative to user's time zone
 		userNow := time.Now().In(user.Time.Location)
-		timeToLaunch := userLaunchTime.Sub(userNow)
+		userEta := userLaunchTime.Sub(userNow)
 
-		// ETA string, e.g. "today", "tomorrow", or "in 5 days"
-		etaString := ""
+		// Get a friendly ETA string (e.g. "tomorrow", "in 2 days")
+		etaString := utils.FriendlyETA(userNow, userEta)
 
-		// See if eta + userNow is still the same day
-		if userNow.Add(timeToLaunch).Day() == userNow.Day() {
-			// Same day: launch is today
-			etaString = "today"
-		} else {
-			var daysUntil float64
-
-			// Remove seconds that are not contributing to a whole day.
-			// As in, TTL might be 1.25 days: extract the .25 days
-			mod := int64(timeToLaunch.Seconds()) % (24 * 3600)
-
-			// If, even after adding the remainder, the day is still today, calculating days is simple
-			if time.Now().Add(time.Second*time.Duration(mod)).Day() == time.Now().Day() {
-				daysUntil = timeToLaunch.Hours() / 24
-			} else {
-				// If the remained, e.g. .25 days, causes us to jump over to tomorrow, add a +1 to the days
-				daysUntil = timeToLaunch.Hours()/24 + 1
-			}
-
-			if daysUntil < 2.0 {
-				// The case of the date being today has already been caught, therefore it's tomorrow
-				etaString = "tomorrow"
-			} else {
-				// Otherwise, just count the days
-				etaString = fmt.Sprintf("in %s", english.Plural(int(daysUntil), "day", "days"))
-			}
-		}
-
-		// The header of the date, e.g. "June 1st in 7 days"
+		// The header of the date, e.g. "June 1st, in 7 days"
 		header := fmt.Sprintf("*%s %s* %s\n",
 			userLaunchTime.Month().String(), humanize.Ordinal(userLaunchTime.Day()), etaString,
 		)
 
-		// Add header
-		msg += header
+		// Add header to the schedule message
+		message += header
 
 		// Loop over launches, add
 		var row string
 		for i, launch := range launchList {
 			if i == 3 {
-				msg += fmt.Sprintf("*+ %d more %s*\n", len(launchList)-i, english.Plural(int(len(launchList)-i), "flight", "flights"))
+				message += fmt.Sprintf("*+ %d more %s*\n", len(launchList)-i, english.Plural(int(len(launchList)-i), "flight", "flights"))
 				break
 			}
 
 			if !showMissions {
-				// Create the row (vehicle-mode)
-				row = fmt.Sprintf("%s%s %s %s", utils.Monospaced(statusToIndicator[launch.Status.Abbrev]), emoji.GetFlag(launch.LaunchProvider.CountryCode),
-					utils.Monospaced(launch.LaunchProvider.ShortName()),
-					utils.Monospaced(launch.Rocket.Config.Name))
+				// Create the row (vehicle-mode): status indicator, flag, provider name, rocket name
+				row = fmt.Sprintf("%s%s %s %s", utils.Monospaced(utils.StatusNameToIndicator[launch.Status.Abbrev]), emoji.GetFlag(launch.LaunchProvider.CountryCode),
+					utils.Monospaced(launch.LaunchProvider.ShortName()), utils.Monospaced(launch.Rocket.Config.Name))
 			} else {
 				// Create the row (mission-mode)
 				missionName := launch.Mission.Name
+
 				if missionName == "" {
 					missionName = "Unknown payload"
 				}
 
-				// Flag, status, mission name
-				row = fmt.Sprintf("%s%s %s",
-					utils.Monospaced(statusToIndicator[launch.Status.Abbrev]), emoji.GetFlag(launch.LaunchProvider.CountryCode), utils.Monospaced(missionName))
+				// Status indicator, flag, mission name
+				row = fmt.Sprintf("%s%s %s", utils.Monospaced(utils.StatusNameToIndicator[launch.Status.Abbrev]),
+					emoji.GetFlag(launch.LaunchProvider.CountryCode), utils.Monospaced(missionName))
 			}
 
-			msg += row + "\n"
+			message += row + "\n"
 		}
 
-		i += 1
-		if i != len(schedule) {
-			msg += "\n"
+		// If not the last list, add a newline
+		if listIterCount != len(schedule) {
+			message += "\n"
 		}
 	}
 
 	// Add the footer
-	msg += "\n" + "🟢🟡🔴 *Launch-time accuracy*"
+	message += "\n" + "🟢🟡🔴 *Launch-time accuracy*"
 
 	// Escape the message, return it
-	msg = utils.PrepareInputForMarkdown(msg, "text")
-	return msg
+	return utils.PrepareInputForMarkdown(message, "text")
 }
 
 // Creates the text content and Telegram reply keyboard for the /next command.
@@ -583,14 +551,10 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 			"%s",
 
 		name,
-		utils.Monospaced(providerName), flag,
-		utils.Monospaced(launch.Rocket.Config.FullName),
-		utils.Monospaced(launch.LaunchPad.Name), utils.Monospaced(location),
-		utils.Monospaced(launchDate),
-		utils.Monospaced(timeUntil),
-		utils.Monospaced(missionType),
-		utils.Monospaced(missionOrbit),
-		description,
+		utils.Monospaced(providerName), flag, utils.Monospaced(launch.Rocket.Config.FullName),
+		utils.Monospaced(launch.LaunchPad.Name), utils.Monospaced(location), utils.Monospaced(launchDate),
+		utils.Monospaced(timeUntil), utils.Monospaced(missionType),
+		utils.Monospaced(missionOrbit), description,
 	)
 
 	// Set user's time
@@ -604,64 +568,52 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 	var kb [][]tb.InlineButton
 
 	switch index {
-	case 0:
-		// Case: first index
+	case 0: // Case: first index
 		refreshBtn := tb.InlineButton{
-			Text: "Refresh 🔄",
-			Data: "nxt/r/0",
+			Text: "Refresh 🔄", Data: "nxt/r/0",
 		}
 
 		nextBtn := tb.InlineButton{
-			Text: "Next launch ➡️",
-			Data: "nxt/n/1/+",
+			Text: "Next launch ➡️", Data: "nxt/n/1/+",
 		}
 
 		// Construct the keyboard
 		kb = [][]tb.InlineButton{{nextBtn}, {refreshBtn}}
-	case len(cache.Launches) - 1:
-		// Case: last index
+	case len(cache.Launches) - 1: // Case: last index
 		refreshBtn := tb.InlineButton{
-			Text: "Refresh 🔄",
-			Data: fmt.Sprintf("nxt/r/%d", index),
+			Text: "Refresh 🔄", Data: fmt.Sprintf("nxt/r/%d", index),
 		}
 
 		returnBtn := tb.InlineButton{
-			Text: "↩️ Back to first",
-			Data: fmt.Sprintf("nxt/n/0/0"),
+			Text: "↩️ Back to first", Data: fmt.Sprintf("nxt/n/0/0"),
 		}
 
 		prevBtn := tb.InlineButton{
-			Text: "⬅️ Previous launch",
-			Data: fmt.Sprintf("nxt/n/%d/-", index-1),
+			Text: "⬅️ Previous launch", Data: fmt.Sprintf("nxt/n/%d/-", index-1),
 		}
 
 		// Construct the keyboard
 		kb = [][]tb.InlineButton{{prevBtn}, {returnBtn, refreshBtn}}
-	default:
-		// Default case, i.e. not either end of the launch list
+	default: // Default case, i.e. not either end of the launch list
 		if index > len(cache.Launches)-1 {
 			// Make sure we don't go over the maximum index
 			index = len(cache.Launches) - 1
 		}
 
 		refreshBtn := tb.InlineButton{
-			Text: "Refresh 🔄",
-			Data: fmt.Sprintf("nxt/r/%d", index),
+			Text: "Refresh 🔄", Data: fmt.Sprintf("nxt/r/%d", index),
 		}
 
 		returnBtn := tb.InlineButton{
-			Text: "↩️ Back to first",
-			Data: fmt.Sprintf("nxt/n/0/0"),
+			Text: "↩️ Back to first", Data: fmt.Sprintf("nxt/n/0/0"),
 		}
 
 		nextBtn := tb.InlineButton{
-			Text: "Next launch ➡️",
-			Data: fmt.Sprintf("nxt/n/%d/+", index+1),
+			Text: "Next launch ➡️", Data: fmt.Sprintf("nxt/n/%d/+", index+1),
 		}
 
 		prevBtn := tb.InlineButton{
-			Text: "⬅️ Previous launch",
-			Data: fmt.Sprintf("nxt/n/%d/-", index-1),
+			Text: "⬅️ Previous launch", Data: fmt.Sprintf("nxt/n/%d/-", index-1),
 		}
 
 		// Construct the keyboard
@@ -811,4 +763,25 @@ func (state *NotificationState) UpdateFlags() NotificationState {
 	state.Sent1h = state.Map["Sent1h"]
 	state.Sent5min = state.Map["Sent5min"]
 	return *state
+}
+
+// Gets all notification recipients for this notification
+func (launch *Launch) NotificationRecipientList(db *Database, notification *Notification) *[]users.User {
+	users := []users.User{}
+
+	// Map notification type to a database table name
+	tableNotifType := fmt.Sprintf("enabled%s", notification.Type)
+
+	// Get all chats that have this notification type enabled
+	result := db.Conn.Where(
+		fmt.Sprintf("%s = ?", tableNotifType), 1,
+	).Find(&users)
+
+	if result.Error != nil {
+		log.Error().Err(result.Error).Msg("Error loading notification recipient list")
+	}
+
+	// Ensure no chat have muted this launch
+
+	return &users
 }
