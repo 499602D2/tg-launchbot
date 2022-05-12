@@ -258,7 +258,7 @@ func (tg *TelegramBot) nextHandler(c tb.Context) error {
 	textContent, _ := tg.Cache.LaunchListMessage(user, 0, false)
 
 	refreshBtn := tb.InlineButton{
-		Text: "🔄 Refresh",
+		Text: "Refresh 🔄",
 		Data: "nxt/r/0",
 	}
 
