@@ -40,23 +40,32 @@ type HighPriorityQueue struct {
 const (
 	startMessage = "🌟 *Welcome to LaunchBot!* LaunchBot is your one-stop shop into the world of rocket launches. Subscribe to the launches of your favorite " +
 		"space agency, or follow that one rocket company you're a fan of.\n\n" +
-		"🐙 *LaunchBot is open-source, 100 % free, and will never ask you for anything.* If you're a developer and want to see a new feature, " +
+		"🐙 *LaunchBot is open-source, 100 % free, and respects your privacy.* If you're a developer and want to see a new feature, " +
 		"you can open a pull request in GITHUBLINK.\n\n" +
-		"🌠 *To get started, you can subscribe to some notifications, or try out the commands.* If you have feedback or a request for improvement, " +
+		"🌠 *To get started, you can subscribe to some notifications, or try out the commands.* If you have any feedback, or a request for improvement, " +
 		"you can use the feedback command."
 
 	startMessageGroupExtra = "\n\n👷 *Note for group admins!* To reduce spam, LaunchBot only responds to requests by admins. " +
 		"LaunchBot can also automatically delete commands it won't reply to, if given the permission to delete messages. " +
 		"If you'd like everyone to be able to send commands, just flip a switch in the settings!"
 
+	feedbackMessageText = "🌟 *LaunchBot* | *Developer feedback*\n" +
+		"Here, you can send feedback that goes directly to the developer. To send feedback, just write a message that starts with /feedback!\n\n" +
+		"An example would be `/feedback Great bot, thank you!`\n\n" +
+		"*Thank you for using LaunchBot!*"
+
+	feedbackReceivedText = "🌟 *Thank you for your feedback!* Your feedback was received successfully."
+
 	settingsMainText = "*LaunchBot* | *User settings*\n" +
 		"🔔 Subscription settings allow you to choose what launches you receive notifications for, " +
 		"like SpaceX's or Rocket Lab's launches, and when you receive these notifications.\n\n" +
 		"🌍 You can also set your time zone, so all dates and times are in your local time, instead of UTC+0."
 
+	settingsMainGroupText = "\n\n👷 Admins have some group-only settings available, including allowing all users to send commands."
+
 	settingsSubscriptionText = "*LaunchBot* | *Subscription settings*\n" +
 		"🔔 Launch notification settings allow you to subscribe to entire countries' notifications, or just one launch provider like SpaceX.\n\n" +
-		"⏰ You can also choose when you receive notifications, from four different time instances."
+		"⏰ You can also choose when you receive notifications, from four different time instances. You can also configure postpone notifications here."
 
 	notificationSettingsByCountryCode = "🔔 *LaunchBot* | *Notification settings*\n" +
 		"You can search for specific launch-providers with the country flags, or simply enable notifications for all launch providers.\n\n" +
@@ -100,6 +109,7 @@ func (tg *TelegramBot) Initialize(token string) {
 	tg.Bot.Handle("/schedule", tg.scheduleHandler)
 	tg.Bot.Handle("/statistics", tg.statsHandler)
 	tg.Bot.Handle("/settings", tg.settingsHandler)
+	tg.Bot.Handle("/feedback", tg.feedbackHandler)
 
 	// Handle callbacks
 	tg.Bot.Handle(tb.OnCallback, tg.callbackHandler)
@@ -123,7 +133,7 @@ func (tg *TelegramBot) Initialize(token string) {
 func (tg *TelegramBot) startHandler(ctx tb.Context) error {
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
-	if !PreHandler(tg, chat, ctx) {
+	if !PreHandler(tg, chat, ctx, 2) {
 		return nil
 	}
 
@@ -160,7 +170,7 @@ func (tg *TelegramBot) startHandler(ctx tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type: "command", RateLimit: 5.0,
+		Type:       "command",
 		Message:    &msg,
 		Recipients: &users.UserList{},
 	}
@@ -195,11 +205,45 @@ func (tg *TelegramBot) startHandler(ctx tb.Context) error {
 	return nil
 }
 
+func (tg *TelegramBot) feedbackHandler(ctx tb.Context) error {
+	// Load user
+	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+
+	if !PreHandler(tg, chat, ctx, 1) {
+		return nil
+	}
+
+	// If the command has no parameters, send instruction message
+	if len(strings.Split(ctx.Data(), " ")) == 1 {
+		log.Debug().Msgf("Chat=%s requested feedback instructions", chat.Id)
+		text := utils.PrepareInputForMarkdown(feedbackMessageText, "text")
+		go tg.Queue.Enqueue(sendables.TextOnlySendable(text, chat), tg, true)
+
+		return nil
+	}
+
+	// Command has parameters: log feedback, send to owner
+	feedbackLog := fmt.Sprintf("✍️ *Got feedback from %s:* %s", chat.Id, ctx.Data())
+	log.Info().Msgf(feedbackLog)
+
+	go tg.Queue.Enqueue(sendables.TextOnlySendable(
+		utils.PrepareInputForMarkdown(feedbackLog, "text"),
+		tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")),
+		tg, true,
+	)
+
+	// Send a message confirming we received the feedback
+	newText := utils.PrepareInputForMarkdown(feedbackReceivedText, "text")
+	go tg.Queue.Enqueue(sendables.TextOnlySendable(newText, chat), tg, true)
+
+	return nil
+}
+
 // Handles the /schedule command
 func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
 	user := tg.Cache.FindUser(fmt.Sprint(c.Chat().ID), "tg")
 
-	if !PreHandler(tg, user, c) {
+	if !PreHandler(tg, user, c, 2) {
 		return nil
 	}
 
@@ -232,7 +276,7 @@ func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type: "command", RateLimit: 5.0,
+		Type:       "command",
 		Message:    &msg,
 		Recipients: &users.UserList{},
 	}
@@ -250,7 +294,7 @@ func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
 func (tg *TelegramBot) nextHandler(c tb.Context) error {
 	user := tg.Cache.FindUser(fmt.Sprint(c.Chat().ID), "tg")
 
-	if !PreHandler(tg, user, c) {
+	if !PreHandler(tg, user, c, 2) {
 		return nil
 	}
 
@@ -283,7 +327,7 @@ func (tg *TelegramBot) nextHandler(c tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type: "command", RateLimit: 5.0,
+		Type:       "command",
 		Message:    &msg,
 		Recipients: &users.UserList{},
 	}
@@ -301,7 +345,7 @@ func (tg *TelegramBot) nextHandler(c tb.Context) error {
 func (tg *TelegramBot) statsHandler(c tb.Context) error {
 	user := tg.Cache.FindUser(fmt.Sprint(c.Chat().ID), "tg")
 
-	if !PreHandler(tg, user, c) {
+	if !PreHandler(tg, user, c, 1) {
 		return nil
 	}
 
@@ -327,7 +371,7 @@ func (tg *TelegramBot) statsHandler(c tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type: "command", RateLimit: 5.0,
+		Type:       "command",
 		Message:    &msg,
 		Recipients: &users.UserList{},
 	}
@@ -345,12 +389,9 @@ func (tg *TelegramBot) statsHandler(c tb.Context) error {
 func (tg *TelegramBot) settingsHandler(c tb.Context) error {
 	user := tg.Cache.FindUser(fmt.Sprint(c.Chat().ID), "tg")
 
-	if !PreHandler(tg, user, c) {
+	if !PreHandler(tg, user, c, 1) {
 		return nil
 	}
-
-	// Text content
-	text := utils.PrepareInputForMarkdown(settingsMainText, "text")
 
 	subscribeButton := tb.InlineButton{
 		Text: "🔔 Subscription settings",
@@ -365,6 +406,24 @@ func (tg *TelegramBot) settingsHandler(c tb.Context) error {
 	// Construct the keyboard and send-options
 	kb := [][]tb.InlineButton{{subscribeButton}, {tzButton}}
 
+	// Init text so we don't need to run it twice thorugh the markdown escaper
+	var text string
+
+	// If chat is a group, show the group-specific settings
+	if c.Chat().Type == tb.ChatGroup || c.Chat().Type == tb.ChatSuperGroup {
+		groupSettingsBtn := tb.InlineButton{
+			Text: "👷 Group settings",
+			Data: "set/group/main",
+		}
+
+		// Add the extra key and the extra text
+		kb = append(kb, []tb.InlineButton{groupSettingsBtn})
+		text = utils.PrepareInputForMarkdown(settingsMainText+settingsMainGroupText, "text")
+	} else {
+		// Not a group, so use the standard text
+		text = utils.PrepareInputForMarkdown(settingsMainText, "text")
+	}
+
 	// Construct message
 	msg := sendables.Message{
 		TextContent: &text,
@@ -376,7 +435,7 @@ func (tg *TelegramBot) settingsHandler(c tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type: "command", RateLimit: 5.0,
+		Type:       "command",
 		Message:    &msg,
 		Recipients: &users.UserList{},
 	}
@@ -480,6 +539,8 @@ func (tg *TelegramBot) notificationToggleCallback(c tb.Context) error {
 	// Callback is of form (id, cc, all, time)/(id, cc, time-type, all-state)/(id-state, cc-state, time-state)
 	data := strings.Split(c.Callback().Data, "/")
 
+	// TODO take tokens, ensure called only by admins
+
 	// Get chat
 	user := tg.Cache.FindUser(fmt.Sprint(c.Chat().ID), "tg")
 
@@ -510,9 +571,24 @@ func (tg *TelegramBot) notificationToggleCallback(c tb.Context) error {
 		c.Callback().Data = fmt.Sprintf("cc/%s", data[1])
 
 	case "time":
+		if len(data) < 3 {
+			log.Warn().Msgf("Insufficient data in time/ toggle endpoint: %d", len(data))
+			return nil
+		}
+
 		// User is toggling a notification receive time
 		user.SetNotificationTimeFlag(data[1], boolFlag[data[2]])
 		c.Callback().Data = "set/sub/times"
+
+	case "cmd":
+		if len(data) < 3 {
+			log.Warn().Msgf("Insufficient data in cmd/ toggle endpoint: %d", len(data))
+			return nil
+		}
+
+		// Toggle a command status
+		user.ToggleCommandPermissionStatus(data[1], boolFlag[data[2]])
+		c.Callback().Data = "set/group/main"
 
 	default:
 		log.Warn().Msgf("Received arbitrary data in notificationToggle: %s", c.Callback().Data)
@@ -523,7 +599,7 @@ func (tg *TelegramBot) notificationToggleCallback(c tb.Context) error {
 	go tg.Db.SaveUser(user)
 
 	// Update view depending on input
-	if data[0] == "all" || data[0] == "time" {
+	if data[0] == "all" || data[0] == "time" || data[0] == "cmd" {
 		cbRespText, _ := settingsCallbackHandler(c.Callback(), user, tg)
 
 		// Create callback response
@@ -554,9 +630,6 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 
 	switch callbackData[1] {
 	case "main": // User requested main settings menu
-		// Text content
-		text := utils.PrepareInputForMarkdown(settingsMainText, "text")
-
 		subscribeButton := tb.InlineButton{
 			Text: "🔔 Subscription settings",
 			Data: "set/sub/main",
@@ -569,6 +642,24 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 
 		// Construct the keyboard and send-options
 		kb := [][]tb.InlineButton{{subscribeButton}, {tzButton}}
+
+		// Init text so we don't need to run it twice thorugh the markdown escaper
+		var text string
+
+		// If chat is a group, show the group-specific settings
+		if cb.Message.Chat.Type == tb.ChatGroup || cb.Message.Chat.Type == tb.ChatSuperGroup {
+			groupSettingsBtn := tb.InlineButton{
+				Text: "👷 Group settings",
+				Data: "set/group/main",
+			}
+
+			// Add the extra key and the extra text
+			kb = append(kb, []tb.InlineButton{groupSettingsBtn})
+			text = utils.PrepareInputForMarkdown(settingsMainText+settingsMainGroupText, "text")
+		} else {
+			// Not a group, so use the standard text
+			text = utils.PrepareInputForMarkdown(settingsMainText, "text")
+		}
 
 		sendOptions := tb.SendOptions{
 			ParseMode:             "MarkdownV2",
@@ -588,7 +679,7 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 
 			// Wrap into a sendable
 			sendable := sendables.Sendable{
-				Type: "command", RateLimit: 5.0,
+				Type:       "command",
 				Message:    &msg,
 				Recipients: &users.UserList{},
 			}
@@ -848,6 +939,43 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 			editCbMessage(tg, cb, text, sendOptions)
 			return "🔔 Notification settings loaded", false
 		}
+	case "group": // Group-specific settings
+		text := "👷 *LaunchBot* | *Group settings*\n" +
+			"These are LaunchBot's settings only available to groups, which will be expanded in the future. Currently, " +
+			"they allow admins to enable command-access to all group participants."
+
+		text = utils.PrepareInputForMarkdown(text, "text")
+
+		// Map status of current command access to a button label
+		label := map[bool]string{
+			true:  "🔇 Disable user commands",
+			false: "📬 Enable user commands",
+		}[user.AnyoneCanSendCommands]
+
+		toggleAllCmdAccessBtn := tb.InlineButton{
+			Unique: "notificationToggle",
+			Text:   label,
+			Data:   fmt.Sprintf("cmd/all/%s", boolToStringToggle[user.AnyoneCanSendCommands]),
+		}
+
+		retBtn := tb.InlineButton{
+			Text: "⬅️ Back to settings",
+			Data: "set/main",
+		}
+
+		kb := [][]tb.InlineButton{{toggleAllCmdAccessBtn}, {retBtn}}
+
+		sendOptions := tb.SendOptions{
+			ParseMode:             "MarkdownV2",
+			DisableWebPagePreview: true,
+			ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+			Protected:             true,
+		}
+
+		// Capture the message ID of this setup message
+		editCbMessage(tg, cb, text, sendOptions)
+
+		return "👷 Loaded group settings", false
 	}
 
 	return "", false
@@ -862,14 +990,14 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 	// User
 	user := tg.Cache.FindUser(fmt.Sprint(cb.Message.Chat.ID), "tg")
 
-	// Enforce rate-limits
-	if !PreHandler(tg, user, c) {
-		return nil
-	}
-
 	// Split data field
 	callbackData := strings.Split(cb.Data, "/")
 	primaryRequest := callbackData[0]
+
+	// Enforce rate-limits
+	if !PreHandler(tg, user, c, 1) {
+		return nil
+	}
 
 	// Callback response
 	var cbRespStr string
@@ -1196,7 +1324,7 @@ func (tg *TelegramBot) locationReplyHandler(c tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type: "command", RateLimit: 5.0,
+		Type:       "command",
 		Message:    &msg,
 		Recipients: &users.UserList{},
 	}
