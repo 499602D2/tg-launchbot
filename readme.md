@@ -17,17 +17,17 @@
 
 ### To-do before 3.0.0
 - [ ] Architecture overview diagram in readme
-- [ ] Verify no maps are used where the read is expected to be ordered
-- [ ] LaunchLibrary2 API
-	- [x] `/launch/upcoming`
-	- [ ] `/lsp`
+- [x] LL2 API `/launch/upcoming` handler
 
 - [ ] Telegram bot API
 	- [ ] Add error handlers
 		- [x] Catch-all type handlers
+		- [x] Chat migrations
+		- [ ] Odd edge-case handlers (check launchbot.py)
 	- [ ] Implement callbacks
 		- [ ] Notifications
 			- [ ] Mute
+				- [ ] Only allow admins to mute a launch
 			- [x] Expand description
 		- [x] Commands
 	- [x] Use a dual-limiter
@@ -35,9 +35,9 @@
 - [ ] Add database functions
 	- [x] Create database, auto-migrations
 	- [x] Launch inserts
-	- [ ] Stats updates
-	- [ ] User functions
-		- [ ] Statistics
+	- [x] Stats updates
+	- [x] User functions
+		- [x] Statistics
 		- [x] Time zone  
 		- [x] Notification updates
 		- [x] Chat migrations
@@ -46,17 +46,33 @@
 	- [x] Launches
 	- [x] Active users
 		- [ ] Regularly clean cache (once a day, e.g.)
-			- gochron
+			- Easy to do with user.Flush()
 
 - [ ] Add commands
-	- [x] /notify
+	- [x] /settings
+		- [ ] Remove the Subscription settings -menu: add a direct button to notification time settings?
 	- [x] /next
 	- [x] /schedule
 	- [x] /stats
 	- [ ] /feedback + response script
 	- [ ] Admin functions (/debug)
 
+- [ ] Notifications
+	- [x] Scheduling
+	- [ ] Pre-send API update (just compare NETs)
+		- [ ] Postpone notifications
+	- [ ] Recipient list on notification send
+		- [ ] Check for mute status
+	- [ ] Mute notifications
+	- [x] Sending
+
+- [ ] Other, backend
+	- [ ] Update stats wherever needed
+	- [ ] Regularly dump statistics to disk, especially on ctrl+c
+
 - [ ] Database migration from v2 to v3
+	- [ ] Acceptable level of data lost?
+		- [ ] Manually map launch provider names to IDs
 
 ### Must-haves before 3.0.0
 - [x] "Compress" messages to improve send-rates
@@ -65,12 +81,13 @@
 		- [ ] Implement for reuse information
 - [x] Remove manual time zone feature to reduce complexity
 - [ ] Purge log-files when they become too large
-	- Also, be smarter about telebot's logging
+	- Also, be smarter about telebot's logging (raise an issue?)
 
 ### Nice-to-haves before 3.0.0
 - [x] Notify admin on any processing failure
 	- [x] Telegram
 - [x] Allow postpone notifications to be disabled
+- [ ] Allow chats to flip a setting to enable everyone to send commands (callbacks only by the initial sender?)
 
 ### Future: 3.1 and onwards
 - [ ] Handle window starts/ends
