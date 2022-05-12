@@ -162,6 +162,16 @@ func (user *User) ToggleIdSubscription(ids []string, newState bool) {
 	user.SaveFromMap(stateMap)
 }
 
+func (user *User) ToggleCommandPermissionStatus(permission string, newState bool) {
+	switch permission {
+	case "all":
+		log.Debug().Msgf("Chat=%s toggled AnyoneCanSendCommands to %v", user.Id, newState)
+		user.AnyoneCanSendCommands = newState
+	default:
+		log.Warn().Msgf("Got unknown data in ToggleCommandPermissionStatus(): %s", permission)
+	}
+}
+
 func (user *User) SaveFromMap(stateMap map[int]bool) {
 	enabled := []string{}
 	disabled := []string{}
