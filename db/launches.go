@@ -269,11 +269,6 @@ func (launch *Launch) NotificationMessage(notifType string, expanded bool) strin
 		flag = " " + emoji.GetFlag(launch.LaunchProvider.CountryCode)
 	}
 
-	/* Ideas
-	- modify mission information header according to type
-		- comms is a satellite, crew is an astronaut, etc.
-	*/
-
 	// TODO create a copy of the launch -> monospace all relevant fields?
 	// TODO set bot username dynamically (throw a tb.bot object at ll2.notify?)
 
@@ -462,7 +457,7 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 	}
 
 	// Add the footer
-	message += "\n" + "🟢🟡🔴 *Launch-time accuracy*"
+	message += "🟢🟡🔴 *Launch-time accuracy*"
 
 	// Escape the message, return it
 	return utils.PrepareInputForMarkdown(message, "text")
