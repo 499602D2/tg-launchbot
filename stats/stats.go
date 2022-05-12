@@ -21,38 +21,38 @@ import (
 type Statistics struct {
 	RunningVersion      string `gorm:"-:all"`
 	Platform            string `gorm:"primaryKey;uniqueIndex"`
-	Notifications       int64
-	Commands            int64
-	ApiRequests         int64
-	RequestsRatelimited int64
+	Notifications       int
+	Commands            int
+	ApiRequests         int
+	RequestsRatelimited int
 	LastApiUpdate       time.Time
 	NextApiUpdate       time.Time
 	StartedAt           time.Time
 }
 
 type ScheduleCmdStats struct {
-	CommandCalls        int64
-	RefreschCallbacks   int64
-	ModeSwitchCallbacks int64
+	CommandCalls        int
+	RefreschCallbacks   int
+	ModeSwitchCallbacks int
 }
 
 type NextCmdStats struct {
-	CommandCalls      int64
-	RefreshCallbacks  int64
-	NextCallbacks     int64
-	PreviousCallbacks int64
-	ReturnCallbacks   int64
+	CommandCalls      int
+	RefreshCallbacks  int
+	NextCallbacks     int
+	PreviousCallbacks int
+	ReturnCallbacks   int
 }
 
 type StatsCmdStats struct {
-	CommandCalls     int64
-	RefreshCallbacks int64
+	CommandCalls     int
+	RefreshCallbacks int
 }
 
 // Embedded chat-level statistics
 type User struct {
-	ReceivedNotifications int64
-	SentCommands          int64
+	ReceivedNotifications int
+	SentCommands          int
 	MemberCount           int `gorm:"default:2"`
 	SubscribedSince       int64
 }
