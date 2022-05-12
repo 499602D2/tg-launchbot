@@ -8,6 +8,18 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+// https://ll.thespacedevs.com/2.2.0/config/launchstatus/
+var StatusNameToIndicator = map[string]string{
+	"Partial Failure": "💥",
+	"Failure":         "💥",
+	"Success":         "🚀",
+	"In Flight":       "🚀",
+	"Hold":            "⏸️",
+	"Go":              "🟢", // Go, as in a verified launch time
+	"TBC":             "🟡", // Unconfirmed launch time
+	"TBD":             "🔴", // Unverified launch time
+}
+
 /*
 Prepares textual input for Telegram's Markdown parser.
 
