@@ -56,6 +56,7 @@ const (
 
 	feedbackReceivedText = "🌟 *Thank you for your feedback!* Your feedback was received successfully."
 
+	// TODO add user's time zone
 	settingsMainText = "*LaunchBot* | *User settings*\n" +
 		"🔔 Subscription settings allow you to choose what launches you receive notifications for, " +
 		"like SpaceX's or Rocket Lab's launches, and when you receive these notifications.\n\n" +
