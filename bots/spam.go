@@ -139,7 +139,7 @@ func PreHandler(tg *TelegramBot, user *users.User, c tb.Context, tokens int) boo
 	}
 
 	// Run limiters for global token pool + user's token pool
-	log.Debug().Msgf("Taking %d tokens from both pools...", tokens)
+	log.Debug().Msgf("Taking %d token(s) from both pools...", tokens)
 	tg.Spam.RunBothLimiters(user, tokens)
 
 	return true
