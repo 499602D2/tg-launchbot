@@ -59,6 +59,7 @@
 
 - [ ] Notifications
 	- [x] Scheduling
+		- [ ] Schedule early with the help of the notification size + recipient list length
 	- [ ] Pre-send API update (just compare NETs)
 		- [ ] Postpone notifications
 	- [ ] Recipient list on notification send
