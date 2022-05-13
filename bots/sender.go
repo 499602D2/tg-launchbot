@@ -25,10 +25,12 @@ func (queue *Queue) Enqueue(sendable *sendables.Sendable, tg *TelegramBot, highP
 	uuid := uuid.NewV4().String()
 
 	// Calculate size and set token count
-	sendable.Tokens = 1
-	if sendable.PerceivedByteSize() >= 512 && !highPriority {
+	sendableSize := sendable.PerceivedByteSize()
+	if sendableSize >= 512 && !highPriority {
 		sendable.Tokens = 6
-		log.Debug().Msgf("Reserved %d token(s) for sendable", sendable.Tokens)
+		log.Debug().Msgf("Reserved %d token(s) for sendable, size=%d", sendable.Tokens, sendableSize)
+	} else {
+		sendable.Tokens = 1
 	}
 
 	// If sendable is high-priority, add it to the high-priority queue
