@@ -398,9 +398,10 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 	}
 
 	// User message
+	// TODO add bot user name dynamically to the command
 	message := "📅 *5-day flight schedule*\n" +
 		fmt.Sprintf("_Dates are relative to %s. ", user.Time.UtcOffset) +
-		"For detailed flight information, use /next@rocketrybot._\n\n"
+		"For detailed flight information, use /next._\n\n"
 
 	// Loop over the created map and create the message
 	for listIterCount, launchList := range schedule {
