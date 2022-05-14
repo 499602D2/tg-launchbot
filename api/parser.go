@@ -16,53 +16,58 @@ func GetHighestPriorityVideoLink(links []db.ContentURL) *db.ContentURL {
 		return &db.ContentURL{}
 	}
 
-	// The highest-priority link has the lowest value for Priority-field
+	// The highest-priority link has the lowest value for priority-field
 	highestPriorityIndex := 0
 	highestPriority := -1
 
 	for idx, link := range links {
-		log.Debug().Msgf("priority=%d, title=%s", link.Priority, link.Title)
 		if link.Priority < highestPriority || highestPriority == -1 {
 			highestPriority = link.Priority
 			highestPriorityIndex = idx
 		}
 	}
 
-	log.Debug().Msgf("Chose with prior=%d, title=%s", links[highestPriorityIndex].Priority, links[highestPriorityIndex].Title)
 	return &links[highestPriorityIndex]
 }
 
-/* Checks if any launches were postponed */
-func getPostponedLaunches(launches []*db.Launch) []*db.Launch {
-	postponedLaunches := []*db.Launch{}
-
-	return postponedLaunches
-}
-
 /* Checks if the NET of a launch slipped from one update to another. */
-func netSlipped(cache *db.Cache, ll2launch *db.Launch) (bool, int64) {
-	// If cache exists, use it
-	// TODO implement
-	if cache.Updated != (time.Time{}) {
-		// Find launch
-		//log.Info().Msg("[netSlipped()] cache exists")
+func netSlipped(cache *db.Cache, freshLaunch *db.Launch) (bool, int64) {
+	/* Launch not found in cache, check on disk
 
-		/* Launch not found in cache, check on disk
+	The launch could have e.g. launched between the two checks, and might thus
+	have disappeared from the /upcoming endpoint */
+	cacheLaunch, ok := cache.LaunchMap[freshLaunch.Id]
 
-		The launch could have e.g. launched between the two checks, and might thus
-		have disappeared from the /upcoming endpoint */
-	} else {
-		// Compare on disk
-		//log.Info().Msg("[netSlipped()] cache not found, using disk")
+	if !ok {
+		log.Debug().Msgf("Launch with id=%s not found in cache", freshLaunch.Id)
+		return false, 0
+	}
+
+	// NETs differ and launch has not launched yet
+	if freshLaunch.NETUnix != cacheLaunch.NETUnix && !freshLaunch.Launched {
+		netSlip := freshLaunch.NETUnix - cacheLaunch.NETUnix
+
+		// If no notifications have been sent, the postponement does not matter
+		if !cacheLaunch.NotificationState.AnyNotificationsSent() {
+			return false, 0
+		}
+
+		// Check if this postponement resets any notification states
+		if cacheLaunch.AnyStatesResetByNetSlip(netSlip) {
+			// Launch had one or more notification states reset: all handled behind the scenes.
+			return true, netSlip
+		}
 	}
 
 	return false, 0
 }
 
 /* Parses the LL2 launch update. */
-func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, error) {
+func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, map[*db.Launch]int64, error) {
 	var utcTime time.Time
 	var err error
+
+	postponedLaunches := map[*db.Launch]int64{}
 
 	// Loop over launches and do any required operations
 	for _, launch := range update.Launches {
@@ -92,20 +97,14 @@ func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, 
 		highestPriorityUrl := GetHighestPriorityVideoLink(launch.VidURL)
 		launch.WebcastLink = highestPriorityUrl.Url
 
-		// If launch slipped, set postponed flag
-		// TODO implement
-		//postponed, by := netSlipped(cache, launch)
-		//log.Info().Msgf("Launch postponed (%s): %s", postponed, by)
-
-		/*
-			if postponed {
-				launch.Postponed = true
-				launch.PostponedBy = by
-			}*/
-
 		// TODO If reused stage information, parse...
 
-		//log.Debug().Msgf("[%2d] launch %s processed", i+1, ll2launch.Slug)
+		// If launch slipped enough to reset a notification state, save it
+		postponed, by := netSlipped(cache, launch)
+
+		if postponed {
+			postponedLaunches[launch] = by
+		}
 	}
 
 	// Sort launches so they are ordered by NET
@@ -113,5 +112,5 @@ func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, 
 		return update.Launches[i].NETUnix < update.Launches[j].NETUnix
 	})
 
-	return update.Launches, nil
+	return update.Launches, postponedLaunches, nil
 }
