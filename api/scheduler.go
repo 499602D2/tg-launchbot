@@ -22,16 +22,16 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 	// Text content of the notification
 	text := launch.NotificationMessage(thisNotif.Type, false)
 
-	// TODO make launch.NotificationMessage produce sendables for multiple platforms
+	// FUTURE make launch.NotificationMessage produce sendables for multiple platforms
 	// V3.1+
 
-	// TODO: implement callback handling
+	// Notification is only sent to users that don't have the launch muted
 	muteBtn := tb.InlineButton{
-		Text: "🔇 Mute launch",
-		Data: fmt.Sprintf("mute/%s", launch.Id),
+		Unique: "muteToggle",
+		Text:   "🔇 Mute launch",
+		Data:   fmt.Sprintf("mute/%s/1/%s", launch.Id, thisNotif.Type),
 	}
 
-	// TODO: implement callback handling
 	expandBtn := tb.InlineButton{
 		Text: "ℹ️ Expand description",
 		Data: fmt.Sprintf("exp/%s/%s", launch.Id, thisNotif.Type),
@@ -60,11 +60,14 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 	// }
 
 	// Get list of recipients
-	recipients := launch.GetRecipients(database, &thisNotif)
+	platform := "tg"
+	recipients := launch.NotificationRecipients(database, thisNotif.Type, platform)
 
 	// Create sendable
 	sendable := sendables.Sendable{
-		Type: "notification", Message: &msg, Recipients: recipients,
+		Type: "notification", NotificationType: thisNotif.Type,
+		LaunchId: launch.Id,
+		Message:  &msg, Recipients: recipients,
 	}
 
 	/*
