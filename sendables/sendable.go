@@ -5,7 +5,7 @@ import (
 	"launchbot/users"
 	"launchbot/utils"
 	"strings"
-	"unicode/utf8"
+	"sync"
 
 	"github.com/rs/zerolog/log"
 	tb "gopkg.in/telebot.v3"
@@ -15,11 +15,15 @@ import (
 // notification or a command reply. These have a priority, according to which
 // they will be sent.
 type Sendable struct {
-	Type       string          // in ("remove", "notification", "command", "callback")
-	Message    *Message        // Message (may be empty)
-	Recipients *users.UserList // Recipients of this sendable
-	Tokens     int             // Amount of tokens required
-	LaunchId   string          // Launch ID associated with this sendable
+	Type             string            // in ("delete", "notification", "command", "callback")
+	NotificationType string            // 24h, 12h, 1h, 5min
+	LaunchId         string            // Launch ID associated with this sendable
+	Message          *Message          // Message (may be empty)
+	MessageIDs       map[string]string // Message ids in the form chat:msg_id (may be empty)
+	Platform         string            // tg, dg
+	Recipients       []*users.User     // Recipients of this sendable
+	Tokens           int               // Amount of tokens required
+	Mutex            sync.Mutex
 }
 
 // The message content of a sendable
@@ -33,8 +37,11 @@ type Message struct {
 
 // TODO implement so limiter can have more granularity and avoid rate-limits
 func (sendable *Sendable) PerceivedByteSize() int {
-	// Raw rune- and byte-count
-	runeCount := utf8.RuneCountInString(*sendable.Message.TextContent)
+	if sendable.Message == nil {
+		return 0
+	}
+
+	// Raw byte-count
 	byteCount := len(*sendable.Message.TextContent)
 
 	/* Some notes on just _how_ fast we can send stuff at Telegram's API
@@ -61,16 +68,13 @@ func (sendable *Sendable) PerceivedByteSize() int {
 	// Calculate everything between link tags, remove from final length...?
 	// Pretty easy to do, as link-tag always starts with "Watch live now" (or something)
 
-	log.Debug().Msgf("Rune-count: %d, byte-count: %d, perceived: %d",
-		runeCount, byteCount, perceivedByteCount)
-
 	return perceivedByteCount
 }
 
 // Switches according to the recipient platform and the sendable type.
 func (sendable *Sendable) Send() {
 	// Loop over the users, distribute into appropriate send queues
-	switch sendable.Recipients.Platform {
+	switch sendable.Platform {
 	case "tg":
 		log.Warn().Msg("Telegram message sender not implemented!")
 	case "dg":
@@ -89,7 +93,7 @@ func SetTime(txt string, user *users.User, refTime int64, markdownPrep bool) *st
 	timeString := utils.TimeInUserLocation(refTime, user.Time.Location, user.Time.UtcOffset)
 
 	// Monospace
-	timeString = utils.Monospaced(timeString)
+	//timeString = utils.Monospaced(timeString)
 
 	if markdownPrep {
 		timeString = utils.PrepareInputForMarkdown(timeString, "text")
@@ -98,6 +102,21 @@ func SetTime(txt string, user *users.User, refTime int64, markdownPrep bool) *st
 	// Set time, return
 	txt = strings.ReplaceAll(txt, "$USERTIME", timeString)
 	return &txt
+}
+
+func (sendable *Sendable) AddRecipient(user *users.User, addTimeZone bool) {
+	// Adds a single user to a UserList and adds a time zone if required
+	sendable.Mutex.Lock()
+	defer sendable.Mutex.Unlock()
+
+	if addTimeZone {
+		if user.Time == (users.UserTime{}) {
+			user.SetTimeZone()
+		}
+	}
+
+	// Add user to the list
+	sendable.Recipients = append(sendable.Recipients, user)
 }
 
 func TextOnlySendable(txt string, user *users.User) *Sendable {
@@ -112,11 +131,24 @@ func TextOnlySendable(txt string, user *users.User) *Sendable {
 	sendable := Sendable{
 		Type:       "command",
 		Message:    &msg,
-		Recipients: &users.UserList{},
+		Recipients: []*users.User{},
 	}
 
 	// Add user
-	sendable.Recipients.Add(user, false)
+	sendable.AddRecipient(user, false)
+
+	return &sendable
+}
+
+func SendableForMessageRemoval(senderSendable *Sendable, msgIdMap map[string]string) *Sendable {
+	sendable := Sendable{
+		Type:       "delete",
+		Recipients: senderSendable.Recipients,
+		MessageIDs: msgIdMap,
+		LaunchId:   senderSendable.LaunchId,
+		Platform:   senderSendable.Platform,
+		Tokens:     1,
+	}
 
 	return &sendable
 }
