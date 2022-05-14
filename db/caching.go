@@ -45,8 +45,8 @@ func (cache *Cache) Update(launches []*Launch) {
 	// Re-insert all launches into the launch list and launch map
 	for _, launch := range launches {
 		// If launch has launched, ignore
-		if launch.Launched {
-			log.Warn().Msgf("Ignoring launch with launched=1 in cache.Update(), slug=%s", launch.Slug)
+		if launch.Launched || launch.NETUnix < time.Now().Unix() {
+			log.Warn().Msgf("Ignoring launch with launched=1 or NETUnix < now in cache.Update(), slug=%s", launch.Slug)
 			continue
 		}
 
@@ -77,7 +77,7 @@ func (cache *Cache) Populate() {
 	var launches []*Launch
 
 	// Find all launches that have not launched
-	result := cache.Database.Conn.Model(&Launch{}).Where("launched = ?", 0).Find(&launches)
+	result := cache.Database.Conn.Model(&Launch{}).Where("launched = ? AND net_unix > ?", 0, time.Now().Unix()).Find(&launches)
 
 	// TODO handle other database errors
 	switch result.Error {
@@ -289,23 +289,15 @@ func (cache *Cache) FindLaunchById(id string) (*Launch, error) {
 		return launch, nil
 	}
 
-	// else {
-	// 	return nil, errors.New("Launch is no-longer cached")
-	// }
-
 	// Launch not found in cache: check the disk, avoid SQL injection
 	// https://gorm.io/docs/query.html#Retrieving-objects-with-primary-key
 	thisLaunch := Launch{}
-	result := cache.Database.Conn.First(&thisLaunch, "id = ?", id)
+	result := cache.Database.Conn.Model(&thisLaunch).First(&thisLaunch, "id = ?", id)
 
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msgf("Error searching for launch in the database with id=%s", id)
 		err := errors.New("Launch not found")
 		return nil, err
-	}
-
-	if result.RowsAffected != 0 {
-		return nil, errors.New("Launch not found")
 	}
 
 	// Launch was found: return it
