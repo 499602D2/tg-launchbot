@@ -105,8 +105,8 @@ func PreHandler(tg *TelegramBot, user *users.User, c tb.Context, tokens int) boo
 		}
 
 		// If user is not an admin, check if we can remove the message before returning
-		// TODO: simply add a check here for "user.AllCanSendCommands" -> add an option in /settings
-		if member.Role != tb.Administrator && member.Role != tb.Creator && !user.AnyoneCanSendCommands {
+		// Alternatively, if chat permits anyone to send commands, parse it.
+		if !user.AnyoneCanSendCommands && member.Role != tb.Administrator && member.Role != tb.Creator {
 			// Get bot's member status
 			botMember, err := tg.Bot.ChatMemberOf(c.Chat(), tg.Bot.Me)
 
