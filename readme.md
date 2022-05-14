@@ -13,7 +13,7 @@
 
 🌟 **Reuse proven Python logic** where possible with direct translation
 
-🌟 **Improve performance** by simply switching to Go
+🌟 **Improve performance** with improved caching and Go's performance upside
 
 ### To-do before 3.0.0
 - [ ] Architecture overview diagram in readme
@@ -25,14 +25,15 @@
 		- [x] Chat migrations
 		- [ ] Odd edge-case handlers (check launchbot.py)
 	- [ ] Implement callbacks
-		- [ ] Notifications
-			- [ ] Mute
+		- [x] Notifications
+			- [x] Mute
 				- [ ] Only allow admins to mute a launch
 			- [x] Expand description
 		- [x] Commands
 	- [x] Use a dual-limiter
+	- [ ] Ensure sender IDs are not used, and if they are, ensure we handle errors where the user has no ID associated with it
 
-- [ ] Add database functions
+- [x] Add database functions
 	- [x] Create database, auto-migrations
 	- [x] Launch inserts
 	- [x] Stats updates
@@ -54,18 +55,20 @@
 	- [x] /next
 	- [x] /schedule
 	- [x] /stats
-	- [ ] /feedback + response script
+	- [x] /feedback + response script
 	- [ ] Admin functions (/debug)
 
 - [ ] Notifications
 	- [x] Scheduling
 		- [ ] Schedule early with the help of the notification size + recipient list length
 	- [ ] Pre-send API update (just compare NETs)
-		- [ ] Postpone notifications
-	- [ ] Recipient list on notification send
-		- [ ] Check for mute status
-	- [ ] Mute notifications
+		- [x] Postpone notifications
+		- [ ] Cancel scheduled notification if NET moves
+	- [x] Recipient list on notification send
+		- [x] Check for mute status
+	- [x] Mute notifications
 	- [x] Sending
+	- [x] Delete old notifications for users that have not muted the launch
 
 - [ ] Other, backend
 	- [ ] Update stats wherever needed
@@ -88,7 +91,8 @@
 - [x] Notify admin on any processing failure
 	- [x] Telegram
 - [x] Allow postpone notifications to be disabled
-- [ ] Allow chats to flip a setting to enable everyone to send commands (callbacks only by the initial sender?)
+- [x] Allow chats to flip a setting to enable everyone to send commands (callbacks only by the initial sender?)
+	- [ ] Use wherever needed (currently only used in preHandler)
 
 ### Future: 3.1 and onwards
 - [ ] Handle window starts/ends
