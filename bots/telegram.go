@@ -19,6 +19,10 @@ import (
 	tb "gopkg.in/telebot.v3"
 )
 
+// TODO
+// - ensure all callback data is valid (length checks)
+// - use bot.EditReplyMarkup instead of bot.Edit wherever possible
+
 type TelegramBot struct {
 	Bot             *tb.Bot
 	Db              *db.Database
@@ -73,12 +77,15 @@ const (
 		"As an example, SpaceX can be found under the 🇺🇸-flag, and ISRO can be found under 🇮🇳-flag."
 )
 
-// Map a boolean status to a bell
-var statusBell = map[bool]string{
+// Map a boolean status to a notification state indicator
+var boolStateIndicator = map[bool]string{
 	true: "✅", false: "🔕",
 }
 
-var boolToStringToggle = map[bool]string{
+// Return a stringified binary-state a bool-state would be toggled to.
+// If current state is 'true', the map will return '0'.
+// If the current state is 'false', the map will return '1'.
+var toggleBoolStateAsString = map[bool]string{
 	true: "0", false: "1",
 }
 
@@ -112,6 +119,9 @@ func (tg *TelegramBot) Initialize(token string) {
 	tg.Bot.Handle("/settings", tg.settingsHandler)
 	tg.Bot.Handle("/feedback", tg.feedbackHandler)
 
+	// Handler for fake notification requests
+	tg.Bot.Handle("/send", tg.fauxNotificationSender)
+
 	// Handle callbacks
 	tg.Bot.Handle(tb.OnCallback, tg.callbackHandler)
 
@@ -119,6 +129,7 @@ func (tg *TelegramBot) Initialize(token string) {
 	// TODO handle schedule, stats, settings callbacks this way
 	tg.Bot.Handle(&tb.InlineButton{Unique: "countryCodeView"}, tg.countryCodeListCallback)
 	tg.Bot.Handle(&tb.InlineButton{Unique: "notificationToggle"}, tg.notificationToggleCallback)
+	tg.Bot.Handle(&tb.InlineButton{Unique: "muteToggle"}, tg.muteCallback)
 
 	// Handle incoming locations for time zone setup messages
 	tg.Bot.Handle(tb.OnLocation, tg.locationReplyHandler)
@@ -171,13 +182,12 @@ func (tg *TelegramBot) startHandler(ctx tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type:       "command",
-		Message:    &msg,
-		Recipients: &users.UserList{},
+		Type:    "command",
+		Message: &msg,
 	}
 
 	// Add the user
-	sendable.Recipients.Add(chat, false)
+	sendable.AddRecipient(chat, false)
 
 	// Add to queue as a high-priority message
 	go tg.Queue.Enqueue(&sendable, tg, true)
@@ -195,7 +205,7 @@ func (tg *TelegramBot) startHandler(ctx tb.Context) error {
 				return nil
 			}
 
-			chat.Stats.MemberCount = memberCount
+			chat.Stats.MemberCount = memberCount - 1
 			tg.Db.SaveUser(chat)
 		}
 	}
@@ -277,12 +287,11 @@ func (tg *TelegramBot) scheduleHandler(c tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type:       "command",
-		Message:    &msg,
-		Recipients: &users.UserList{},
+		Type:    "command",
+		Message: &msg,
 	}
 
-	sendable.Recipients.Add(user, false)
+	sendable.AddRecipient(user, false)
 
 	// Add to send queue as high-priority
 	go tg.Queue.Enqueue(&sendable, tg, true)
@@ -328,12 +337,11 @@ func (tg *TelegramBot) nextHandler(c tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type:       "command",
-		Message:    &msg,
-		Recipients: &users.UserList{},
+		Type:    "command",
+		Message: &msg,
 	}
 
-	sendable.Recipients.Add(user, false)
+	sendable.AddRecipient(user, false)
 
 	// Add to send queue as high-priority
 	go tg.Queue.Enqueue(&sendable, tg, true)
@@ -372,12 +380,11 @@ func (tg *TelegramBot) statsHandler(c tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type:       "command",
-		Message:    &msg,
-		Recipients: &users.UserList{},
+		Type:    "command",
+		Message: &msg,
 	}
 
-	sendable.Recipients.Add(user, false)
+	sendable.AddRecipient(user, false)
 
 	// Add to send queue as high-priority
 	go tg.Queue.Enqueue(&sendable, tg, true)
@@ -436,12 +443,11 @@ func (tg *TelegramBot) settingsHandler(c tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type:       "command",
-		Message:    &msg,
-		Recipients: &users.UserList{},
+		Type:    "command",
+		Message: &msg,
 	}
 
-	sendable.Recipients.Add(user, false)
+	sendable.AddRecipient(user, false)
 
 	// Add to send queue as high-priority
 	go tg.Queue.Enqueue(&sendable, tg, true)
@@ -482,7 +488,7 @@ func (tg *TelegramBot) countryCodeListCallback(c tb.Context) error {
 		row = append(row,
 			tb.InlineButton{
 				Unique: "notificationToggle",
-				Text:   fmt.Sprintf("%s %s", statusBell[enabled], db.LSPShorthands[id].Name),
+				Text:   fmt.Sprintf("%s %s", boolStateIndicator[enabled], db.LSPShorthands[id].Name),
 				Data:   fmt.Sprintf("id/%d/%s", id, map[bool]string{true: "0", false: "1"}[enabled]),
 			})
 
@@ -623,6 +629,77 @@ func (tg *TelegramBot) notificationToggleCallback(c tb.Context) error {
 	return nil
 }
 
+// Handle launch mute/unmute callbacks
+func (tg *TelegramBot) muteCallback(ctx tb.Context) error {
+	// Data is in the format mute/id/toggleTo/notificationType
+	user := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+	data := strings.Split(ctx.Callback().Data, "/")
+
+	if len(data) != 4 {
+		log.Warn().Msgf("Got invalid data at /mute endpoint with length=%d from chat=%s", len(data), user.Id)
+		return errors.New("Invalid data at /mute endpoint")
+	}
+
+	// Get bool state the mute status will be toggled to
+	toggleTo := utils.BinStringStateToBool[data[2]]
+
+	// Toggle user's mute status (id, newState)
+	success := user.ToggleLaunchMute(data[1], toggleTo)
+
+	// On success, save to disk
+	if success {
+		go tg.Db.SaveUser(user)
+	}
+
+	cbResponseText := ""
+
+	if success {
+		// Set mute button according to the new state
+		muteBtn := tb.InlineButton{
+			Unique: "muteToggle",
+			Text:   map[bool]string{true: "🔊 Unmute launch", false: "🔇 Mute launch"}[toggleTo],
+			Data:   fmt.Sprintf("mute/%s/%s/%s", data[1], toggleBoolStateAsString[toggleTo], data[3]),
+		}
+
+		// Set the existing mute button to the new one (always at zeroth index, regardless of expansion status)
+		ctx.Message().ReplyMarkup.InlineKeyboard[0] = []tb.InlineButton{muteBtn}
+
+		// Edit message's reply markup, since we don't need to touch the message content itself
+		modified, err := tg.Bot.EditReplyMarkup(ctx.Message(), &tb.ReplyMarkup{InlineKeyboard: ctx.Message().ReplyMarkup.InlineKeyboard})
+
+		if err != nil {
+			// If not recoverable, return
+			if !handleSendError(modified, err, tg) {
+				return nil
+			}
+		}
+
+		if toggleTo == true {
+			cbResponseText = "🔇 Launch muted!"
+		} else {
+			cbResponseText = "🔊 Launch unmuted! You will now receive notifications for this launch."
+		}
+	} else {
+		cbResponseText = "⚠️ Request failed! This issue has been noted."
+	}
+
+	// Create callback response
+	cbResp := tb.CallbackResponse{
+		CallbackID: ctx.Callback().ID,
+		Text:       cbResponseText,
+		ShowAlert:  true,
+	}
+
+	// Respond to callback
+	err := tg.Bot.Respond(ctx.Callback(), &cbResp)
+
+	if err != nil {
+		handleTelegramError(ctx, err, tg)
+	}
+
+	return nil
+}
+
 // Handler for settings callback requests
 func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot) (string, bool) {
 	callbackData := strings.Split(cb.Data, "/")
@@ -680,12 +757,11 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 
 			// Wrap into a sendable
 			sendable := sendables.Sendable{
-				Type:       "command",
-				Message:    &msg,
-				Recipients: &users.UserList{},
+				Type:    "command",
+				Message: &msg,
 			}
 
-			sendable.Recipients.Add(user, false)
+			sendable.AddRecipient(user, false)
 			go tg.Queue.Enqueue(&sendable, tg, true)
 		} else {
 			editCbMessage(tg, cb, text, sendOptions)
@@ -838,32 +914,32 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 			// Construct the keyboard and send-options
 			time24hBtn := tb.InlineButton{
 				Unique: "notificationToggle",
-				Text:   fmt.Sprintf("%s 24-hour", map[bool]string{true: "✅", false: "🔕"}[user.Enabled24h]),
-				Data:   fmt.Sprintf("time/24h/%s", boolToStringToggle[user.Enabled24h]),
+				Text:   fmt.Sprintf("%s 24-hour", boolStateIndicator[user.Enabled24h]),
+				Data:   fmt.Sprintf("time/24h/%s", toggleBoolStateAsString[user.Enabled24h]),
 			}
 
 			time12hBtn := tb.InlineButton{
 				Unique: "notificationToggle",
-				Text:   fmt.Sprintf("%s 12-hour", map[bool]string{true: "✅", false: "🔕"}[user.Enabled12h]),
-				Data:   fmt.Sprintf("time/12h/%s", boolToStringToggle[user.Enabled12h]),
+				Text:   fmt.Sprintf("%s 12-hour", boolStateIndicator[user.Enabled12h]),
+				Data:   fmt.Sprintf("time/12h/%s", toggleBoolStateAsString[user.Enabled12h]),
 			}
 
 			time1hBtn := tb.InlineButton{
 				Unique: "notificationToggle",
-				Text:   fmt.Sprintf("%s 1-hour", map[bool]string{true: "✅", false: "🔕"}[user.Enabled1h]),
-				Data:   fmt.Sprintf("time/1h/%s", boolToStringToggle[user.Enabled1h]),
+				Text:   fmt.Sprintf("%s 1-hour", boolStateIndicator[user.Enabled1h]),
+				Data:   fmt.Sprintf("time/1h/%s", toggleBoolStateAsString[user.Enabled1h]),
 			}
 
 			time5minBtn := tb.InlineButton{
 				Unique: "notificationToggle",
-				Text:   fmt.Sprintf("%s 5-minute", map[bool]string{true: "✅", false: "🔕"}[user.Enabled5min]),
-				Data:   fmt.Sprintf("time/5min/%s", boolToStringToggle[user.Enabled5min]),
+				Text:   fmt.Sprintf("%s 5-minute", boolStateIndicator[user.Enabled5min]),
+				Data:   fmt.Sprintf("time/5min/%s", toggleBoolStateAsString[user.Enabled5min]),
 			}
 
 			postponeBtn := tb.InlineButton{
 				Unique: "notificationToggle",
-				Text:   fmt.Sprintf("%s Postponements", map[bool]string{true: "✅", false: "🔕"}[user.EnabledPostpone]),
-				Data:   fmt.Sprintf("time/postpone/%s", boolToStringToggle[user.EnabledPostpone]),
+				Text:   fmt.Sprintf("%s Postponements", boolStateIndicator[user.EnabledPostpone]),
+				Data:   fmt.Sprintf("time/postpone/%s", toggleBoolStateAsString[user.EnabledPostpone]),
 			}
 
 			retBtn := tb.InlineButton{
@@ -956,7 +1032,7 @@ func settingsCallbackHandler(cb *tb.Callback, user *users.User, tg *TelegramBot)
 		toggleAllCmdAccessBtn := tb.InlineButton{
 			Unique: "notificationToggle",
 			Text:   label,
-			Data:   fmt.Sprintf("cmd/all/%s", boolToStringToggle[user.AnyoneCanSendCommands]),
+			Data:   fmt.Sprintf("cmd/all/%s", toggleBoolStateAsString[user.AnyoneCanSendCommands]),
 		}
 
 		retBtn := tb.InlineButton{
@@ -1006,7 +1082,6 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 	// Toggle to show a persistent alert for errors
 	showAlert := false
 
-	// TODO switch-case over cmd (e.g. sch, nxt) to reduce code
 	switch primaryRequest {
 	case "sch":
 		// Map for input validity check
@@ -1146,10 +1221,14 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 		newText := launch.NotificationMessage(notifType, true)
 		newText = *sendables.SetTime(newText, user, launch.NETUnix, true)
 
+		// Load mute status
+		muted := user.HasMutedLaunch(launch.Id)
+
 		// Add mute button
 		muteBtn := tb.InlineButton{
-			Text: "🔇 Mute launch",
-			Data: fmt.Sprintf("mute/%s", launch.Id),
+			Unique: "muteToggle",
+			Text:   map[bool]string{true: "🔊 Unmute launch", false: "🔇 Mute launch"}[muted],
+			Data:   fmt.Sprintf("mute/%s/%s/%s", launch.Id, toggleBoolStateAsString[muted], notifType),
 		}
 
 		// Construct the keyboard and send-options
@@ -1225,6 +1304,7 @@ func (tg *TelegramBot) callbackHandler(c tb.Context) error {
 	return nil
 }
 
+// Edit a message following a callback, and handle any errors
 func editCbMessage(tg *TelegramBot, cb *tb.Callback, text string, sendOptions tb.SendOptions) *tb.Message {
 	// Edit message
 	msg, err := tg.Bot.Edit(cb.Message, text, &sendOptions)
@@ -1325,12 +1405,11 @@ func (tg *TelegramBot) locationReplyHandler(c tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type:       "command",
-		Message:    &msg,
-		Recipients: &users.UserList{},
+		Type:    "command",
+		Message: &msg,
 	}
 
-	sendable.Recipients.Add(chat, false)
+	sendable.AddRecipient(chat, false)
 
 	// Add to send queue as high-priority
 	go tg.Queue.Enqueue(&sendable, tg, true)
@@ -1366,6 +1445,80 @@ func (tg *TelegramBot) botMemberChangeHandler(ctx tb.Context) error {
 		log.Info().Msgf("Kicked or left from chat=%s, deleting from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
 	}
+
+	return nil
+}
+
+// Test notification sends
+func (tg *TelegramBot) fauxNotificationSender(ctx tb.Context) error {
+	// Admin-only function
+	if ctx.Message().Sender.ID != tg.Owner {
+		log.Error().Msgf("/test called by non-admin (%d)", ctx.Message().Sender.ID)
+		return nil
+	}
+
+	// Load user from cache
+	user := tg.Cache.FindUser(fmt.Sprint(ctx.Message().Sender.ID), "tg")
+
+	// Create message, get notification type
+	testId := ctx.Data()
+
+	if len(testId) == 0 {
+		sendable := sendables.TextOnlySendable("No launch ID entered", user)
+		go tg.Queue.Enqueue(sendable, tg, true)
+		return nil
+	}
+
+	launch, err := tg.Cache.FindLaunchById(testId)
+
+	if err != nil {
+		log.Error().Err(err).Msgf("Could not find launch by id=%s", testId)
+		return nil
+	}
+
+	notifType := "1h"
+	text := launch.NotificationMessage(notifType, false)
+
+	muteBtn := tb.InlineButton{
+		Unique: "muteToggle",
+		Text:   "🔇 Mute launch",
+		Data:   fmt.Sprintf("mute/%s/1/%s", launch.Id, notifType),
+	}
+
+	expandBtn := tb.InlineButton{
+		Text: "ℹ️ Expand description",
+		Data: fmt.Sprintf("exp/%s/%s", launch.Id, notifType),
+	}
+
+	// Construct the keeb
+	kb := [][]tb.InlineButton{
+		{muteBtn}, {expandBtn},
+	}
+
+	// Message
+	msg := sendables.Message{
+		TextContent: &text,
+		AddUserTime: true,
+		RefTime:     launch.NETUnix,
+		SendOptions: tb.SendOptions{
+			ParseMode:   "MarkdownV2",
+			ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
+		},
+	}
+
+	// Add recipients
+	platform := "tg"
+	subscribers := launch.NotificationRecipients(tg.Db, notifType, platform)
+
+	// Create sendable
+	sendable := sendables.Sendable{
+		Type: "notification", NotificationType: notifType,
+		LaunchId: launch.Id,
+		Message:  &msg, Recipients: subscribers,
+	}
+
+	// Add to send queue as a high-priority message
+	go tg.Queue.Enqueue(&sendable, tg, false)
 
 	return nil
 }
