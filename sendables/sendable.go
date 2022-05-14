@@ -143,7 +143,6 @@ func TextOnlySendable(txt string, user *users.User) *Sendable {
 func SendableForMessageRemoval(senderSendable *Sendable, msgIdMap map[string]string) *Sendable {
 	sendable := Sendable{
 		Type:       "delete",
-		Recipients: senderSendable.Recipients,
 		MessageIDs: msgIdMap,
 		LaunchId:   senderSendable.LaunchId,
 		Platform:   senderSendable.Platform,

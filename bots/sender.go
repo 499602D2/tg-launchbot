@@ -257,6 +257,9 @@ func TelegramSender(tg *TelegramBot) {
 						// Create a sendable for removing mass-notifications
 						deletionSendable := sendables.SendableForMessageRemoval(sendable, previouslySentIds)
 
+						// Load recipients, so we can ignore chats that have muted this launch
+						deletionSendable.Recipients = launch.NotificationRecipients(tg.Db, "postpone", "tg")
+
 						// Enqueue the sendable for removing the old notifications
 						go tg.Queue.Enqueue(deletionSendable, tg, false)
 					}
