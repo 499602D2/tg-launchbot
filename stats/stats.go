@@ -19,15 +19,14 @@ import (
 
 // Global statistics, per-platform
 type Statistics struct {
-	RunningVersion      string `gorm:"-:all"`
-	Platform            string `gorm:"primaryKey;uniqueIndex"`
-	Notifications       int
-	Commands            int
-	ApiRequests         int
-	RequestsRatelimited int
-	LastApiUpdate       time.Time
-	NextApiUpdate       time.Time
-	StartedAt           time.Time
+	Platform       string `gorm:"primaryKey;uniqueIndex"`
+	Notifications  int
+	Commands       int
+	ApiRequests    int
+	LastApiUpdate  time.Time
+	NextApiUpdate  time.Time
+	StartedAt      time.Time
+	RunningVersion string `gorm:"-:all"`
 }
 
 type ScheduleCmdStats struct {
@@ -53,21 +52,21 @@ type StatsCmdStats struct {
 type User struct {
 	ReceivedNotifications int
 	SentCommands          int
-	MemberCount           int `gorm:"default:2"`
+	MemberCount           int `gorm:"default:1"`
 	SubscribedSince       int64
 }
 
 func (stats *Statistics) String(subscribers int) string {
 	// Time-related stats
 	dbLastUpdated := durafmt.Parse(time.Since(stats.LastApiUpdate)).LimitFirstN(2)
-	dbNextUpdate := durafmt.Parse(time.Until(stats.NextApiUpdate)).LimitFirstN(1)
+	dbNextUpdate := durafmt.Parse(time.Until(stats.NextApiUpdate)).LimitFirstN(2)
 	sinceStartup := humanize.Time(stats.StartedAt)
 
 	text := fmt.Sprintf(
 		"📊 *LaunchBot global statistics*\n"+
 			"Notification delivered: %d\n"+
-			"Active subscribers: %d\n"+
-			"Commands parsed: %d\n\n"+
+			"Commands parsed: %d\n"+
+			"Active subscribers: %d\n\n"+
 
 			"💾 *Database information*\n"+
 			"Updated %s ago\n"+
@@ -77,13 +76,13 @@ func (stats *Statistics) String(subscribers int) string {
 			"Bot started %s\n"+
 			"GITHUBLINK",
 
-		stats.Notifications, subscribers, stats.Commands,
+		stats.Notifications, stats.Commands, subscribers,
 		dbLastUpdated, dbNextUpdate, sinceStartup,
 	)
 
 	text = utils.PrepareInputForMarkdown(text, "text")
 
-	// Set the link
+	// Set Github link
 	link := utils.PrepareInputForMarkdown("https://github.com/499602D2/tg-launchbot", "link")
 	linkText := utils.PrepareInputForMarkdown(stats.RunningVersion, "text")
 	text = strings.ReplaceAll(text, "GITHUBLINK", fmt.Sprintf("[*LaunchBot %s*](%s)", linkText, link))
