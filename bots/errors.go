@@ -3,7 +3,6 @@ package bots
 import (
 	"fmt"
 	"launchbot/sendables"
-	"launchbot/users"
 
 	"github.com/rs/zerolog/log"
 	tb "gopkg.in/telebot.v3"
@@ -80,12 +79,13 @@ func errorMonitor(err error, tg *TelegramBot) {
 	errMsg := fmt.Sprintf("Processing failure: %#v", err.Error())
 	msg := sendables.Message{TextContent: &errMsg, SendOptions: tb.SendOptions{}}
 	user := tg.Cache.FindUser(fmt.Sprintf("%d", tg.Owner), "tg")
-	recipients := users.SingleUserList(user, false, "tg")
 
 	// Wrap in a sendable
 	sendable := sendables.Sendable{
-		Message: &msg, Recipients: recipients,
+		Message: &msg,
 	}
+
+	sendable.AddRecipient(user, false)
 
 	// Enqueue message as high-priority
 	tg.Queue.Enqueue(&sendable, tg, true)
