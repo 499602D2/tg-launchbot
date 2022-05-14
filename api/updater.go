@@ -86,7 +86,8 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	}
 
 	// Parse any relevant data before dumping to disk
-	launches, err := parseLaunchUpdate(session.LaunchCache, &update)
+	launches, postponedLaunches, err := parseLaunchUpdate(session.LaunchCache, &update)
+
 	log.Debug().Msgf("Launch update parsed (%d launches)", update.Count)
 
 	if err != nil {
@@ -115,13 +116,16 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 		return false
 	}
 
-	// Parse for postponed launches, now that DB has been cleaned
-	postponedLaunches := getPostponedLaunches(launches)
-
+	// If launches were postponed, notify
 	if len(postponedLaunches) != 0 {
-		// TODO send notifications for postponed launches
-		// TODO how to handle notification flow? just return false and abort?
 		log.Info().Msgf("%d launches were postponed", len(postponedLaunches))
+		for launch, postponedBy := range postponedLaunches {
+			// Create sendable for this postpone
+			sendable := launch.PostponeNotificationSendable(session.Db, postponedBy, "tg")
+
+			// Enqueue the postpone sendable
+			session.Telegram.Queue.Enqueue(sendable, session.Telegram, false)
+		}
 	} else {
 		log.Debug().Msg("No launches were postponed")
 	}
