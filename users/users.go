@@ -25,6 +25,7 @@ type User struct {
 	SubscribedAll         bool     `gorm:"index:enabled;index:disabled"`
 	SubscribedTo          string   // List of comma-separated LSP IDs
 	UnsubscribedFrom      string   // List of comma-separated LSP IDs
+	MutedLaunches         string   // A comma-separated string of muted launches by ID
 	SubscribedNewsletter  bool
 	MigratedFromId        string     // If the chat has been migrated, keep its original id
 	Stats                 stats.User `gorm:"embedded"`
@@ -34,7 +35,7 @@ type User struct {
 
 // User-time, to help with caching and minimize DB reads
 type UserTime struct {
-	Location  *time.Location // User's time zone for the Time module
+	Location  *time.Location // User's time zone for the Time-module
 	UtcOffset string         // A legible UTC offset string, e.g. "UTC+5"
 }
 
@@ -51,6 +52,63 @@ type UserList struct {
 	Platform string
 	Users    []*User
 	Mutex    sync.Mutex
+}
+
+func (user *User) ToggleLaunchMute(id string, toggleTo bool) bool {
+	// Verify the new state does not match the existing state
+	if toggleTo == user.HasMutedLaunch(id) {
+		log.Warn().Msgf("New mute status equals current mute status! Id=%s, user=%s, state=%v",
+			id, user.Id, toggleTo)
+		return true
+	}
+
+	// If launch is being muted, just append it to the field of muted launches
+	if toggleTo == true {
+		if user.MutedLaunches == "" {
+			// If user has no muted launches, add this ID only
+			user.MutedLaunches = id
+		} else {
+			// Split into slice by commas, append id, re-join into a string
+			user.MutedLaunches = strings.Join(
+				append(strings.Split(user.MutedLaunches, ","), id),
+				",")
+		}
+		return true
+	}
+
+	// Launch is being unmuted: remove it from the list
+	mutedLaunches := strings.Split(user.MutedLaunches, ",")
+
+	for idx, mutedId := range mutedLaunches {
+		if id == mutedId {
+			mutedLaunches = append(mutedLaunches[:idx], mutedLaunches[idx+1:]...)
+			break
+		}
+	}
+
+	// Re-join slice into a comma-separated string
+	if len(mutedLaunches) > 0 {
+		user.MutedLaunches = strings.Join(mutedLaunches, ",")
+	} else {
+		user.MutedLaunches = ""
+	}
+
+	return true
+}
+
+// Check if user has muted launch
+func (user *User) HasMutedLaunch(id string) bool {
+	if user.MutedLaunches == "" {
+		return false
+	}
+
+	for _, launchId := range strings.Split(user.MutedLaunches, ",") {
+		if launchId == id {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Returns a list of integers for all enabled and disabled launch provider IDs
@@ -93,6 +151,7 @@ func (user *User) GetNotificationStateMap() map[int]bool {
 	return stateMap
 }
 
+// Get user's subscription status by launch provider ID
 func (user *User) GetNotificationStatusById(id int) bool {
 	// If user has subscribed to this ID, return true
 	if strings.Contains(user.SubscribedTo, fmt.Sprint(id)) {
@@ -246,29 +305,4 @@ func (user *User) SavedTimeZoneInfo() string {
 	}
 
 	return fmt.Sprintf("%s (%s)", user.Locale, user.Time.UtcOffset)
-}
-
-// Adds a single user to a UserList and adds a time zone if required
-func (userList *UserList) Add(user *User, addTimeZone bool) {
-	userList.Mutex.Lock()
-
-	if addTimeZone {
-		if user.Time == (UserTime{}) {
-			user.SetTimeZone()
-		}
-	}
-
-	// Add user to the list
-	userList.Users = append(userList.Users, user)
-	userList.Mutex.Unlock()
-}
-
-// Reduce boilterplate by creating a user-list with a single user
-func SingleUserList(user *User, addTimeZone bool, platform string) *UserList {
-	// Create list
-	list := UserList{Platform: platform}
-
-	// Add user, return
-	list.Add(user, addTimeZone)
-	return &list
 }
