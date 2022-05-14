@@ -20,6 +20,11 @@ var StatusNameToIndicator = map[string]string{
 	"TBD":             "🔴", // Unverified launch time
 }
 
+// Map a stringified binary digit to a boolean state
+var BinStringStateToBool = map[string]bool{
+	"0": false, "1": true,
+}
+
 /*
 Prepares textual input for Telegram's Markdown parser.
 
