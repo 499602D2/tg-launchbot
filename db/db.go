@@ -230,3 +230,16 @@ func (db *Database) LoadStatisticsFromDisk(platform string) *stats.Statistics {
 
 	return &stats
 }
+
+// Save stats to disk: called regularly, and on program exit
+func (db *Database) SaveStatsToDisk(statistics *stats.Statistics) {
+	// Do a single batch upsert (Update all columns, except primary keys, to new value on conflict)
+	// https://gorm.io/docs/create.html#Upsert-x2F-On-Conflict
+	result := db.Conn.Clauses(clause.OnConflict{
+		UpdateAll: true,
+	}).Create(statistics)
+
+	if result.Error != nil {
+		log.Error().Err(result.Error).Msg("Saving stats to disk failed")
+	}
+}
