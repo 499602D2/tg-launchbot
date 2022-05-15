@@ -4,10 +4,35 @@ import (
 	"fmt"
 	"launchbot/users"
 	"sort"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 )
+
+// Clean any users from the cache that have not been active in a while
+func (cache *Cache) CleanUserCache(db *Database, force bool) {
+	// Loop over users and clean all that shoud be expired
+	usersToBeCleaned := []*users.User{}
+
+	for _, user := range cache.Users.Users {
+		if time.Since(user.LastActive) > time.Duration(30)*time.Minute || force {
+			usersToBeCleaned = append(usersToBeCleaned, user)
+		}
+	}
+
+	// Clean all users, and save stats before doing it
+	for _, user := range usersToBeCleaned {
+		db.SaveUser(user)
+		cache.FlushUser(user.Id, user.Platform)
+	}
+
+	if len(usersToBeCleaned) > 0 {
+		log.Debug().Msgf("Flushed %d user(s) from the cache", len(usersToBeCleaned))
+	} else {
+		log.Debug().Msgf("No users were flushed from the cache (%d cached user(s))", len(cache.Users.InCache))
+	}
+}
 
 // Finds a user from the user-cache and returns the user
 func (cache *Cache) FindUser(id string, platform string) *users.User {
@@ -17,9 +42,11 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 	// Checks if the chat ID already exists
 	i := sort.SearchStrings(userCache.InCache, id)
 
-	if i < userCache.Count && userCache.Users[i].Id == id {
-		// User is in cache, return
-		return userCache.Users[i]
+	if len(userCache.InCache) > 0 {
+		if i < userCache.Count && userCache.Users[i].Id == id {
+			// User is in cache, return
+			return userCache.Users[i]
+		}
 	}
 
 	// User is not in cache; load from db (also sets time zone)
@@ -77,7 +104,7 @@ func (cache *Cache) FlushUser(id string, platform string) {
 // the database, and return the new entry.
 func (db *Database) LoadUser(id string, platform string) *users.User {
 	// Temporary user-struct
-	user := users.User{Id: id, Platform: platform}
+	user := users.User{Id: id, Platform: platform, LastActive: time.Now()}
 
 	// Check if user exists
 	result := db.Conn.First(&user, "Id = ? AND platform = ?", id, platform)
@@ -134,6 +161,7 @@ func (db *Database) SaveUser(user *users.User) {
 	}
 }
 
+// Remove a user from the database
 func (db *Database) RemoveUser(user *users.User) {
 	// Do an unscoped delete so we aren't left with ghost entries
 	result := db.Conn.Unscoped().Delete(user)
@@ -153,6 +181,7 @@ func (db *Database) RemoveUser(user *users.User) {
 	db.Cache.FlushUser(user.Id, user.Platform)
 }
 
+// Migrate a chat to its new id
 func (db *Database) MigrateGroup(fromId int64, toId int64, platform string) {
 	// Find existing chat row
 	chat := users.User{}
@@ -187,6 +216,7 @@ func (db *Database) MigrateGroup(fromId int64, toId int64, platform string) {
 	log.Info().Msgf("Migrated chat from id=%s to id=%s", chat.MigratedFromId, chat.Id)
 }
 
+// Load how many users have subscribed to any notifications
 func (db *Database) GetSubscriberCount() int {
 	// Select all chats with any notifications enabled, and at least one notification time enabled
 	result := db.Conn.Where(
