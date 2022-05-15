@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	emoji "github.com/jayco/go-emoji-flag"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/exp/slices"
 )
@@ -61,6 +62,14 @@ func ProbabilityIndicator(probability int) string {
 	return indicator
 }
 
+func CountryCodeFlag(cc string) string {
+	if cc == "EU" {
+		return "🇪🇺"
+	}
+
+	return emoji.GetFlag(cc)
+}
+
 /*
 Prepares textual input for Telegram's Markdown parser.
 
@@ -77,7 +86,7 @@ func PrepareInputForMarkdown(input string, mode string) string {
 	case "text":
 		escapedChars = []rune{
 			'[', ']', '(', ')', '~', '>', '#', '+',
-			'-', '=', '|', '{', '}', '.', '!',
+			'-', '=', '|', '{', '}', '.', '!', '_',
 		}
 	default:
 		log.Fatal().Msgf("Invalid mode in PrepareInputForMarkdown (mode=%s)", mode)
