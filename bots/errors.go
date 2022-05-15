@@ -77,7 +77,7 @@ https://github.com/go-telebot/telebot/blob/v3.0.0/errors.go#L33
 func errorMonitor(err error, tg *TelegramBot) {
 	// Create a simple error message
 	errMsg := fmt.Sprintf("Processing failure: %#v", err.Error())
-	msg := sendables.Message{TextContent: &errMsg, SendOptions: tb.SendOptions{}}
+	msg := sendables.Message{TextContent: errMsg, SendOptions: tb.SendOptions{}}
 	user := tg.Cache.FindUser(fmt.Sprintf("%d", tg.Owner), "tg")
 
 	// Wrap in a sendable
