@@ -20,9 +20,45 @@ var StatusNameToIndicator = map[string]string{
 	"TBD":             "🔴", // Unverified launch time
 }
 
-// Map a stringified binary digit to a boolean state
+// Map a stringified binary digit to the corresponding boolean state
 var BinStringStateToBool = map[string]bool{
 	"0": false, "1": true,
+}
+
+// Map a boolean status to a notification state indicator
+var BoolStateIndicator = map[bool]string{
+	true: "✅", false: "🔕",
+}
+
+// Return a stringified binary-state a bool-state would be toggled to.
+// If current state is 'true', the map will return '0'.
+// If the current state is 'false', the map will return '1'.
+var ToggleBoolStateAsString = map[bool]string{
+	true: "0", false: "1",
+}
+
+// Map an integer percentage probability into an indicator string
+func ProbabilityIndicator(probability int) string {
+	var indicator string
+
+	switch {
+	case probability == 100:
+		indicator = "☀️"
+	case probability >= 80:
+		indicator = "🌤️"
+	case probability >= 60:
+		indicator = "🌥️"
+	case probability >= 40:
+		indicator = "☁️"
+	case probability >= 20:
+		indicator = "🌧️"
+	case probability > 0:
+		indicator = "⛈️"
+	case probability <= 0:
+		indicator = "🌪️"
+	}
+
+	return indicator
 }
 
 /*
