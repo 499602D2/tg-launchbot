@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/dustin/go-humanize/english"
 )
 
+// Returns a time-string in user's location, e.g. "14:00 UTC+5"
 func TimeInUserLocation(refTime int64, userLocation *time.Location, utcOffset string) string {
 	// Convert unix time to local time in user's time zone
 	userTime := time.Unix(refTime, 0).In(userLocation)
@@ -16,6 +18,12 @@ func TimeInUserLocation(refTime int64, userLocation *time.Location, utcOffset st
 		userTime.Hour(), userTime.Minute(), utcOffset)
 
 	return timeString
+}
+
+// Returns the date in user's location, e.g. "May 5th"
+func DateInUserLocation(refTime int64, userLocation *time.Location) string {
+	userLaunchTime := time.Unix(refTime, 0).In(userLocation)
+	return fmt.Sprintf("%s %s", userLaunchTime.Month().String(), humanize.Ordinal(userLaunchTime.Day()))
 }
 
 func FriendlyETA(userNow time.Time, eta time.Duration) string {
