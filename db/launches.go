@@ -220,6 +220,88 @@ type ContentURL struct {
 	Url         string `json:"url"`
 }
 
+// Generates the message content used by both notifications and /next
+func (launch *Launch) MessageBodyText(expanded bool, isNotification bool) string {
+	var (
+		flag              string
+		location          string
+		description       string
+		launchTimeSection string
+	)
+
+	// Shorten long LSP names
+	providerName := launch.LaunchProvider.ShortName()
+
+	// Get country-flag
+	if launch.LaunchProvider.CountryCode != "" {
+		flag = " " + emoji.GetFlag(launch.LaunchProvider.CountryCode)
+	}
+
+	// Get a string for the launch location
+	if launch.LaunchPad.Location.CountryCode != "" {
+		if launch.LaunchPad.Location.Name != "" {
+			location = strings.Split(launch.LaunchPad.Location.Name, ",")[0] + " "
+		}
+
+		location = fmt.Sprintf(", %s%s", location, emoji.GetFlag(launch.LaunchPad.Location.CountryCode))
+	}
+
+	// Time until launch
+	if !isNotification {
+		timeUntil := fmt.Sprintf("T-%s", durafmt.Parse(time.Until(time.Unix(launch.NETUnix, 0))).LimitFirstN(2))
+		launchTimeSection = fmt.Sprintf(
+			"🕙 Launch-time\n"+
+				"*Date* $USERDATE\n"+
+				"*Until* %s\n\n",
+			utils.Monospaced(timeUntil),
+		)
+	} else {
+		launchTimeSection = ""
+	}
+
+	// Mission information
+	missionType := launch.Mission.Type
+	missionOrbit := launch.Mission.Orbit.Name
+
+	if missionType == "" {
+		missionType = "Unknown purpose"
+	}
+
+	if missionOrbit == "" {
+		missionOrbit = "Unknown orbit"
+	}
+
+	if expanded {
+		// If this is an expanded message, add a description
+		if launch.Mission.Description == "" {
+			description = "ℹ️ No information available\n\n"
+		} else {
+			description = fmt.Sprintf("ℹ️ %s\n\n", launch.Mission.Description)
+		}
+	}
+
+	text := fmt.Sprintf(
+		"*Provider* %s%s\n"+
+			"*Rocket* %s\n"+
+			"*From* %s%s\n\n"+
+
+			"%s"+
+
+			"🌍 *Mission information*\n"+
+			"*Type* %s\n"+
+			"*Orbit* %s\n\n"+
+
+			"%s",
+
+		utils.Monospaced(providerName), flag, utils.Monospaced(launch.Rocket.Config.FullName),
+		utils.Monospaced(launch.LaunchPad.Name), utils.Monospaced(location),
+		launchTimeSection, utils.Monospaced(missionType),
+		utils.Monospaced(missionOrbit), description,
+	)
+
+	return text
+}
+
 // Produces a launch notification message
 func (launch *Launch) NotificationMessage(notifType string, expanded bool) string {
 	// Map notification type to a header
@@ -251,42 +333,8 @@ func (launch *Launch) NotificationMessage(notifType string, expanded bool) strin
 		}
 	}
 
-	// If mission has no name, use the name of the launch itself (and split by `|`)
+	// Load a name for the launch
 	name := launch.HeaderName()
-
-	// Shorten long LSP names
-	providerName := launch.LaunchProvider.ShortName()
-
-	// Get country-flag
-	flag := ""
-	if launch.LaunchProvider.CountryCode != "" {
-		flag = " " + emoji.GetFlag(launch.LaunchProvider.CountryCode)
-	}
-
-	// TODO create a copy of the launch -> monospace all relevant fields?
-	// TODO set bot username dynamically (throw a tb.bot object at ll2.notify?)
-
-	// Mission information
-	missionType := launch.Mission.Type
-	missionOrbit := launch.Mission.Orbit.Name
-
-	if missionType == "" {
-		missionType = "Unknown purpose"
-	}
-
-	if missionOrbit == "" {
-		missionOrbit = "Unknown orbit"
-	}
-
-	// If this is an expanded message, add a description
-	launchDescription := ""
-	if expanded {
-		if launch.Mission.Description == "" {
-			launchDescription = "ℹ️ No information available\n\n"
-		} else {
-			launchDescription = fmt.Sprintf("ℹ️ %s\n\n", launch.Mission.Description)
-		}
-	}
 
 	// Only add the webcast link for 1-hour and 5-minute notifications
 	var webcastLink string
@@ -307,33 +355,20 @@ func (launch *Launch) NotificationMessage(notifType string, expanded bool) strin
 		webcastLink = ""
 	}
 
+	// Load message body
+	messageBody := launch.MessageBodyText(expanded, true)
+
 	// TODO add bot username dynamically
 	text := fmt.Sprintf(
 		"🚀 *%s: %s*\n"+
-			"*Provider* %s%s\n"+
-			"*Rocket* %s\n"+
-			"*From* %s\n\n"+
-
-			"🌍 *Mission information*\n"+
-			"*Type* %s\n"+
-			"*Orbit* %s\n\n"+
-
 			"%s"+
 
+			"🕙 *$USERDATE*\n"+
 			"LAUNCHLINKHERE"+
-			"🕙 *Launch-time $USERTIME*\n"+
 			"🔕 *Stop with /settings@tglaunchbot*",
 
 		// Name, launching-in, provider, rocket, launch pad
-		header, name,
-		utils.Monospaced(providerName), flag, utils.Monospaced(launch.Rocket.Config.FullName),
-		utils.Monospaced(launch.LaunchPad.Name),
-
-		// Mission information
-		utils.Monospaced(missionType), utils.Monospaced(missionOrbit),
-
-		// Description, if expanded
-		launchDescription,
+		header, name, messageBody,
 	)
 
 	// Prepare message for Telegram's MarkdownV2 parser
@@ -470,91 +505,19 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 	}
 
 	// If mission has no name, use the name of the launch itself (and split by `|`)
-	name := launch.Mission.Name
-	if name == "" {
-		nameSplit := strings.Split(launch.Name, "|")
+	name := launch.HeaderName()
 
-		if len(nameSplit) > 1 {
-			name = strings.Trim(nameSplit[1], " ")
-		} else {
-			name = strings.Trim(nameSplit[0], " ")
-		}
-	}
-
-	// Shorten long LSP names
-	providerName := launch.LaunchProvider.ShortName()
-
-	// Get country-flag for provider and location
-	var (
-		flag     string
-		location string
-	)
-
-	if launch.LaunchProvider.CountryCode != "" {
-		flag = fmt.Sprintf(" %s", emoji.GetFlag(launch.LaunchProvider.CountryCode))
-	}
-
-	if launch.LaunchPad.Location.CountryCode != "" {
-		if launch.LaunchPad.Location.Name != "" {
-			location = strings.Split(launch.LaunchPad.Location.Name, ",")[0] + " "
-		}
-
-		location = fmt.Sprintf(", %s%s", location, emoji.GetFlag(launch.LaunchPad.Location.CountryCode))
-	}
-
-	// Mission information
-	missionType := launch.Mission.Type
-	missionOrbit := launch.Mission.Orbit.Name
-
-	if missionType == "" {
-		missionType = "Unknown purpose"
-	}
-
-	if missionOrbit == "" {
-		missionOrbit = "Unknown orbit"
-	}
-
-	description := ""
-	if launch.Mission.Description != "" {
-		description = fmt.Sprintf("ℹ️ %s\n\n", launch.Mission.Description)
-	} else {
-		description = ""
-	}
-
-	// Time until launch in a string format
-	launchTime := time.Unix(launch.NETUnix, 0)
-
-	nthDay := humanize.Ordinal(launchTime.Day())
-	userTime := utils.TimeInUserLocation(launch.NETUnix, user.Time.Location, user.Time.UtcOffset)
-	launchDate := fmt.Sprintf("%s %s, %s", launchTime.Month().String(), nthDay, userTime)
-
-	timeUntil := fmt.Sprintf("T-%s", durafmt.Parse(time.Until(launchTime)).LimitFirstN(2))
+	bodyText := launch.MessageBodyText(true, false)
 
 	text := fmt.Sprintf(
 		"🚀 *Next launch:* %s\n"+
-			"*Provider* %s%s\n"+
-			"*Rocket* %s\n"+
-			"*From* %s%s\n\n"+
-
-			"🕙 *Launch-time*\n"+
-			"*Date* %s\n"+
-			"*Until* %s\n\n"+
-
-			"🌍 *Mission information*\n"+
-			"*Type* %s\n"+
-			"*Orbit* %s\n\n"+
-
 			"%s",
 
-		name,
-		utils.Monospaced(providerName), flag, utils.Monospaced(launch.Rocket.Config.FullName),
-		utils.Monospaced(launch.LaunchPad.Name), utils.Monospaced(location), utils.Monospaced(launchDate),
-		utils.Monospaced(timeUntil), utils.Monospaced(missionType),
-		utils.Monospaced(missionOrbit), description,
+		name, bodyText,
 	)
 
 	// Set user's time
-	text = *sendables.SetTime(text, user, launch.NETUnix, false)
+	text = sendables.SetTime(text, user, launch.NETUnix, false, true)
 
 	if !returnKeyboard {
 		return utils.PrepareInputForMarkdown(text, "text"), nil
@@ -619,7 +582,7 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 	return utils.PrepareInputForMarkdown(text, "text"), &tb.ReplyMarkup{InlineKeyboard: kb}
 }
 
-// Extends the Launch struct to add a .PostponeNotify() method.
+// Constructs the message for a postpone notification
 func (launch *Launch) PostponeNotificationMessage(postponedBy int64) (string, tb.SendOptions) {
 	// New T- until launch
 	untilLaunch := time.Until(time.Now().Add(time.Duration(postponedBy) * time.Second))
@@ -653,6 +616,7 @@ func (launch *Launch) PostponeNotificationMessage(postponedBy int64) (string, tb
 	return text, sendOptions
 }
 
+// Builds a complete Sendable for a postpone notification
 func (launch *Launch) PostponeNotificationSendable(db *Database, postponedBy int64, platform string) *sendables.Sendable {
 	// Get text and send-options
 	text, sendOptions := launch.PostponeNotificationMessage(postponedBy)
@@ -665,15 +629,18 @@ func (launch *Launch) PostponeNotificationSendable(db *Database, postponedBy int
 		LaunchId:   launch.Id,
 		Recipients: recipients,
 		Message: &sendables.Message{
-			TextContent: &text, AddUserTime: true, RefTime: launch.NETUnix, SendOptions: sendOptions,
+			TextContent: text, AddUserTime: true, RefTime: launch.NETUnix, SendOptions: sendOptions,
 		},
 	}
 
 	return &sendable
 }
 
+// Generate a launch name, either using the mission name or using a split launch name
 func (launch *Launch) HeaderName() string {
+	// Use the mission name; however, this may be empty
 	name := launch.Mission.Name
+
 	if name == "" {
 		nameSplit := strings.Split(launch.Name, "|")
 
