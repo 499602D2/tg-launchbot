@@ -125,29 +125,27 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 }
 
 // NotificationWrapper is called when scheduled notifications are prepared for sending.
-func notificationWrapper(session *config.Session, launchIds []string, refreshData bool) {
-	// TODO compare NETs here after update (this is currently useless)
-	refreshData = false
+func notificationWrapper(session *config.Session, launchIds []string, refreshData bool) bool {
 	if refreshData {
-		updateSuccess := Updater(session, false)
+		// Run updater
+		updateWrapper(session, false)
 
-		if updateSuccess {
-			log.Info().Msg("Successfully refreshed data in notificationWrapper")
-		} else {
-			log.Error().Msg("Update failed in notificationWrapper")
-			return
-		}
+		// Re-get all notifications
+		_, notification := session.LaunchCache.NextScheduledUpdateIn()
+
+		// Re-schedule notifications
+		return NotificationScheduler(session, notification, false)
 	} else {
-		log.Debug().Msg("refreshData=false")
+		log.Debug().Msg("Not refreshing data before notification scheduling...")
 	}
 
 	for i, launchId := range launchIds {
 		// Pull launch from the cache
-		launch, ok := session.LaunchCache.LaunchMap[launchId]
+		launch, error := session.LaunchCache.FindLaunchById(launchId)
 
-		if !ok {
+		if error != nil {
 			log.Error().Msgf("[notificationWrapper] Launch with id=%s not found in cache", launchId)
-			return
+			continue
 		}
 
 		log.Info().Msgf("[%d] Creating sendable for launch with name=%s", i+1, launch.Name)
@@ -155,11 +153,13 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 		sendable := Notify(launch, session.Db)
 		session.Telegram.Queue.Enqueue(sendable, session.Telegram, false)
 	}
+
+	return true
 }
 
 // Schedules a chrono job for when the notification should be sent, with some
 // margin for one extra API update before the sending process starts.
-func NotificationScheduler(session *config.Session, notifTime *db.Notification) bool {
+func NotificationScheduler(session *config.Session, notifTime *db.Notification, refresh bool) bool {
 	// TODO update job queue with tags (e.g. "notification", "api") for removal
 	// TODO when sending a 5-minute notification, schedule a post-launch check
 	// TODO explore issues caused by using sendTime = time.Now()
@@ -178,7 +178,7 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification) 
 	// Create task
 	task, err := session.Scheduler.Schedule(func(ctx context.Context) {
 		// Run notification sender
-		notificationWrapper(session, notifTime.IDs, true)
+		notificationWrapper(session, notifTime.IDs, refresh)
 
 		// Schedule next API update with some margin for an API call
 		Scheduler(session, false)
@@ -244,12 +244,12 @@ func Scheduler(session *config.Session, startup bool) bool {
 
 		// Save stats
 		session.Telegram.Stats.NextApiUpdate = time.Now().Add(untilSendTime)
-		return NotificationScheduler(session, notification)
+		return NotificationScheduler(session, notification, true)
 	}
 
 	// Schedule next auto-update, since no notifications are incoming soon
 	task, err := session.Scheduler.Schedule(func(ctx context.Context) {
-		updateWrapper(session)
+		updateWrapper(session, true)
 	}, chrono.WithTime(autoUpdateTime))
 
 	if err != nil {

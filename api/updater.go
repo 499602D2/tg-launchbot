@@ -142,18 +142,18 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 }
 
 // Function that chrono calls when a scheduled API update runs.
-func updateWrapper(session *config.Session) {
+func updateWrapper(session *config.Session, scheduleNext bool) {
 	log.Info().Msgf("Running scheduled update...")
 
 	// Check return value of updater
-	success := Updater(session, true)
+	success := Updater(session, scheduleNext)
 
 	if !success {
 		log.Warn().Msg("Updater failed: re-trying in 60 seconds...")
 
 		// Retry twice
 		for i := 1; ; i++ {
-			success = Updater(session, true)
+			success = Updater(session, scheduleNext)
 
 			if !success {
 				retryAfter := 60*i ^ 2
