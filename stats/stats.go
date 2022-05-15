@@ -22,6 +22,7 @@ type Statistics struct {
 	Platform       string `gorm:"primaryKey;uniqueIndex"`
 	Notifications  int
 	Commands       int
+	Callbacks      int
 	ApiRequests    int
 	LastApiUpdate  time.Time
 	NextApiUpdate  time.Time
@@ -29,29 +30,11 @@ type Statistics struct {
 	RunningVersion string `gorm:"-:all"`
 }
 
-type ScheduleCmdStats struct {
-	CommandCalls        int
-	RefreschCallbacks   int
-	ModeSwitchCallbacks int
-}
-
-type NextCmdStats struct {
-	CommandCalls      int
-	RefreshCallbacks  int
-	NextCallbacks     int
-	PreviousCallbacks int
-	ReturnCallbacks   int
-}
-
-type StatsCmdStats struct {
-	CommandCalls     int
-	RefreshCallbacks int
-}
-
 // Embedded chat-level statistics
 type User struct {
 	ReceivedNotifications int
 	SentCommands          int
+	SentCallbacks         int
 	MemberCount           int `gorm:"default:1"`
 	SubscribedSince       int64
 }
@@ -76,7 +59,7 @@ func (stats *Statistics) String(subscribers int) string {
 			"Bot started %s\n"+
 			"GITHUBLINK",
 
-		stats.Notifications, stats.Commands, subscribers,
+		stats.Notifications, stats.Commands+stats.Callbacks, subscribers,
 		dbLastUpdated, dbNextUpdate, sinceStartup,
 	)
 
