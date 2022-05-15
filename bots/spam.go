@@ -29,118 +29,83 @@ type ChatLog struct {
 
 // Initialize the spam struct
 func (spam *AntiSpam) Initialize() {
-	// Create all maps
+	// Create all maps for the spam struct
 	spam.ChatBannedUntilTimestamp = make(map[*users.User]int64)
 	spam.ChatLogs = make(map[*users.User]ChatLog)
 	spam.ChatBanned = make(map[*users.User]bool)
 	spam.Rules = make(map[string]int64)
 
-	// Enforce a rate-limiter: 25 msg/sec, with 30 msg/sec bursts
-	// TODO callbacks may have looser limits
-	// TODO create a limiter wrapper with a method to perform a dual-limit,
-	// that first limits the user and then the bot.
+	// Enforce a global rate-limiter: 25 msg/sec, with 30 msg/sec bursts
+	// Effectively, we can burst 30 msg/sec, but sustain 25 msg/sec
 	spam.Limiter = rate.NewLimiter(25, 30)
 }
 
+// Enforce a per-chat rate-limiter. Typically, roughly 20 messages per minute
+// can be sent to one chat.
 func (spam *AntiSpam) UserLimiter(user *users.User, tokens int) {
-	spam.Mutex.Lock()
-	defer spam.Mutex.Unlock()
-
-	chatLog := spam.ChatLogs[user]
-
 	// If limiter doesn't exist, create it
-	if chatLog.Limiter == nil {
+	if spam.ChatLogs[user].Limiter == nil {
+		spam.Mutex.Lock()
+
+		// Load user's chatLog, assign new limiter, save back
+		chatLog := spam.ChatLogs[user]
 		chatLog.Limiter = rate.NewLimiter(rate.Every(time.Second*3), 2)
+		spam.ChatLogs[user] = chatLog
+
+		spam.Mutex.Unlock()
 	}
 
-	// Reserve a limiter for this chat
-	if chatLog.Limiter.AllowN(time.Now(), tokens) == false {
-		log.Debug().Msg("User limiter returned false...")
+	// Wait until we can take as many tokens as we need
+	log.Debug().Msgf("Taking %d tokens for chat", tokens)
+	err := spam.ChatLogs[user].Limiter.WaitN(context.Background(), tokens)
 
-		// If limiter returned false, wait until we can proceed
-		err := chatLog.Limiter.WaitN(context.Background(), tokens)
-
-		if err != nil {
-			log.Error().Err(err).Msgf("Error using chat's Limiter.Wait()")
-		}
+	if err != nil {
+		log.Error().Err(err).Msgf("Error using chat's Limiter.Wait()")
 	}
-
-	// No spam, update chat's ConversionLog
-	spam.ChatLogs[user] = chatLog
 }
 
+// Enforces a global rate-limiter for the bot. Telegram has some hard rate-limits,
+// including a 30 messages-per-second send limit for messages under 512 bytes.
 func (spam *AntiSpam) GlobalLimiter(tokens int) {
-	spam.Mutex.Lock()
-	defer spam.Mutex.Unlock()
+	// Take the required amount of tokens, sleep if required
+	err := spam.Limiter.WaitN(context.Background(), tokens)
 
-	// Reserve a token from the main pool
-	if spam.Limiter.AllowN(time.Now(), tokens) == false {
-		log.Debug().Msg("Global limiter returned false...")
-
-		// If limiter returned false, wait until we can proceed
-		err := spam.Limiter.WaitN(context.Background(), tokens)
-
-		if err != nil {
-			log.Error().Err(err).Msgf("Error using global Limiter.Wait()")
-		}
+	if err != nil {
+		log.Error().Err(err).Msgf("Error using global Limiter.Wait()")
 	}
 }
 
+// A wrapper method to run both the global and user limiter at once
 func (spam *AntiSpam) RunBothLimiters(user *users.User, tokens int) {
 	spam.GlobalLimiter(tokens)
 	spam.UserLimiter(user, tokens)
 }
 
-// When user sends a command, verify the chat is eligible for a command parse.
-func PreHandler(tg *TelegramBot, user *users.User, c tb.Context, tokens int) bool {
-	if c.Chat().Type != tb.ChatPrivate {
-		// If chat is not private, ensure sender is an admin
-		member, err := tg.Bot.ChatMemberOf(c.Chat(), c.Sender())
+// Return true if chat is a group
+func isGroup(chatType tb.ChatType) bool {
+	return chatType == tb.ChatGroup || chatType == tb.ChatSuperGroup
+}
 
-		if err != nil {
-			log.Warn().Msgf("Running pre-handler failed when requesting ChatMemberOf")
+// When an interaction is received, ensure the sender is qualified for it
+func PreHandler(tg *TelegramBot, chat *users.User, ctx tb.Context, tokens int, adminOnly bool, isCommand bool) bool {
+	if isGroup(ctx.Chat().Type) {
+		// In groups, we need to ensure that regular users cannot do funny things
+		if adminOnly || !chat.AnyoneCanSendCommands {
+			// Admin-only interaction, or group doesn't allow users to interact with the bot
+			if !tg.senderIsAdmin(ctx) {
+				log.Debug().Msgf("Admin-only interaction, but user is not an admin")
 
-			handleTelegramError(c, err, tg)
-			return false
-		}
+				if isCommand {
+					tg.tryRemovingMessage(ctx)
+				}
 
-		// If user is not an admin, check if we can remove the message before returning
-		// Alternatively, if chat permits anyone to send commands, parse it.
-		if !user.AnyoneCanSendCommands && member.Role != tb.Administrator && member.Role != tb.Creator {
-			// Get bot's member status
-			botMember, err := tg.Bot.ChatMemberOf(c.Chat(), tg.Bot.Me)
-
-			if err != nil {
-				log.Error().Msg("Loading bot's permissions in chat failed")
-
-				handleTelegramError(c, err, tg)
+				tg.Spam.RunBothLimiters(chat, tokens)
 				return false
 			}
-
-			// If we have permission to delete messages, delete the command message
-			if botMember.CanDeleteMessages {
-				err = tg.Bot.Delete(c.Message())
-			} else {
-				// If no permission, delete the message
-				log.Debug().Msgf("Cannot delete messages in chat=%d", c.Chat().ID)
-				return false
-			}
-
-			// Check errors
-			if err != nil {
-				log.Error().Msg("Deleting message sent by a non-admin failed")
-				handleTelegramError(c, err, tg)
-				return false
-			}
-
-			log.Debug().Msgf("Deleted message by non-admin in chat=%d", c.Chat().ID)
-			return false
 		}
 	}
 
-	// Run limiters for global token pool + user's token pool
-	log.Debug().Msgf("Taking %d token(s) from both pools...", tokens)
-	tg.Spam.RunBothLimiters(user, tokens)
-
+	// FUTURE: ensure message initiator is same as callback sender (send command replies with replyTo parameter?)
+	tg.Spam.RunBothLimiters(chat, tokens)
 	return true
 }
