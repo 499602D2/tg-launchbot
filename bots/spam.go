@@ -56,7 +56,6 @@ func (spam *AntiSpam) UserLimiter(user *users.User, tokens int) {
 	}
 
 	// Wait until we can take as many tokens as we need
-	log.Debug().Msgf("Taking %d tokens for chat", tokens)
 	err := spam.ChatLogs[user].Limiter.WaitN(context.Background(), tokens)
 
 	if err != nil {
@@ -87,14 +86,12 @@ func isGroup(chatType tb.ChatType) bool {
 }
 
 // When an interaction is received, ensure the sender is qualified for it
-func PreHandler(tg *TelegramBot, chat *users.User, ctx tb.Context, tokens int, adminOnly bool, isCommand bool) bool {
+func PreHandler(tg *TelegramBot, chat *users.User, ctx tb.Context, tokens int, adminOnly bool, isCommand bool, cmdName string) bool {
 	if isGroup(ctx.Chat().Type) {
 		// In groups, we need to ensure that regular users cannot do funny things
 		if adminOnly || !chat.AnyoneCanSendCommands {
 			// Admin-only interaction, or group doesn't allow users to interact with the bot
 			if !tg.senderIsAdmin(ctx) {
-				log.Debug().Msgf("Admin-only interaction, but user is not an admin")
-
 				if isCommand {
 					tg.tryRemovingMessage(ctx)
 				}
@@ -103,6 +100,11 @@ func PreHandler(tg *TelegramBot, chat *users.User, ctx tb.Context, tokens int, a
 				return false
 			}
 		}
+	}
+
+	// Processing allowed: save statistics
+	if cmdName != "stats" || isCommand {
+		tg.UpdateStats(chat, isCommand)
 	}
 
 	// FUTURE: ensure message initiator is same as callback sender (send command replies with replyTo parameter?)
