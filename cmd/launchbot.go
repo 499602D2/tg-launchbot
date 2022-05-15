@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-co-op/gocron"
 	"github.com/rs/zerolog/pkgerrors"
 
 	"github.com/procyon-projects/chrono"
@@ -34,6 +35,12 @@ func setupSignalHandler(session *config.Session) {
 		<-channel
 		// Log shutdown
 		log.Info().Msg("🚦 Received interrupt signal: stopping updaters...")
+
+		// Save stats to disk
+		session.Db.SaveStatsToDisk(session.Telegram.Stats)
+
+		// Save all cached users
+		session.LaunchCache.CleanUserCache(session.Db, true)
 
 		/* TODO uncomment in production
 		if session.Telegram != nil {
@@ -85,7 +92,6 @@ func initSession(version string) *config.Session {
 	session.Telegram.Spam = session.Spam
 	session.Telegram.Cache = session.LaunchCache
 	session.Telegram.Db = session.Db
-	session.Telegram.TZSetupMessages = make(map[int64]int64)
 
 	// Init stats
 	session.Telegram.Stats = session.Db.LoadStatisticsFromDisk("tg")
@@ -165,6 +171,24 @@ func main() {
 	} else {
 		log.Warn().Msg("API updates disabled")
 	}
+
+	// Dump statistics to disk once every 30 minutes
+	scheduler := gocron.NewScheduler(time.UTC)
+	_, err := scheduler.Every(30).Minutes().Do(session.Db.SaveStatsToDisk, session.Telegram.Stats)
+
+	if err != nil {
+		log.Fatal().Err(err).Msg("Starting statistics gocron job failed")
+	}
+
+	// Clean user-cache once an hour
+	_, err = scheduler.Every(1).Hour().Do(session.LaunchCache.CleanUserCache, session.Db, false)
+
+	if err != nil {
+		log.Fatal().Err(err).Msg("Starting cache-flush gocron job failed")
+	}
+
+	// Run scheduled jobs async
+	scheduler.StartAsync()
 
 	// Start the sender in a go-routine
 	go bots.TelegramSender(session.Telegram)
