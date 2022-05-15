@@ -32,6 +32,7 @@ var LSPShorthands = map[int]LSP{
 	63: {Name: "ROSCOSMOS", Flag: "🇷🇺", Cc: "RUS"},
 
 	// Corporations, including state and commercial
+	88:  {Name: "CASC", Flag: "🇨🇳", Cc: "CHN"},
 	96:  {Name: "KhSC", Flag: "🇷🇺", Cc: "RUS"},
 	98:  {Name: "Mitsubishi H.I.", Flag: "🇯🇵", Cc: "JPN"},
 	115: {Name: "Arianespace", Flag: "🇪🇺", Cc: "EU"},
@@ -39,13 +40,13 @@ var LSPShorthands = map[int]LSP{
 	124: {Name: "ULA", Flag: "🇺🇸", Cc: "USA"},
 	141: {Name: "Blue Origin", Flag: "🇺🇸", Cc: "USA"},
 	147: {Name: "Rocket Lab", Flag: "🇺🇸", Cc: "USA"},
-	189: {Name: "CASC", Flag: "🇨🇳", Cc: "CHN"},
 	190: {Name: "Antrix Corp.", Flag: "🇮🇳", Cc: "IND"},
 	194: {Name: "ExPace", Flag: "🇨🇳", Cc: "CHN"},
 	199: {Name: "Virgin Orbit", Flag: "🇺🇸", Cc: "USA"},
 	257: {Name: "Northrop Grumman", Flag: "🇺🇸", Cc: "USA"},
 	259: {Name: "LandSpace", Flag: "🇨🇳", Cc: "CHN"},
 	265: {Name: "Firefly", Flag: "🇺🇸", Cc: "USA"},
+	266: {Name: "Relativity", Flag: "🇺🇸", Cc: "USA"},
 	274: {Name: "iSpace", Flag: "🇨🇳", Cc: "CHN"},
 	285: {Name: "Astra", Flag: "🇺🇸", Cc: "USA"},
 
@@ -54,13 +55,14 @@ var LSPShorthands = map[int]LSP{
 	1021: {Name: "Galactic Energy", Flag: "🇨🇳", Cc: "CHN"},
 	1024: {Name: "Virgin Galactic", Flag: "🇺🇸", Cc: "USA"},
 	1029: {Name: "TiSPACE", Flag: "🇹🇼", Cc: "TWN"},
+	1030: {Name: "ABL", Flag: "🇺🇸", Cc: "USA"},
 }
 
 // Map country codes to a list of provider IDs under this country code
 var IdByCountryCode = map[string][]int{
-	"USA": {44, 121, 124, 141, 147, 199, 257, 265, 285, 1024},
+	"USA": {44, 121, 124, 141, 147, 199, 257, 265, 266, 285, 1024, 1030},
 	"EU":  {115},
-	"CHN": {189, 194, 259, 274, 1021},
+	"CHN": {17, 88, 194, 259, 274, 1021},
 	"RUS": {63, 96},
 	"IND": {31, 190},
 	"JPN": {37, 98, 1002},
@@ -247,10 +249,11 @@ func (launch *Launch) MessageBodyText(expanded bool, isNotification bool) string
 	}
 
 	// Time until launch
+	// TODO add "Not before" if time is TBD, and don't add exact launch time
 	if !isNotification {
 		timeUntil := fmt.Sprintf("T-%s", durafmt.Parse(time.Until(time.Unix(launch.NETUnix, 0))).LimitFirstN(2))
 		launchTimeSection = fmt.Sprintf(
-			"🕙 Launch-time\n"+
+			"🕙 *Launch time*\n"+
 				"*Date* $USERDATE\n"+
 				"*Until* %s\n\n",
 			utils.Monospaced(timeUntil),
@@ -510,10 +513,10 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 	bodyText := launch.MessageBodyText(true, false)
 
 	text := fmt.Sprintf(
-		"🚀 *Next launch:* %s\n"+
+		"🚀 *Next launch* %s\n"+
 			"%s",
 
-		name, bodyText,
+		utils.Monospaced(name), bodyText,
 	)
 
 	// Set user's time
@@ -538,6 +541,7 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 
 		// Construct the keyboard
 		kb = [][]tb.InlineButton{{nextBtn}, {refreshBtn}}
+
 	case len(cache.Launches) - 1: // Case: last index
 		refreshBtn := tb.InlineButton{
 			Text: "Refresh 🔄", Data: fmt.Sprintf("nxt/r/%d", index),
@@ -553,6 +557,7 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 
 		// Construct the keyboard
 		kb = [][]tb.InlineButton{{prevBtn}, {returnBtn, refreshBtn}}
+
 	default: // Default case, i.e. not either end of the launch list
 		if index > len(cache.Launches)-1 {
 			// Make sure we don't go over the maximum index
@@ -568,11 +573,11 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 		}
 
 		nextBtn := tb.InlineButton{
-			Text: "Next launch ➡️", Data: fmt.Sprintf("nxt/n/%d/+", index+1),
+			Text: "Next ➡️", Data: fmt.Sprintf("nxt/n/%d/+", index+1),
 		}
 
 		prevBtn := tb.InlineButton{
-			Text: "⬅️ Previous launch", Data: fmt.Sprintf("nxt/n/%d/-", index-1),
+			Text: "⬅️ Previous", Data: fmt.Sprintf("nxt/n/%d/-", index-1),
 		}
 
 		// Construct the keyboard
@@ -757,6 +762,15 @@ func (provider *LaunchProvider) ShortName() string {
 	}
 
 	return provider.Name
+}
+
+func AllIdsByCountryCode(cc string) []string {
+	ids := []string{}
+	for _, id := range IdByCountryCode[cc] {
+		ids = append(ids, fmt.Sprint(id))
+	}
+
+	return ids
 }
 
 // Updates the notification-state map from the boolean values
