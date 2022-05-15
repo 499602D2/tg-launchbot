@@ -29,7 +29,7 @@ type Sendable struct {
 // The message content of a sendable
 // TODO implement an interface for messages -> TgMessage and DscMessage
 type Message struct {
-	TextContent *string
+	TextContent string
 	AddUserTime bool  // If flipped to true, TextContent contains "$USERTIME"
 	RefTime     int64 // Reference time to use for replacing $USERTIME with
 	SendOptions tb.SendOptions
@@ -42,7 +42,7 @@ func (sendable *Sendable) PerceivedByteSize() int {
 	}
 
 	// Raw byte-count
-	byteCount := len(*sendable.Message.TextContent)
+	byteCount := len(sendable.Message.TextContent)
 
 	/* Some notes on just _how_ fast we can send stuff at Telegram's API
 
@@ -60,10 +60,10 @@ func (sendable *Sendable) PerceivedByteSize() int {
 	perceivedByteCount := byteCount
 
 	// Additional 4 bytes per newline (a newline counts as 5 bytes)
-	perceivedByteCount += strings.Count(*sendable.Message.TextContent, "\n") * 4
+	perceivedByteCount += strings.Count(sendable.Message.TextContent, "\n") * 4
 
 	// Count &-symbols
-	perceivedByteCount += strings.Count(*sendable.Message.TextContent, "&") * 4
+	perceivedByteCount += strings.Count(sendable.Message.TextContent, "&") * 4
 
 	// Calculate everything between link tags, remove from final length...?
 	// Pretty easy to do, as link-tag always starts with "Watch live now" (or something)
@@ -83,25 +83,30 @@ func (sendable *Sendable) Send() {
 }
 
 // Set time field in the message
-func SetTime(txt string, user *users.User, refTime int64, markdownPrep bool) *string {
+func SetTime(txt string, user *users.User, refTime int64, markdownPrep bool, monospace bool) string {
 	// Load user's time zone, if not already loaded
 	if user.Time == (users.UserTime{}) {
 		user.SetTimeZone()
 	}
 
-	// Get time string in user's location
-	timeString := utils.TimeInUserLocation(refTime, user.Time.Location, user.Time.UtcOffset)
+	// Time and date in user's location
+	userTime := utils.TimeInUserLocation(refTime, user.Time.Location, user.Time.UtcOffset)
+	userDate := utils.DateInUserLocation(refTime, user.Time.Location)
 
-	// Monospace
-	//timeString = utils.Monospaced(timeString)
+	// Launch date in user's location
+	launchDate := fmt.Sprintf("%s, %s", userDate, userTime)
 
-	if markdownPrep {
-		timeString = utils.PrepareInputForMarkdown(timeString, "text")
+	if monospace {
+		launchDate = utils.Monospaced(launchDate)
 	}
 
-	// Set time, return
-	txt = strings.ReplaceAll(txt, "$USERTIME", timeString)
-	return &txt
+	if markdownPrep {
+		// Escape any markdown, if configured
+		launchDate = utils.PrepareInputForMarkdown(launchDate, "text")
+	}
+
+	// Set time in the text, return
+	return strings.ReplaceAll(txt, "$USERDATE", launchDate)
 }
 
 func (sendable *Sendable) AddRecipient(user *users.User, addTimeZone bool) {
@@ -123,7 +128,7 @@ func TextOnlySendable(txt string, user *users.User) *Sendable {
 	// Construct message
 	txt = fmt.Sprintf("%s", txt)
 	msg := Message{
-		TextContent: &txt,
+		TextContent: txt,
 		SendOptions: tb.SendOptions{ParseMode: "MarkdownV2"},
 	}
 
