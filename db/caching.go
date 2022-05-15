@@ -56,6 +56,7 @@ func (cache *Cache) Update(launches []*Launch) {
 		if ok {
 			// Copy notification states if old launch exists
 			launch.NotificationState = oldLaunch.NotificationState
+			launch.SentNotificationIds = oldLaunch.SentNotificationIds
 		} else {
 			// If states don't exist, initialize from struct's values
 			launch.NotificationState = launch.NotificationState.UpdateMap()
