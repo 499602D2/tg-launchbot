@@ -9,7 +9,7 @@ import (
 )
 
 func TestSetTime(t *testing.T) {
-	txt := "$USERTIME"
+	txt := "$USERDATE"
 	msg := sendables.Message{
 		TextContent: txt, AddUserTime: true, RefTime: time.Now().Unix(),
 	}
@@ -19,17 +19,4 @@ func TestSetTime(t *testing.T) {
 	user1.SetTimeZone()
 	newText := sendables.SetTime(msg.TextContent, &user1, msg.RefTime, false, false)
 	fmt.Println(newText)
-
-	// Local offset
-	// "Europe/Helsinki"
-
-	// Negative offset
-	// "America/Los_Angeles"
-
-	// Non-integer offset
-	// "Australia/Eucla"
-
-	// UTC
-	// "UTC"
-
 }

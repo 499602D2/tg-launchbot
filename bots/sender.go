@@ -208,6 +208,7 @@ func TelegramSender(tg *TelegramBot) {
 
 						if success {
 							sentIds = append(sentIds, sentIdPair)
+							user.Stats.ReceivedNotifications++
 						}
 					case "delete":
 						DeleteMessage(tg, sendable, user)
@@ -237,8 +238,9 @@ func TelegramSender(tg *TelegramBot) {
 					// Send done; log
 					log.Info().Msgf("Sent %d notification(s) for sendable=%s in %s", len(sentIds), hash, timeSpent)
 
-					// Save statistics
+					// Update statistics, save to disk
 					tg.Stats.Notifications += len(sentIds)
+					tg.Db.SaveStatsToDisk(tg.Stats)
 
 					// Load launch from cache so we can save the IDs
 					launch, err := tg.Cache.FindLaunchById(sendable.LaunchId)
