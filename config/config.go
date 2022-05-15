@@ -81,12 +81,13 @@ func DumpConfig(config *Config) {
 func LoadConfig() *Config {
 	// Get log file's path relative to working dir
 	wd, _ := os.Getwd()
-	configPath := filepath.Join(wd, "config")
+
+	configPath := filepath.Join(wd, "data")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		_ = os.Mkdir(configPath, os.ModePerm)
 	}
 
-	configf := filepath.Join(configPath, "bot-config.json")
+	configf := filepath.Join(configPath, "config.json")
 	if _, err := os.Stat(configf); os.IsNotExist(err) {
 		// Config doesn't exist: create
 		fmt.Print("Enter bot token: ")
