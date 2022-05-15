@@ -31,6 +31,7 @@ type User struct {
 	Stats                 stats.User `gorm:"embedded"`
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
+	LastActive            time.Time `gorm:"-:all"` // Track when chat was last active
 }
 
 // User-time, to help with caching and minimize DB reads
