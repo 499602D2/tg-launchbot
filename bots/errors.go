@@ -9,14 +9,6 @@ import (
 )
 
 /*
-// General errors
-var (
-	ErrTooLarge     = NewError(400, "Request Entity Too Large")
-	ErrUnauthorized = NewError(401, "Unauthorized")
-	ErrNotFound     = NewError(404, "Not Found")
-	ErrInternal     = NewError(500, "Internal Server Error")
-)
-
 // Bad request errors
 var (
 	ErrBadButtonData          = NewError(400, "Bad Request: BUTTON_DATA_INVALID")
@@ -62,21 +54,12 @@ var (
 	ErrForwardMessage         = NewError(400, "Bad Request: administrators of the chat restricted message forwarding")
 )
 
-// Forbidden errors
-var (
-	ErrBlockedByUser        = NewError(403, "Forbidden: bot was blocked by the user")
-	ErrKickedFromGroup      = NewError(403, "Forbidden: bot was kicked from the group chat")
-	ErrKickedFromSuperGroup = NewError(403, "Forbidden: bot was kicked from the supergroup chat")
-	ErrNotStartedByUser     = NewError(403, "Forbidden: bot can't initiate conversation with a user")
-	ErrUserIsDeactivated    = NewError(403, "Forbidden: user is deactivated")
-)
-
 https://github.com/go-telebot/telebot/blob/v3.0.0/errors.go#L33
 */
 
-func errorMonitor(err error, tg *TelegramBot) {
+func errorMonitor(tg *TelegramBot, err error) {
 	// Create a simple error message
-	errMsg := fmt.Sprintf("Processing failure: %#v", err.Error())
+	errMsg := fmt.Sprintf("Unknown Telegram error: %#v", err.Error())
 	msg := sendables.Message{TextContent: errMsg, SendOptions: tb.SendOptions{}}
 	user := tg.Cache.FindUser(fmt.Sprintf("%d", tg.Owner), "tg")
 
@@ -92,8 +75,9 @@ func errorMonitor(err error, tg *TelegramBot) {
 }
 
 /* Wrapper for warning of unhandled errors */
-func warnUnhandled(err error) {
+func warnUnhandled(tg *TelegramBot, err error) {
 	log.Error().Err(err).Msg("Unhandled Telegram error")
+	errorMonitor(tg, err)
 }
 
 /* Telegram error handler
@@ -104,7 +88,9 @@ Returns:
 */
 
 // Handle errors associated with outgoing data, such as sends and edits
+// TODO use handleTelegramError by throwing chat ID at it
 func handleSendError(sent *tb.Message, err error, tg *TelegramBot) bool {
+	log.Error().Err(err).Msg("Error during send")
 	return true
 }
 
@@ -117,17 +103,26 @@ func handleTelegramError(ctx tb.Context, err error, tg *TelegramBot) bool {
 
 	// General errors (400, 401, 404, 500) [all handled]
 	case tb.ErrTooLarge.Error():
-		warnUnhandled(err)
+		warnUnhandled(tg, err)
 	case tb.ErrUnauthorized.Error():
-		warnUnhandled(err)
+		warnUnhandled(tg, err)
 	case tb.ErrNotFound.Error():
-		warnUnhandled(err)
+		warnUnhandled(tg, err)
 	case tb.ErrInternal.Error():
-		warnUnhandled(err)
+		warnUnhandled(tg, err)
 
 	/* 400 (bad request)
 
 	TODO: handle non-send related errors */
+	case tb.ErrBadButtonData.Error():
+		log.Trace().Err(err).Msg("Bad button data in message")
+
+	case tb.ErrCantEditMessage.Error():
+		log.Trace().Err(err).Msg("Cannot edit message")
+
+	case tb.ErrQueryTooOld.Error():
+		return false
+
 	case tb.ErrMessageNotModified.Error():
 		return true
 
@@ -135,7 +130,7 @@ func handleTelegramError(ctx tb.Context, err error, tg *TelegramBot) bool {
 		return true
 
 	case tb.ErrChatNotFound.Error():
-		warnUnhandled(err)
+		warnUnhandled(tg, err)
 
 	case tb.ErrEmptyChatID.Error():
 		log.Trace().Err(err).Msg("Empty chat ID in message")
@@ -147,10 +142,19 @@ func handleTelegramError(ctx tb.Context, err error, tg *TelegramBot) bool {
 		log.Trace().Err(err).Msg("Empty text in message")
 
 	case tb.ErrGroupMigrated.Error():
-		log.Error().Err(err).Msg("Group migrated")
+		// TODO implement a FindMigratedUser -> send new message?
+		log.Trace().Err(err).Msg("Group migrated: unable to send")
+
+	case tb.ErrNoRightsToDelete.Error():
+		log.Trace().Err(err).Msg("No rights to delete message")
 
 	case tb.ErrNoRightsToSend.Error():
-		log.Trace().Err(err).Msg("No rights to send message to chat")
+		chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+		log.Trace().Err(err).Msgf("Bot not allowed to send messages in chat=%s, removing from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
+
+	case tb.ErrNotFoundToDelete.Error():
+		log.Trace().Err(err).Msg("Message not found for deletion")
 
 	case tb.ErrTooLongMarkup.Error():
 		log.Trace().Err(err).Msg("Markup is too long")
@@ -163,35 +167,37 @@ func handleTelegramError(ctx tb.Context, err error, tg *TelegramBot) bool {
 
 	// Error 403 (forbidden) [all handled]
 	case tb.ErrBlockedByUser.Error():
-		user := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
-		log.Debug().Msgf("Bot was blocked by user=%s, removing from database...", user.Id)
-		tg.Db.RemoveUser(user)
+		chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+		log.Debug().Msgf("Bot was blocked by user=%s, removing from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
 
 	case tb.ErrKickedFromGroup.Error():
-		user := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
-		log.Debug().Msgf("Bot was kicked from group=%s, removing from database...", user.Id)
-		tg.Db.RemoveUser(user)
+		chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+		log.Debug().Msgf("Bot was kicked from group=%s, removing from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
 
 	case tb.ErrKickedFromSuperGroup.Error():
-		user := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
-		log.Debug().Msgf("Bot was kicked from supergroup=%s, removing from database...", user.Id)
-		tg.Db.RemoveUser(user)
+		chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+		log.Debug().Msgf("Bot was kicked from supergroup=%s, removing from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
 
 	case tb.ErrNotStartedByUser.Error():
-		user := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
-		log.Debug().Msgf("Bot was never started by user=%s, removing from database...", user.Id)
-		tg.Db.RemoveUser(user)
+		chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+		log.Debug().Msgf("Bot was never started by user=%s, removing from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
 
 	case tb.ErrUserIsDeactivated.Error():
-		user := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
-		log.Debug().Msgf("User=%s has been deactivated, removing from database...", user.Id)
-		tg.Db.RemoveUser(user)
+		chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+		log.Debug().Msgf("User=%s has been deactivated, removing from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
+
+	case tb.ErrNotFoundToReply.Error():
+		log.Trace().Err(err).Msg("Message not found to reply")
 
 	// If the error is not in the cases, default to unhandled
 	default:
 		log.Trace().Err(err).Msg("Error case fell through (defaulted)")
-		warnUnhandled(err)
-		errorMonitor(err, tg)
+		warnUnhandled(tg, err)
 	}
 
 	return false
