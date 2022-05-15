@@ -16,9 +16,8 @@ import (
 
 // A queue of sendables to be sent
 type Queue struct {
-	MessagesPerSecond float32                        // Messages-per-second limit
-	Sendables         map[string]*sendables.Sendable // Queue of sendables (uniqueHash:sendable)
-	Mutex             sync.Mutex                     // Mutex to avoid concurrent writes
+	Sendables map[string]*sendables.Sendable // Queue of sendables (uniqueHash:sendable)
+	Mutex     sync.Mutex                     // Mutex to avoid concurrent writes
 }
 
 // Adds a message to the Telegram message queue
@@ -60,15 +59,13 @@ func highPrioritySender(tg *TelegramBot, message *sendables.Message, user *users
 	text := message.TextContent
 
 	if message.AddUserTime {
-		text = sendables.SetTime(*text, user, message.RefTime, true)
+		text = sendables.SetTime(text, user, message.RefTime, true, true)
 	}
 
 	id, _ := strconv.Atoi(user.Id)
 
 	// FUTURE: use sendable.Send()
-	sent, err := tg.Bot.Send(tb.ChatID(id),
-		*text, &message.SendOptions,
-	)
+	sent, err := tg.Bot.Send(tb.ChatID(id), text, &message.SendOptions)
 
 	if err != nil {
 		if !handleSendError(sent, err, tg) {
@@ -145,15 +142,15 @@ func SendNotification(tg *TelegramBot, sendable *sendables.Sendable, user *users
 	// Convert id to an integer
 	id, _ := strconv.Atoi(user.Id)
 
-	var text *string
+	var text string
 	if sendable.Message.AddUserTime {
-		text = sendables.SetTime(*sendable.Message.TextContent, user, sendable.Message.RefTime, true)
+		text = sendables.SetTime(sendable.Message.TextContent, user, sendable.Message.RefTime, true, false)
 	} else {
 		text = sendable.Message.TextContent
 	}
 
 	// Send message
-	sent, err := tg.Bot.Send(tb.ChatID(id), *text, &sendable.Message.SendOptions)
+	sent, err := tg.Bot.Send(tb.ChatID(id), text, &sendable.Message.SendOptions)
 
 	if err != nil {
 		if !handleSendError(sent, err, tg) {
@@ -161,7 +158,7 @@ func SendNotification(tg *TelegramBot, sendable *sendables.Sendable, user *users
 			return "", false
 		} else {
 			// TODO Error is recoverable: try sending again SendNotification(...)
-			log.Warn().Msg("NOT IMPLEMENTED: message re-try after recoverable error (e.g. timeout)")
+			log.Error().Err(err).Msg("NOT IMPLEMENTED: message re-try after recoverable error (e.g. timeout)")
 		}
 	}
 
@@ -199,6 +196,9 @@ func TelegramSender(tg *TelegramBot) {
 				for i, user := range sendable.Recipients {
 					// Rate-limiter: check if we have tokens to proceed
 					tg.Spam.GlobalLimiter(sendable.Tokens)
+
+					// Run a light user-limiter: max tokens is 2
+					tg.Spam.UserLimiter(user, 1)
 
 					// Switch-case the sendable's type
 					switch sendable.Type {
