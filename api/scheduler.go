@@ -44,7 +44,7 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 
 	// Message
 	msg := sendables.Message{
-		TextContent: &text, AddUserTime: true, RefTime: launch.NETUnix,
+		TextContent: text, AddUserTime: true, RefTime: launch.NETUnix,
 		SendOptions: tb.SendOptions{
 			ParseMode:   "MarkdownV2",
 			ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
