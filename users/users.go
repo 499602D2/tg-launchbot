@@ -232,6 +232,7 @@ func (user *User) ToggleCommandPermissionStatus(permission string, newState bool
 	}
 }
 
+// Save launch-provider notification subscription states from map to user
 func (user *User) SaveFromMap(stateMap map[int]bool) {
 	enabled := []string{}
 	disabled := []string{}
@@ -306,4 +307,14 @@ func (user *User) SavedTimeZoneInfo() string {
 	}
 
 	return fmt.Sprintf("%s (%s)", user.Locale, user.Time.UtcOffset)
+}
+
+// Load user's notification time preferences into a map
+func (user *User) NotificationTimePreferenceMap() map[string]bool {
+	return map[string]bool{
+		"24h":  user.Enabled24h,
+		"12h":  user.Enabled12h,
+		"1h":   user.Enabled1h,
+		"5min": user.Enabled5min,
+	}
 }
