@@ -31,6 +31,7 @@ type TelegramBot struct {
 }
 
 // Constant message text contents
+// TODO use struct methods
 const (
 	startMessage = "🌟 *Welcome to LaunchBot!* LaunchBot is your one-stop shop into the world of rocket launches. Subscribe to the launches of your favorite " +
 		"space agency, or follow that one rocket company you're a fan of.\n\n" +
@@ -260,6 +261,10 @@ func (tg *TelegramBot) scheduleHandler(ctx tb.Context) error {
 
 	adminOnlyCommand := false
 	if !PreHandler(tg, chat, ctx, 2, adminOnlyCommand, isCommand, "schedule") {
+		if !isCommand {
+			return tg.respondToCallback(ctx, interactionNotAllowed, true)
+		}
+
 		return nil
 	}
 
@@ -314,6 +319,10 @@ func (tg *TelegramBot) nextHandler(ctx tb.Context) error {
 
 	adminOnlyCommand := false
 	if !PreHandler(tg, chat, ctx, 2, adminOnlyCommand, isCommand, "next") {
+		if !isCommand {
+			return tg.respondToCallback(ctx, interactionNotAllowed, true)
+		}
+
 		return nil
 	}
 
@@ -393,6 +402,10 @@ func (tg *TelegramBot) statsHandler(ctx tb.Context) error {
 
 	adminOnlyCommand := false
 	if !PreHandler(tg, chat, ctx, 1, adminOnlyCommand, isCommand, "stats") {
+		if !isCommand {
+			return tg.respondToCallback(ctx, interactionNotAllowed, true)
+		}
+
 		return nil
 	}
 
@@ -433,8 +446,15 @@ func (tg *TelegramBot) statsHandler(ctx tb.Context) error {
 func (tg *TelegramBot) settingsHandler(ctx tb.Context) error {
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
+	// TODO handle all settings-related things
+	isCommand := true
+
 	adminOnlyCommand := true
 	if !PreHandler(tg, chat, ctx, 1, adminOnlyCommand, true, "settings") {
+		if !isCommand {
+			return tg.respondToCallback(ctx, interactionNotAllowed, true)
+		}
+
 		return nil
 	}
 
