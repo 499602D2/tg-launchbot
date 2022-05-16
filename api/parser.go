@@ -31,7 +31,7 @@ func GetHighestPriorityVideoLink(links []db.ContentURL) *db.ContentURL {
 }
 
 /* Checks if the NET of a launch slipped from one update to another. */
-func netSlipped(cache *db.Cache, freshLaunch *db.Launch) (bool, int64) {
+func netSlipped(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
 	/* Launch not found in cache, check on disk
 
 	The launch could have e.g. launched between the two checks, and might thus
@@ -40,7 +40,7 @@ func netSlipped(cache *db.Cache, freshLaunch *db.Launch) (bool, int64) {
 
 	if !ok {
 		log.Debug().Msgf("Launch with id=%s not found in cache", freshLaunch.Id)
-		return false, 0
+		return false, db.Postpone{}
 	}
 
 	// NETs differ and launch has not launched yet
@@ -49,25 +49,26 @@ func netSlipped(cache *db.Cache, freshLaunch *db.Launch) (bool, int64) {
 
 		// If no notifications have been sent, the postponement does not matter
 		if !cacheLaunch.NotificationState.AnyNotificationsSent() {
-			return false, 0
+			return false, db.Postpone{}
 		}
 
 		// Check if this postponement resets any notification states
-		if cacheLaunch.AnyStatesResetByNetSlip(netSlip) {
+		anyReset, resetStates := cacheLaunch.AnyStatesResetByNetSlip(netSlip)
+		if anyReset {
 			// Launch had one or more notification states reset: all handled behind the scenes.
-			return true, netSlip
+			return true, db.Postpone{PostponedBy: netSlip, ResetStates: resetStates}
 		}
 	}
 
-	return false, 0
+	return false, db.Postpone{}
 }
 
 /* Parses the LL2 launch update. */
-func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, map[*db.Launch]int64, error) {
+func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, map[*db.Launch]db.Postpone, error) {
 	var utcTime time.Time
 	var err error
 
-	postponedLaunches := map[*db.Launch]int64{}
+	postponedLaunches := map[*db.Launch]db.Postpone{}
 
 	// Loop over launches and do any required operations
 	for _, launch := range update.Launches {
@@ -100,10 +101,10 @@ func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, 
 		// TODO If reused stage information, parse...
 
 		// If launch slipped enough to reset a notification state, save it
-		postponed, by := netSlipped(cache, launch)
+		postponed, postponeStatus := netSlipped(cache, launch)
 
 		if postponed {
-			postponedLaunches[launch] = by
+			postponedLaunches[launch] = postponeStatus
 		}
 	}
 
