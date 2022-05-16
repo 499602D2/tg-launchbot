@@ -29,8 +29,6 @@ func (cache *Cache) CleanUserCache(db *Database, force bool) {
 
 	if len(usersToBeCleaned) > 0 {
 		log.Debug().Msgf("Flushed %d user(s) from the cache", len(usersToBeCleaned))
-	} else {
-		log.Debug().Msgf("No users were flushed from the cache (%d cached user(s))", len(cache.Users.InCache))
 	}
 }
 
@@ -119,7 +117,7 @@ func (db *Database) LoadUser(id string, platform string) *users.User {
 		return &user
 	case gorm.ErrRecordNotFound:
 		// Record doesn't exist: insert as new
-		log.Info().Msgf("Chat not found: inserting with id=%s", user.Id)
+		log.Info().Msgf("Chat not found in db: inserting as new with id=%s", user.Id)
 		result = db.Conn.Create(&user)
 	default:
 		// Other error: log
