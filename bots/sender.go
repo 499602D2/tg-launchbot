@@ -20,17 +20,24 @@ type Queue struct {
 	Mutex     sync.Mutex                     // Mutex to avoid concurrent writes
 }
 
+// A high-priority queue, meant for individual messages, that is cleared periodically
+type HighPriorityQueue struct {
+	HasItemsInQueue bool
+	Queue           []*sendables.Sendable
+	Mutex           sync.Mutex
+}
+
 // Adds a message to the Telegram message queue
 func (queue *Queue) Enqueue(sendable *sendables.Sendable, tg *TelegramBot, highPriority bool) {
 	// Unique ID for this sendable
 	uuid := uuid.NewV4().String()
 
 	// Calculate size and set token count
-	sendableSize := sendable.PerceivedByteSize()
+	sendable.Size = sendable.PerceivedByteSize()
 
-	if sendableSize >= 512 && !highPriority {
+	if sendable.Size >= 512 && !highPriority {
 		sendable.Tokens = 6
-		log.Debug().Msgf("Reserved %d token(s) for sendable, size=%d", sendable.Tokens, sendableSize)
+		log.Debug().Msgf("Reserved %d token(s) for sendable, size=%d", sendable.Tokens, sendable.Size)
 	} else {
 		sendable.Tokens = 1
 	}
@@ -54,21 +61,21 @@ func (queue *Queue) Enqueue(sendable *sendables.Sendable, tg *TelegramBot, highP
 }
 
 // HighPrioritySender sends singular high-priority messages.
-func highPrioritySender(tg *TelegramBot, message *sendables.Message, user *users.User) bool {
+func highPrioritySender(tg *TelegramBot, message *sendables.Message, chat *users.User) bool {
 	// If message needs to have its time set properly, do it now
 	text := message.TextContent
 
 	if message.AddUserTime {
-		text = sendables.SetTime(text, user, message.RefTime, true, true)
+		text = sendables.SetTime(text, chat, message.RefTime, true, true, false)
 	}
 
-	id, _ := strconv.Atoi(user.Id)
+	id, _ := strconv.Atoi(chat.Id)
 
 	// FUTURE: use sendable.Send()
 	sent, err := tg.Bot.Send(tb.ChatID(id), text, &message.SendOptions)
 
 	if err != nil {
-		if !handleSendError(sent, err, tg) {
+		if !handleSendError(int64(id), sent, err, tg) {
 			// If error is non-recoverable, continue the loop
 			log.Warn().Msg("Unrecoverable error in high-priority sender")
 			return false
@@ -105,6 +112,7 @@ func clearPriorityQueue(tg *TelegramBot) {
 	tg.HighPriority.Mutex.Unlock()
 }
 
+// Delete a Telegram message
 func DeleteMessage(tg *TelegramBot, sendable *sendables.Sendable, user *users.User) {
 	// Load ID pair
 	msgId, ok := sendable.MessageIDs[user.Id]
@@ -138,13 +146,14 @@ func DeleteMessage(tg *TelegramBot, sendable *sendables.Sendable, user *users.Us
 	}
 }
 
+// Send a notification
 func SendNotification(tg *TelegramBot, sendable *sendables.Sendable, user *users.User) (string, bool) {
 	// Convert id to an integer
 	id, _ := strconv.Atoi(user.Id)
 
 	var text string
 	if sendable.Message.AddUserTime {
-		text = sendables.SetTime(sendable.Message.TextContent, user, sendable.Message.RefTime, true, false)
+		text = sendables.SetTime(sendable.Message.TextContent, user, sendable.Message.RefTime, true, false, false)
 	} else {
 		text = sendable.Message.TextContent
 	}
@@ -153,7 +162,7 @@ func SendNotification(tg *TelegramBot, sendable *sendables.Sendable, user *users
 	sent, err := tg.Bot.Send(tb.ChatID(id), text, &sendable.Message.SendOptions)
 
 	if err != nil {
-		if !handleSendError(sent, err, tg) {
+		if !handleSendError(int64(id), sent, err, tg) {
 			log.Warn().Msg("Non-recoverable error in sender, continuing loop")
 			return "", false
 		} else {
@@ -182,15 +191,18 @@ func TelegramSender(tg *TelegramBot) {
 				// Processing time
 				processStartTime = time.Now()
 
+				log.Info().Msgf("Processing sendable with hash=%s, type=%s", hash, sendable.Type)
+
 				// Keep track of sent IDs
 				sentIds := []string{}
 
-				// Calculate how many tokens each message requires
-				if sendable.PerceivedByteSize() >= 512 {
-					log.Warn().Msgf("Sendable is more than 512 bytes long, taking 6 tokens per send")
+				if sendable.Size >= 512 {
+					log.Warn().Msgf("Sendable is %s bytes long, taking %d tokens per send", sendable.Size, sendable.Tokens)
+				} else {
+					if sendable.Size != 0 {
+						log.Debug().Msgf("Sendable is %d bytes long, taking 1 token per send", sendable.Size)
+					}
 				}
-
-				log.Info().Msgf("Processing sendable with hash=%s, type=%s", hash, sendable.Type)
 
 				// Loop over users this sendable is meant for
 				for i, user := range sendable.Recipients {
@@ -251,7 +263,7 @@ func TelegramSender(tg *TelegramBot) {
 
 					// If launch has previously sent notifications, delete them
 					if launch.SentNotificationIds != "" {
-						log.Debug().Msgf("Launch has previously sent notifications, removing...")
+						log.Info().Msgf("Launch has previously sent notifications, removing...")
 
 						// Load IDs of previously sent notifications
 						previouslySentIds := launch.LoadSentNotificationIdMap()
