@@ -94,7 +94,9 @@ func PreHandler(tg *TelegramBot, chat *users.User, ctx tb.Context, tokens int, a
 					tg.tryRemovingMessage(ctx)
 				}
 
-				tg.Spam.RunBothLimiters(chat, tokens)
+				// Don't run user-limiter, as otherwise users can spam the chat out of their tokens
+				tg.Spam.GlobalLimiter(1)
+
 				return false
 			}
 		}
