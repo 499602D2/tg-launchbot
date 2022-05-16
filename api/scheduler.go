@@ -33,8 +33,9 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 	}
 
 	expandBtn := tb.InlineButton{
-		Text: "ℹ️ Expand description",
-		Data: fmt.Sprintf("exp/%s/%s", launch.Id, thisNotif.Type),
+		Unique: "expand",
+		Text:   "ℹ️ Expand description",
+		Data:   fmt.Sprintf("exp/%s/%s", launch.Id, thisNotif.Type),
 	}
 
 	// Construct the keeb
