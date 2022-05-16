@@ -27,6 +27,7 @@ type Statistics struct {
 	LastApiUpdate  time.Time
 	NextApiUpdate  time.Time
 	StartedAt      time.Time
+	DbSize         int64  `gorm:"-:all"`
 	RunningVersion string `gorm:"-:all"`
 }
 
@@ -42,8 +43,11 @@ type User struct {
 func (stats *Statistics) String(subscribers int) string {
 	// Time-related stats
 	dbLastUpdated := durafmt.Parse(time.Since(stats.LastApiUpdate)).LimitFirstN(2)
-	dbNextUpdate := durafmt.Parse(time.Until(stats.NextApiUpdate)).LimitFirstN(2)
+	// dbNextUpdate := durafmt.Parse(time.Until(stats.NextApiUpdate)).LimitFirstN(2)
 	sinceStartup := humanize.Time(stats.StartedAt)
+
+	// Db size
+	dbSize := humanize.Bytes(uint64(stats.DbSize))
 
 	text := fmt.Sprintf(
 		"📊 *LaunchBot global statistics*\n"+
@@ -52,15 +56,15 @@ func (stats *Statistics) String(subscribers int) string {
 			"Active subscribers: %d\n\n"+
 
 			"💾 *Database information*\n"+
-			"Updated %s ago\n"+
-			"Next update in %s\n\n"+
+			"Updated: %s ago\n"+
+			"Storage used: %s\n\n"+
 
 			"🌍 *Server information*\n"+
 			"Bot started %s\n"+
 			"GITHUBLINK",
 
 		stats.Notifications, stats.Commands+stats.Callbacks, subscribers,
-		dbLastUpdated, dbNextUpdate, sinceStartup,
+		dbLastUpdated, dbSize, sinceStartup,
 	)
 
 	text = utils.PrepareInputForMarkdown(text, "text")
