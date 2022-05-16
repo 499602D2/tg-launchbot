@@ -17,6 +17,6 @@ func TestSetTime(t *testing.T) {
 	// Positive offset
 	user1 := users.User{}
 	user1.SetTimeZone()
-	newText := sendables.SetTime(msg.TextContent, &user1, msg.RefTime, false, false)
+	newText := sendables.SetTime(msg.TextContent, &user1, msg.RefTime, false, false, false)
 	fmt.Println(newText)
 }
