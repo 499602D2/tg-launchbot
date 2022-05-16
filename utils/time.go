@@ -26,8 +26,8 @@ func DateInUserLocation(refTime int64, userLocation *time.Location) string {
 	return fmt.Sprintf("%s %s", userLaunchTime.Month().String(), humanize.Ordinal(userLaunchTime.Day()))
 }
 
+// Return a user-friendly ETA string, e.g. "today", "tomorrow", or "in 5 days"
 func FriendlyETA(userNow time.Time, eta time.Duration) string {
-	// ETA string, e.g. "today", "tomorrow", or "in 5 days"
 	var friendlyETA string
 
 	// See if eta + userNow is still the same day
