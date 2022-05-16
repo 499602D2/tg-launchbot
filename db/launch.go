@@ -19,80 +19,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// FUTURE save in a database table + cache (V3.1)
-// - when a new LSP ID is encountered in /launch/upcoming endpoint, request its info and insert into LSP table
-// Currently contains all featured launch providers + a couple extra
-// https://ll.thespacedevs.com/2.2.0/agencies/?featured=true&limit=50
-var LSPShorthands = map[int]LSP{
-	// Agencies
-	17: {Name: "CNSA", Flag: "🇨🇳", Cc: "CHN"},
-	31: {Name: "ISRO", Flag: "🇮🇳", Cc: "IND"},
-	37: {Name: "JAXA", Flag: "🇯🇵", Cc: "JPN"},
-	44: {Name: "NASA", Flag: "🇺🇸", Cc: "USA"},
-	63: {Name: "ROSCOSMOS", Flag: "🇷🇺", Cc: "RUS"},
-
-	// Corporations, including state and commercial
-	88:  {Name: "CASC", Flag: "🇨🇳", Cc: "CHN"},
-	96:  {Name: "KhSC", Flag: "🇷🇺", Cc: "RUS"},
-	98:  {Name: "Mitsubishi H.I.", Flag: "🇯🇵", Cc: "JPN"},
-	115: {Name: "Arianespace", Flag: "🇪🇺", Cc: "EU"},
-	121: {Name: "SpaceX", Flag: "🇺🇸", Cc: "USA"},
-	124: {Name: "ULA", Flag: "🇺🇸", Cc: "USA"},
-	141: {Name: "Blue Origin", Flag: "🇺🇸", Cc: "USA"},
-	147: {Name: "Rocket Lab", Flag: "🇺🇸", Cc: "USA"},
-	190: {Name: "Antrix Corp.", Flag: "🇮🇳", Cc: "IND"},
-	194: {Name: "ExPace", Flag: "🇨🇳", Cc: "CHN"},
-	199: {Name: "Virgin Orbit", Flag: "🇺🇸", Cc: "USA"},
-	257: {Name: "Northrop Grumman", Flag: "🇺🇸", Cc: "USA"},
-	259: {Name: "LandSpace", Flag: "🇨🇳", Cc: "CHN"},
-	265: {Name: "Firefly", Flag: "🇺🇸", Cc: "USA"},
-	266: {Name: "Relativity", Flag: "🇺🇸", Cc: "USA"},
-	274: {Name: "iSpace", Flag: "🇨🇳", Cc: "CHN"},
-	285: {Name: "Astra", Flag: "🇺🇸", Cc: "USA"},
-
-	// Small-scale providers, incl. sub-orbital operators
-	1002: {Name: "Interstellar tech.", Flag: "🇯🇵", Cc: "JPN"},
-	1021: {Name: "Galactic Energy", Flag: "🇨🇳", Cc: "CHN"},
-	1024: {Name: "Virgin Galactic", Flag: "🇺🇸", Cc: "USA"},
-	1029: {Name: "TiSPACE", Flag: "🇹🇼", Cc: "TWN"},
-	1030: {Name: "ABL", Flag: "🇺🇸", Cc: "USA"},
-}
-
-// Map country codes to a list of provider IDs under this country code
-var IdByCountryCode = map[string][]int{
-	"USA": {44, 121, 124, 141, 147, 199, 257, 265, 266, 285, 1024, 1030},
-	"EU":  {115},
-	"CHN": {17, 88, 194, 259, 274, 1021},
-	"RUS": {63, 96},
-	"IND": {31, 190},
-	"JPN": {37, 98, 1002},
-	"TWN": {1029},
-}
-
-// List of available countries (EU is effectively a faux-country)
-var CountryCodes = []string{"USA", "EU", "CHN", "RUS", "IND", "JPN", "TWN"}
-
-var CountryCodeToName = map[string]string{
-	"USA": "USA 🇺🇸", "EU": "EU 🇪🇺", "CHN": "China 🇨🇳", "RUS": "Russia 🇷🇺",
-	"IND": "India 🇮🇳", "JPN": "Japan 🇯🇵", "TWN": "Taiwan 🇹🇼",
-}
-
-type LSP struct {
-	Name string
-	Flag string
-	Cc   string
-}
-
-type Notification struct {
-	Type       string   // In (24h, 12h, 1h, 5min)
-	SendTime   int64    // Unix-time of the notification
-	AllSent    bool     // All notifications sent already?
-	LaunchId   string   // Launch ID associated
-	LaunchName string   // Name of launch
-	Count      int      // If more than one, list their count
-	IDs        []string // If more than one, include their IDs here
-}
-
 type LaunchUpdate struct {
 	Count    int
 	Launches []*Launch `json:"results"`
@@ -248,16 +174,31 @@ func (launch *Launch) MessageBodyText(expanded bool, isNotification bool) string
 		location = fmt.Sprintf(", %s%s", location, emoji.GetFlag(launch.LaunchPad.Location.CountryCode))
 	}
 
-	// Time until launch
-	// TODO add "Not before" if time is TBD, and don't add exact launch time
 	if !isNotification {
-		timeUntil := fmt.Sprintf("T-%s", durafmt.Parse(time.Until(time.Unix(launch.NETUnix, 0))).LimitFirstN(2))
-		launchTimeSection = fmt.Sprintf(
-			"🕙 *Launch time*\n"+
-				"*Date* $USERDATE\n"+
-				"*Until* %s\n\n",
-			utils.Monospaced(timeUntil),
-		)
+		// If not a notification, add the "Launch time" section with date and time
+		if launch.Status.Abbrev == "TBD" {
+			// If launch-time is still TBD, add a Not-earlier-than date and reduce time accuracy
+			timeUntil := fmt.Sprintf("%s", durafmt.Parse(time.Until(time.Unix(launch.NETUnix, 0))).LimitFirstN(1))
+
+			launchTimeSection = fmt.Sprintf(
+				"🕙 *Launch time*\n"+
+					"*No earlier than* $USERDATE\n"+
+					"*Until launch* %s\n\n",
+
+				utils.Monospaced(timeUntil),
+			)
+		} else {
+			// Otherwise, the date is close enough
+			timeUntil := fmt.Sprintf("%s", durafmt.Parse(time.Until(time.Unix(launch.NETUnix, 0))).LimitFirstN(2))
+
+			launchTimeSection = fmt.Sprintf(
+				"🕙 *Launch time*\n"+
+					"*Date* $USERDATE\n"+
+					"*Until launch* %s\n\n",
+
+				utils.Monospaced(timeUntil),
+			)
+		}
 	} else {
 		launchTimeSection = ""
 	}
@@ -298,8 +239,12 @@ func (launch *Launch) MessageBodyText(expanded bool, isNotification bool) string
 
 		utils.Monospaced(providerName), flag, utils.Monospaced(launch.Rocket.Config.FullName),
 		utils.Monospaced(launch.LaunchPad.Name), utils.Monospaced(location),
-		launchTimeSection, utils.Monospaced(missionType),
-		utils.Monospaced(missionOrbit), description,
+
+		launchTimeSection,
+
+		utils.Monospaced(missionType), utils.Monospaced(missionOrbit),
+
+		description,
 	)
 
 	return text
@@ -493,11 +438,11 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 	message += "🟢🟡🔴 *Launch-time accuracy*"
 
 	// Escape the message, return it
-	return utils.PrepareInputForMarkdown(message, "text")
+	return utils.PrepareInputForMarkdown(message, "italictext")
 }
 
 // Creates the text content and Telegram reply keyboard for the /next command.
-func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboard bool) (string, *tb.ReplyMarkup) {
+func (cache *Cache) NextLaunchMessage(user *users.User, index int) string {
 	// Pull launch from cache at index
 	launch := cache.Launches[index]
 
@@ -510,81 +455,23 @@ func (cache *Cache) LaunchListMessage(user *users.User, index int, returnKeyboar
 	// If mission has no name, use the name of the launch itself (and split by `|`)
 	name := launch.HeaderName()
 
-	bodyText := launch.MessageBodyText(true, false)
-
 	text := fmt.Sprintf(
 		"🚀 *Next launch* %s\n"+
 			"%s",
 
-		utils.Monospaced(name), bodyText,
+		utils.Monospaced(name), launch.MessageBodyText(true, false),
 	)
 
+	// Check if the launch date is TBD, and we should use the low-accuracy NET date
+	dateOnly := false
+	if launch.Status.Abbrev == "TBD" {
+		dateOnly = true
+	}
+
 	// Set user's time
-	text = sendables.SetTime(text, user, launch.NETUnix, false, true)
+	text = sendables.SetTime(text, user, launch.NETUnix, false, true, dateOnly)
 
-	if !returnKeyboard {
-		return utils.PrepareInputForMarkdown(text, "text"), nil
-	}
-
-	// Create return kb
-	var kb [][]tb.InlineButton
-
-	switch index {
-	case 0: // Case: first index
-		refreshBtn := tb.InlineButton{
-			Text: "Refresh 🔄", Data: "nxt/r/0",
-		}
-
-		nextBtn := tb.InlineButton{
-			Text: "Next launch ➡️", Data: "nxt/n/1/+",
-		}
-
-		// Construct the keyboard
-		kb = [][]tb.InlineButton{{nextBtn}, {refreshBtn}}
-
-	case len(cache.Launches) - 1: // Case: last index
-		refreshBtn := tb.InlineButton{
-			Text: "Refresh 🔄", Data: fmt.Sprintf("nxt/r/%d", index),
-		}
-
-		returnBtn := tb.InlineButton{
-			Text: "↩️ Back to first", Data: fmt.Sprintf("nxt/n/0/0"),
-		}
-
-		prevBtn := tb.InlineButton{
-			Text: "⬅️ Previous launch", Data: fmt.Sprintf("nxt/n/%d/-", index-1),
-		}
-
-		// Construct the keyboard
-		kb = [][]tb.InlineButton{{prevBtn}, {returnBtn, refreshBtn}}
-
-	default: // Default case, i.e. not either end of the launch list
-		if index > len(cache.Launches)-1 {
-			// Make sure we don't go over the maximum index
-			index = len(cache.Launches) - 1
-		}
-
-		refreshBtn := tb.InlineButton{
-			Text: "Refresh 🔄", Data: fmt.Sprintf("nxt/r/%d", index),
-		}
-
-		returnBtn := tb.InlineButton{
-			Text: "↩️ Back to first", Data: fmt.Sprintf("nxt/n/0/0"),
-		}
-
-		nextBtn := tb.InlineButton{
-			Text: "Next ➡️", Data: fmt.Sprintf("nxt/n/%d/+", index+1),
-		}
-
-		prevBtn := tb.InlineButton{
-			Text: "⬅️ Previous", Data: fmt.Sprintf("nxt/n/%d/-", index-1),
-		}
-
-		// Construct the keyboard
-		kb = [][]tb.InlineButton{{prevBtn, nextBtn}, {returnBtn, refreshBtn}}
-	}
-
-	return utils.PrepareInputForMarkdown(text, "text"), &tb.ReplyMarkup{InlineKeyboard: kb}
+	return utils.PrepareInputForMarkdown(text, "text")
 }
 
 // Constructs the message for a postpone notification
@@ -622,17 +509,49 @@ func (launch *Launch) PostponeNotificationMessage(postponedBy int64) (string, tb
 }
 
 // Builds a complete Sendable for a postpone notification
-func (launch *Launch) PostponeNotificationSendable(db *Database, postponedBy int64, platform string) *sendables.Sendable {
+func (launch *Launch) PostponeNotificationSendable(db *Database, postpone Postpone, platform string) *sendables.Sendable {
 	// Get text and send-options
-	text, sendOptions := launch.PostponeNotificationMessage(postponedBy)
+	text, sendOptions := launch.PostponeNotificationMessage(postpone.PostponedBy)
 
 	// Load recipients
+	// TODO use reset states to get users who should be notified
 	recipients := launch.NotificationRecipients(db, "postpone", platform)
+	filteredRecipients := []*users.User{}
+
+	// Iterate notification states in-order
+	orderedStates := []string{"24h", "12h", "1h", "5min"}
+
+	// Filter all recipients that have received one of the previous notifications
+	for _, user := range recipients {
+		// Load user's notification states
+		userStates := user.NotificationTimePreferenceMap()
+
+		// Loop over all states in order
+		for _, state := range orderedStates {
+			reset, ok := postpone.ResetStates[state]
+
+			if !ok {
+				log.Warn().Msgf("State=%s not found in resetStates (%#v)", state, postpone.ResetStates)
+				continue
+			}
+
+			if reset {
+				// If state was reset, check if user was subscribed to this type
+				if userStates[state] == true {
+					log.Debug().Msgf("User=%s had reset state=%s enabled, adding to postpone recipients", user.Id, state)
+					filteredRecipients = append(filteredRecipients, user)
+					break
+				}
+			}
+		}
+	}
+
+	log.Debug().Msgf("Filtered postpone recipients from %d down to %d", len(recipients), len(filteredRecipients))
 
 	sendable := sendables.Sendable{
 		Type: "notification", NotificationType: "postpone", Platform: platform,
 		LaunchId:   launch.Id,
-		Recipients: recipients,
+		Recipients: filteredRecipients,
 		Message: &sendables.Message{
 			TextContent: text, AddUserTime: true, RefTime: launch.NETUnix, SendOptions: sendOptions,
 		},
@@ -744,26 +663,7 @@ func (launch *Launch) NextNotification(db *Database) Notification {
 	return Notification{AllSent: true, LaunchId: launch.Id, LaunchName: launch.Name, Count: 0}
 }
 
-// Extend the LaunchProvider type to get a short name, if one exists
-func (provider *LaunchProvider) ShortName() string {
-	// Check if a short name exists
-	_, ok := LSPShorthands[provider.Id]
-
-	if ok {
-		return LSPShorthands[provider.Id].Name
-	}
-
-	// Log long names we encounter
-	if len(provider.Name) > len("Virgin Orbit") {
-		log.Warn().Msgf("Provider name '%s' not found in LSPShorthands, id=%d (not warning again)",
-			provider.Name, provider.Id)
-
-		return provider.Abbrev
-	}
-
-	return provider.Name
-}
-
+// Return a list of all provider IDs associated with a country-code
 func AllIdsByCountryCode(cc string) []string {
 	ids := []string{}
 	for _, id := range IdByCountryCode[cc] {
@@ -771,154 +671,4 @@ func AllIdsByCountryCode(cc string) []string {
 	}
 
 	return ids
-}
-
-// Updates the notification-state map from the boolean values
-func (state *NotificationState) UpdateMap() NotificationState {
-	state.Map = map[string]bool{
-		"Sent24h":  state.Sent24h,
-		"Sent12h":  state.Sent12h,
-		"Sent1h":   state.Sent1h,
-		"Sent5min": state.Sent5min,
-	}
-
-	return *state
-}
-
-// Updates the notification-state booleans from the map
-func (state *NotificationState) UpdateFlags() NotificationState {
-	// Update booleans
-	state.Sent24h = state.Map["Sent24h"]
-	state.Sent12h = state.Map["Sent12h"]
-	state.Sent1h = state.Map["Sent1h"]
-	state.Sent5min = state.Map["Sent5min"]
-	return *state
-}
-
-// Return a boolean, indicating whether any notifications have been sent for this launch
-func (state *NotificationState) AnyNotificationsSent() bool {
-	for _, state := range state.Map {
-		if state {
-			return true
-		}
-	}
-
-	return false
-}
-
-// Functions checks if a NET slip of $slip seconds resets any notification send states
-func (launch *Launch) AnyStatesResetByNetSlip(slip int64) bool {
-	// Map notification types to seconds
-	notificationTypePreSendTime := map[string]int64{
-		"24h": 24 * 3600, "12h": 12 * 3600, "1h": 3600, "5min": 5 * 60,
-	}
-
-	// Only do a disk op if a state was altered
-	stateAltered := false
-
-	// Loop over current notification send states
-	for notification, sent := range launch.NotificationState.Map {
-		if !sent {
-			continue
-		}
-
-		// Get time this notification window ends at
-		windowEndTime := launch.NETUnix - notificationTypePreSendTime[notification]
-
-		// Time until window end, plus NET slip
-		windowDelta := windowEndTime - time.Now().Unix() + slip
-
-		// Check if the NET slip puts us back before this notification window
-		if windowEndTime > time.Now().Unix()-slip {
-			// Launch was postponed: flip the notification state
-			launch.NotificationState.Map[notification] = false
-			stateAltered = true
-
-			log.Debug().Msgf("Launch had its notification state reset with delta of %s (type=%s, launch=%s)",
-				durafmt.ParseShort(time.Duration(windowDelta)*time.Second), notification, launch.Id)
-		}
-	}
-
-	// Save updated states
-	if stateAltered {
-		launch.NotificationState.UpdateFlags()
-		return true
-	}
-
-	return false
-}
-
-// Gets all notification recipients for this notification
-func (launch *Launch) NotificationRecipients(db *Database, notificationType string, platform string) []*users.User {
-	usersWithNotificationEnabled := []*users.User{}
-
-	// Map notification type to a database table name
-	tableNotifType := ""
-
-	if notificationType == "postpone" {
-		tableNotifType = "enabled_postpone"
-	} else {
-		tableNotifType = fmt.Sprintf("enabled%s", notificationType)
-	}
-
-	// Get all chats that have this notification type enabled
-	result := db.Conn.Model(&users.User{}).Where(
-		fmt.Sprintf("%s = ? AND platform = ?", tableNotifType), 1, platform,
-	).Find(&usersWithNotificationEnabled)
-
-	if result.Error != nil {
-		log.Error().Err(result.Error).Msg("Error loading notification recipient list")
-	}
-
-	// List of final recipients
-	recipients := []*users.User{}
-
-	// Filter all users from the list
-	for _, user := range usersWithNotificationEnabled {
-		// Check if user is subscribed to this provider
-		if !user.GetNotificationStatusById(launch.LaunchProvider.Id) {
-			log.Debug().Msgf("User=%s is not subscribed to provider with id=%d", user.Id, launch.LaunchProvider.Id)
-			continue
-		}
-
-		// Check if user has this specific launch muted
-		if user.HasMutedLaunch(launch.Id) {
-			log.Debug().Msgf("User=%s has muted launch with id=%s", user.Id, launch.Id)
-			continue
-		}
-
-		// User has subscribed to this launch, and has not muted it: add to recipients
-		log.Debug().Msgf("Adding user=%s to recipients", user.Id)
-		recipients = append(recipients, user)
-	}
-
-	return recipients
-}
-
-// Load IDs into a map
-func (launch *Launch) LoadSentNotificationIdMap() map[string]string {
-	sentIds := map[string]string{}
-
-	// A comma-separated slice of chat_id:msg_id strings
-	for _, idPair := range strings.Split(launch.SentNotificationIds, ",") {
-		// User id (0), message id (1)
-		ids := strings.Split(idPair, ":")
-		sentIds[ids[0]] = ids[1]
-	}
-
-	return sentIds
-}
-
-func (launch *Launch) SaveSentNotificationIds(ids []string, db *Database) {
-	// Join the IDs
-	launch.SentNotificationIds = strings.Join(ids, ",")
-
-	// Insert the launch back into the database
-	err := db.Update([]*Launch{launch}, false, false)
-
-	if err != nil {
-		log.Error().Err(err).Msgf("Saving notification message IDs to disk failed")
-	} else {
-		log.Debug().Msgf("Sent notification message IDs saved")
-	}
 }
