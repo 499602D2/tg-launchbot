@@ -31,6 +31,11 @@ var BoolStateIndicator = map[bool]string{
 	true: "✅", false: "🔕",
 }
 
+// Map a boolean state to "enabled" or "disabled"
+var BoolStateString = map[bool]string{
+	true: "Enabled", false: "Disabled",
+}
+
 // Return a stringified binary-state a bool-state would be toggled to.
 // If current state is 'true', the map will return '0'.
 // If the current state is 'false', the map will return '1'.
@@ -70,6 +75,10 @@ func CountryCodeFlag(cc string) string {
 	return emoji.GetFlag(cc)
 }
 
+func NotificationToggleCallbackString(newState bool) string {
+	return fmt.Sprintf("%s %s", BoolStateIndicator[newState], BoolStateString[newState])
+}
+
 /*
 Prepares textual input for Telegram's Markdown parser.
 
@@ -87,6 +96,11 @@ func PrepareInputForMarkdown(input string, mode string) string {
 		escapedChars = []rune{
 			'[', ']', '(', ')', '~', '>', '#', '+',
 			'-', '=', '|', '{', '}', '.', '!', '_',
+		}
+	case "italictext":
+		escapedChars = []rune{
+			'[', ']', '(', ')', '~', '>', '#', '+',
+			'-', '=', '|', '{', '}', '.', '!',
 		}
 	default:
 		log.Fatal().Msgf("Invalid mode in PrepareInputForMarkdown (mode=%s)", mode)
