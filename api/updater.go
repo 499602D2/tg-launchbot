@@ -119,9 +119,9 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	// If launches were postponed, notify
 	if len(postponedLaunches) != 0 {
 		log.Info().Msgf("%d launches were postponed", len(postponedLaunches))
-		for launch, postponedBy := range postponedLaunches {
+		for launch, postpone := range postponedLaunches {
 			// Create sendable for this postpone
-			sendable := launch.PostponeNotificationSendable(session.Db, postponedBy, "tg")
+			sendable := launch.PostponeNotificationSendable(session.Db, postpone, "tg")
 
 			// Enqueue the postpone sendable
 			session.Telegram.Queue.Enqueue(sendable, session.Telegram, false)
