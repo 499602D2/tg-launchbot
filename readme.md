@@ -19,24 +19,22 @@ Other features include...
 - spam management for groups (removes requests the bot won't respond to)
 
 ## Basic instructions
-Clone the repository and install all dependencies with `go get all`. Then, `cd` into `/cmd` and build the program with `./build.sh`. This may require you to allow executing the script: this can be done with `chmod +x build.sh`. Once done, `cd` back into the main folder with `cd ..`.
+Clone the repository and install all dependencies with `go get all`. Then, `cd` into `/cmd` with `cd /cmd`, and build the program with `./build.sh`. This may require you to allow executing the script: this can be done with `chmod +x build.sh`. Once done, `cd` back into the main folder with `cd ..`.
 
 Now, you can run the program: to start, open a new terminal window, and run `./launchbot`. The bot will ask you for a Telegram bot API key: you can get one from BotFather on Telegram.
 
-If you would like to view the logs as they come in, instead of saving them to a dedicated log-file, add the `--debug` option.
+If you would like to view the logs as they come in, instead of saving them to a dedicated log-file, add the `--debug` CLI flag: `./launchbot --debug`.
 
 ## Data
 SQLite: `data/launchbot.db`: houses all data the bot needs to operate, including launch information, statistics, chat preferences, etc.
 
-json: `data/config.json`: used to configure the bot by setting the Telegram bot API key, alongside with some other configuration information.
+JSON: `data/config.json`: used to configure the bot by setting the Telegram bot API key, alongside with some other configuration information.
 
-You can specify your personal account's Telegram user ID in `config.json` in the form `owner: your_user_id`. This disables the logging of commands sent by you.
+You can specify your personal account's Telegram user ID in `config.json` in the form `owner: your_integer_user_id`. This disables the logging of commands sent by you.
 
 ## Privacy
 
-The bot stores every interaction (i.e. command) sent to it if logging is enabled, alongside with a truncated, unsalted SHA-1 hash of the user ID. No text messages are stored, aside from text sent as a reply to a feedback request message. The bot's privacy settings forbid the bot from reading regular text, as in text messages which have not tagged the bot (@botusername) or are not a reply to a message sent by the bot (these are not logged, unless they're a reply to a feedback message.)
-
-Only information stored by the bot is the chat ID, which is used to deliver notifications, manage spam, and keep statistics. Users can optionally store their time zone as a time zone database entry (e.g. Europe/Berlin), which can be removed at any time.
+Only information stored by the bot is the chat ID, which may or may not be your user ID, depending on whether the chat is a one-on-one or a group chat. The chat ID is used to deliver notifications, manage spam, and keep statistics. Users can optionally store their time zone as a time zone database entry (e.g. Europe/Berlin), which can be removed at any time.
 
 The above only applies on a per-bot-instance basis. The creator of the bot chooses whether to configure the bot to be able to read all text messages, not just ones directed at the bot. Telegram bots are, by nature, extremely privacy invasive: don't add unknown bots to group chats, unless it's hosted by you or someone you trust.
 
@@ -89,7 +87,7 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 	
 	- ✅ delete older notification messages when a new one is sent
 	
-	- add a "more info"/"less info" button to /next and notification messages
+	- [ ] add a "more info"/"less info" button to /next and notification messages
 	
 	- ✅ add probability of launch and launch location, separate from mission name etc. with \n\n
 	
@@ -131,43 +129,79 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 	- ✅ re-add statistics to all needed places
 
 	- ✅ open-source LaunchBot ✨
+
+
+	## 2.1 (December 2020 to February 2022)
+
+	- ✅ Postpone notification fixes
+
+	- ✅ Local bot API server support
+
+	- ✅ Attempt to reduce rate-limits caused by sending stuff too fast at Telegram's API
+
+	- ✅ Various edge-case and bug fixes
 	
 	
 	## 3.0 / LaunchBot rework in Go (May 2022)
 
-	- 🌟 Massively improve code quality and project layout
+	- ✅ Improved code quality and project layout
 
-	- 🌟 Improve robustness and error recoverability of the backend
+	- ✅ Improved robustness and error recoverability of the backend
 
-	- 🌟 Intelligently dequeue messages to stay within API limits
+	- ✅ Dequeue messages properly to stay within API limits
 
-	- 🌟 Remove excessive complexity in storage and caching
+	- ✅ Remove excessive complexity in storage and caching
 
-	- 🌟 Enable extending the bot to other platforms through modularity
+	- ✅ Modularize most functions so that adding e.g. Discord functionality is easier
 
-	- 🌟 Reuse proven Python logic where possible with direct translation
+	- ✅ Reuse proven Python logic where possible with direct translation
 
-	- 🌟 Improve performance with improved caching and Go's performance upside
+	- ✅ Improve performance with improved caching and Go's performance upside
+
+	- ✅ Dance around API limits by sending incomplete messages, where the rest of the message can be later expanded
+
+	- ✅ Add some group-specific settings, e.g. command permissions
+
+	## 3.1 and onwards
+
+	- [ ] Handle window starts/ends
+
+		- Instead of continuous postponements, notify of window start -> 5 min notification
+
+	- [ ] Support for general event types (event/upcoming endpoint)
+
+		- Wrap launches in an Event{} type
+
+	- [ ] Weekly summary messages
+
+	- [ ] Web-app based set-up screen, notification info?
+
+		- https://core.telegram.org/bots/webapps
+
+		- Privacy implications
+
+	- [ ] Discord support
+
 
 </details>
 
 ## To-do before 3.0.0
-- [ ] Architecture overview diagram in readme
-- [x] LL2 API `/launch/upcoming` handler
 
+### Readme
+
+- [ ] Architecture overview diagram in readme
+
+### APIs
+
+- [x] LL2 API `/launch/upcoming` handler
 - [ ] Telegram bot API
 	- [ ] Add error handlers
 		- [x] Catch-all type handlers
 		- [x] Chat migrations
 		- [ ] Odd edge-case handlers (check launchbot.py)
-	- [ ] Implement callbacks
-		- [x] Notifications
-			- [x] Mute
-				- [x] Only allow admins to mute a launch
-			- [x] Expand description
-		- [x] Commands
-	- [x] Use a dual-limiter
-	- [ ] Ensure sender IDs are not used, and if they are, ensure we handle errors where the user has no ID associated with it
+	
+
+### Caching, database
 
 - [x] Add database functions
 	- [x] Create database, auto-migrations
@@ -184,27 +218,6 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 	- [x] Active users
 		- [x] Regularly clean cache (once a day, e.g.)
 
-- [ ] Add commands
-	- [x] /settings
-		- [ ] Remove the Subscription settings -menu: add a direct button to notification time settings?
-	- [x] /next
-	- [x] /schedule
-	- [x] /stats
-	- [x] /feedback + response script
-	- [ ] Admin functions (/debug)
-
-- [ ] Notifications
-	- [x] Scheduling
-		- [ ] Schedule early with the help of the notification size + recipient list length
-	- [ ] Pre-send API update (just compare NETs)
-		- [x] Postpone notifications
-		- [ ] Cancel scheduled notification if NET moves
-	- [x] Recipient list on notification send
-		- [x] Check for mute status
-	- [x] Mute notifications
-	- [x] Sending
-	- [x] Delete old notifications for users that have not muted the launch
-
 - [ ] Other, backend
 	- [x] Update stats wherever needed
 	- [x] Dump statistics to disk regularly + on ctrl+c
@@ -213,7 +226,46 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 	- [ ] Acceptable level of data lost?
 		- [ ] Manually map launch provider names to IDs
 
-### Must-haves before 3.0.0
+### Commands
+
+- [ ] Add commands
+	- [x] /settings
+		- [ ] Remove the Subscription settings -menu: add a direct button to notification time settings?
+	- [x] /next
+		- [ ] Edge-case: preserve behavior of only showing subscribed launches?
+			- [ ] Allow to be configured in settings...? (Pretty easy to do)
+				- [ ] "Command settings"? Under "Other settings"?
+	- [x] /schedule
+	- [x] /stats
+	- [x] /feedback + response script
+	- [ ] Admin functions (/debug)
+
+- [ ] Implement callbacks
+		- [x] Notifications
+			- [x] Mute
+				- [x] Only allow admins to mute a launch
+			- [x] Expand description
+		- [x] Commands
+	- [x] Use a dual-limiter
+	- [ ] Ensure sender IDs are not used, and if they are, ensure we handle errors where the user has no ID associated with it
+
+### Notifications
+
+- [ ] Notifications
+	- [x] Scheduling
+		- [ ] Schedule early with the help of the notification size + recipient list length
+	- [ ] Pre-send API update (just compare NETs)
+		- [x] Postpone notifications
+			- [ ] Verify they work (tests for recipients)
+		- [ ] Cancel scheduled notification if NET moves
+	- [x] Recipient list on notification send
+		- [x] Check for mute status
+	- [x] Mute notifications
+	- [x] Sending
+	- [x] Delete old notifications for users that have not muted the launch
+
+
+## Must-haves before 3.0.0
 - [x] "Compress" messages to improve send-rates
 	- [x] Add "More info" button
 		- [x] Implement for description
@@ -222,21 +274,9 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 - [ ] Purge log-files when they become too large
 	- Also, be smarter about telebot's logging (raise an issue?)
 
-### Nice-to-haves before 3.0.0
+## Nice-to-haves before 3.0.0
 - [x] Notify admin on any processing failure
 	- [x] Telegram
 - [x] Allow postpone notifications to be disabled
 - [x] Allow chats to flip a setting to enable everyone to send commands (callbacks only by the initial sender?)
 	- [x] Use wherever needed (currently only used in preHandler)
-
-### Future: 3.1 and onwards
-- [ ] Handle window starts/ends
-	- Instead of continuous postponements, notify of window start -> 5 min notification
-- [ ] Support for general event types (event/upcoming endpoint)
-	- Wrap launches in an Event{} type
-	- https://ll.thespacedevs.com/2.2.0/
-- [ ] Weekly summary messages
-- [ ] Web-app based set-up screen, notification info..?
-	- https://core.telegram.org/bots/webapps
-	- Privacy implications
-- [ ] Discord support
