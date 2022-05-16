@@ -11,7 +11,6 @@ import (
 	tb "gopkg.in/telebot.v3"
 )
 
-// TODO set-up as middleware in tb.Handle definitions in telegram.go
 // In-memory struct keeping track of banned chats and per-chat activity
 type AntiSpam struct {
 	ChatBanned               map[*users.User]bool    // Simple "if ChatBanned[chat] { do }" checks
@@ -35,8 +34,7 @@ func (spam *AntiSpam) Initialize() {
 	spam.ChatBanned = make(map[*users.User]bool)
 	spam.Rules = make(map[string]int64)
 
-	// Enforce a global rate-limiter: 25 msg/sec, with 30 msg/sec bursts
-	// Effectively, we can burst 30 msg/sec, but sustain 25 msg/sec
+	// Enforce a global rate-limiter: sustain 25 msg/sec, with 30 msg/sec bursts
 	spam.Limiter = rate.NewLimiter(25, 30)
 }
 
