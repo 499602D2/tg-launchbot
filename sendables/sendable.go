@@ -15,13 +15,14 @@ import (
 // notification or a command reply. These have a priority, according to which
 // they will be sent.
 type Sendable struct {
+	Platform         string            // tg, dg
 	Type             string            // in ("delete", "notification", "command", "callback")
 	NotificationType string            // 24h, 12h, 1h, 5min
 	LaunchId         string            // Launch ID associated with this sendable
-	Message          *Message          // Message (may be empty)
-	MessageIDs       map[string]string // Message ids in the form chat:msg_id (may be empty)
-	Platform         string            // tg, dg
+	Message          *Message          // Message (may be nil)
+	MessageIDs       map[string]string // Message ids in the form chat:msg_id for deletions
 	Recipients       []*users.User     // Recipients of this sendable
+	Size             int               // Size of this sendable's content, in bytes
 	Tokens           int               // Amount of tokens required
 	Mutex            sync.Mutex
 }
@@ -35,7 +36,7 @@ type Message struct {
 	SendOptions tb.SendOptions
 }
 
-// TODO implement so limiter can have more granularity and avoid rate-limits
+// Load the size of the message, as perceived by Telegram's API
 func (sendable *Sendable) PerceivedByteSize() int {
 	if sendable.Message == nil {
 		return 0
@@ -67,6 +68,24 @@ func (sendable *Sendable) PerceivedByteSize() int {
 
 	// Calculate everything between link tags, remove from final length...?
 	// Pretty easy to do, as link-tag always starts with "Watch live now" (or something)
+	if strings.Contains(sendable.Message.TextContent, "http") {
+		// Return the string just before the link tag starts, and after it has started
+		_, afterLinkTag, found := strings.Cut(sendable.Message.TextContent, "]")
+
+		if found {
+			// Slice afterLinkTag to remove the link
+			// [Link text]|CUT HERE|(https://...)
+			linkString, _, found := strings.Cut(afterLinkTag, ")")
+
+			if found {
+				// Remove the link tag + the cut closing paranthesis
+				// This is of the form (https://...)
+				perceivedByteCount -= len(linkString) + 1
+				log.Debug().Msgf("Removed %d bytes from perceived byte-count [%s]",
+					len(linkString)+1, linkString+")")
+			}
+		}
+	}
 
 	return perceivedByteCount
 }
@@ -83,7 +102,7 @@ func (sendable *Sendable) Send() {
 }
 
 // Set time field in the message
-func SetTime(txt string, user *users.User, refTime int64, markdownPrep bool, monospace bool) string {
+func SetTime(txt string, user *users.User, refTime int64, markdownPrep bool, monospace bool, dateOnly bool) string {
 	// Load user's time zone, if not already loaded
 	if user.Time == (users.UserTime{}) {
 		user.SetTimeZone()
@@ -94,7 +113,13 @@ func SetTime(txt string, user *users.User, refTime int64, markdownPrep bool, mon
 	userDate := utils.DateInUserLocation(refTime, user.Time.Location)
 
 	// Launch date in user's location
-	launchDate := fmt.Sprintf("%s, %s", userDate, userTime)
+	var launchDate string
+
+	if dateOnly {
+		launchDate = fmt.Sprintf("%s", userDate)
+	} else {
+		launchDate = fmt.Sprintf("%s, %s", userDate, userTime)
+	}
 
 	if monospace {
 		launchDate = utils.Monospaced(launchDate)
