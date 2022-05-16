@@ -20,8 +20,21 @@ type Database struct {
 	Conn        *gorm.DB
 	Cache       *Cache
 	LastUpdated time.Time // Last time the Launches-table was updated
-	Size        float32   // Db size in megabytes
+	Size        int64     // Db size in bytes
+	Path        string    // Path on disk
 	Owner       int64     // Telegram admin ID
+}
+
+func (db *Database) SetSize() {
+	fileInfo, err := os.Stat(db.Path)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Getting database file stats failed")
+		return
+	}
+
+	// Set the size
+	db.Size = fileInfo.Size()
 }
 
 func (db *Database) Open(dbFolder string) bool {
@@ -97,8 +110,11 @@ func (db *Database) Open(dbFolder string) bool {
 		log.Fatal().Err(err).Msg("Running auto-migration failed")
 	}
 
-	log.Info().Msg("Database ready")
+	// Set size
+	db.Path = relDbPath
+	db.SetSize()
 
+	log.Info().Msg("Database ready")
 	return true
 }
 
@@ -142,6 +158,9 @@ func (db *Database) Update(launches []*Launch, apiUpdate bool, useCacheNotifStat
 
 	// Store LastUpdated value in the database struct
 	db.LastUpdated = updated
+
+	// Reload size
+	db.SetSize()
 
 	return nil
 }
