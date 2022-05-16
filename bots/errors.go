@@ -89,19 +89,61 @@ Returns:
 
 // Handle errors associated with outgoing data, such as sends and edits
 // TODO use handleTelegramError by throwing chat ID at it
-func handleSendError(sent *tb.Message, err error, tg *TelegramBot) bool {
-	log.Error().Err(err).Msg("Error during send")
+func handleSendError(chatId int64, sent *tb.Message, err error, tg *TelegramBot) bool {
+	// Load user
+	chat := tg.Cache.FindUser(fmt.Sprint(chatId), "tg")
+
+	switch err.Error() {
+	case tb.ErrQueryTooOld.Error():
+		return false
+
+	case tb.ErrMessageNotModified.Error():
+		return true
+
+	case tb.ErrSameMessageContent.Error():
+		return true
+
+	case tb.ErrBlockedByUser.Error():
+		log.Debug().Msgf("Bot was blocked by user=%s, removing from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
+
+	case tb.ErrKickedFromGroup.Error():
+		log.Debug().Msgf("Bot was kicked from group=%s, removing from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
+
+	case tb.ErrKickedFromSuperGroup.Error():
+		log.Debug().Msgf("Bot was kicked from supergroup=%s, removing from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
+
+	case tb.ErrNotStartedByUser.Error():
+		log.Debug().Msgf("Bot was never started by user=%s, removing from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
+
+	case tb.ErrUserIsDeactivated.Error():
+		log.Debug().Msgf("User=%s has been deactivated, removing from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
+
+	case tb.ErrGroupMigrated.Error():
+		log.Trace().Err(err).Msg("Send-error: group migrated (tb.ErrGroupMigrated)")
+
+	default:
+		log.Error().Err(err).Msg("Error during send")
+	}
+
 	return true
 }
 
 // Handle errors associated with incoming requests
 func handleTelegramError(ctx tb.Context, err error, tg *TelegramBot) bool {
+	// Load user
+	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+
 	switch err.Error() {
 	case "":
 		log.Warn().Msg("handleTelegramError called with nil error")
 		return true
 
-	// General errors (400, 401, 404, 500) [all handled]
+	// General errors (400, 401, 404, 500)
 	case tb.ErrTooLarge.Error():
 		warnUnhandled(tg, err)
 	case tb.ErrUnauthorized.Error():
@@ -111,9 +153,6 @@ func handleTelegramError(ctx tb.Context, err error, tg *TelegramBot) bool {
 	case tb.ErrInternal.Error():
 		warnUnhandled(tg, err)
 
-	/* 400 (bad request)
-
-	TODO: handle non-send related errors */
 	case tb.ErrBadButtonData.Error():
 		log.Trace().Err(err).Msg("Bad button data in message")
 
@@ -143,56 +182,44 @@ func handleTelegramError(ctx tb.Context, err error, tg *TelegramBot) bool {
 
 	case tb.ErrGroupMigrated.Error():
 		// TODO implement a FindMigratedUser -> send new message?
-		log.Trace().Err(err).Msg("Group migrated: unable to send")
+		log.Trace().Err(err).Msg("Group migrated (tb.ErrGroupMigrated): running migration")
+		from, to := ctx.Migration()
+		log.Trace().Msgf("From=%d, to=%d", from, to)
+		tg.Db.MigrateGroup(from, to, "tg")
 
 	case tb.ErrNoRightsToDelete.Error():
 		log.Trace().Err(err).Msg("No rights to delete message")
 
 	case tb.ErrNoRightsToSend.Error():
-		chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
-		log.Trace().Err(err).Msgf("Bot not allowed to send messages in chat=%s, removing from database...", chat.Id)
-		tg.Db.RemoveUser(chat)
+		log.Trace().Err(err).Msgf("Bot not allowed to send messages in chat=%s", chat.Id)
 
 	case tb.ErrNotFoundToDelete.Error():
 		log.Trace().Err(err).Msg("Message not found for deletion")
-
 	case tb.ErrTooLongMarkup.Error():
 		log.Trace().Err(err).Msg("Markup is too long")
-
 	case tb.ErrTooLongMessage.Error():
 		log.Trace().Err(err).Msg("Message is too long")
-
 	case tb.ErrWrongURL.Error():
 		log.Trace().Err(err).Msg("Wrong URL")
+	case tb.ErrNotFoundToReply.Error():
+		log.Trace().Err(err).Msg("Message not found to reply")
 
 	// Error 403 (forbidden) [all handled]
 	case tb.ErrBlockedByUser.Error():
-		chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 		log.Debug().Msgf("Bot was blocked by user=%s, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
-
 	case tb.ErrKickedFromGroup.Error():
-		chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 		log.Debug().Msgf("Bot was kicked from group=%s, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
-
 	case tb.ErrKickedFromSuperGroup.Error():
-		chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 		log.Debug().Msgf("Bot was kicked from supergroup=%s, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
-
 	case tb.ErrNotStartedByUser.Error():
-		chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 		log.Debug().Msgf("Bot was never started by user=%s, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
-
 	case tb.ErrUserIsDeactivated.Error():
-		chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 		log.Debug().Msgf("User=%s has been deactivated, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
-
-	case tb.ErrNotFoundToReply.Error():
-		log.Trace().Err(err).Msg("Message not found to reply")
 
 	// If the error is not in the cases, default to unhandled
 	default:
