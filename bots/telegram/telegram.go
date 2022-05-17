@@ -27,7 +27,7 @@ type Bot struct {
 	Db       *db.Database
 	Cache    *db.Cache
 	Queue    *bots.Queue
-	Spam     *bots.AntiSpam
+	Spam     *bots.Spam
 	Stats    *stats.Statistics
 	Template templates.Telegram
 	Owner    int64

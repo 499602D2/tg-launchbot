@@ -13,7 +13,7 @@ import (
 )
 
 // In-memory struct keeping track of banned chats and per-chat activity
-type AntiSpam struct {
+type Spam struct {
 	ChatBanned               map[*users.User]bool    // Simple "if ChatBanned[chat] { do }" checks
 	ChatBannedUntilTimestamp map[*users.User]int64   // How long banned chats are banned for
 	ChatLogs                 map[*users.User]ChatLog // Map chat ID to a ChatLog struct
@@ -38,7 +38,7 @@ type Interaction struct {
 }
 
 // Initialize the spam struct
-func (spam *AntiSpam) Initialize() {
+func (spam *Spam) Initialize() {
 	// Create all maps for the spam struct
 	spam.ChatBannedUntilTimestamp = make(map[*users.User]int64)
 	spam.ChatLogs = make(map[*users.User]ChatLog)
@@ -52,7 +52,7 @@ func (spam *AntiSpam) Initialize() {
 
 // Enforce a per-chat rate-limiter. Typically, roughly 20 messages per minute
 // can be sent to one chat.
-func (spam *AntiSpam) UserLimiter(user *users.User, tokens int) {
+func (spam *Spam) UserLimiter(user *users.User, tokens int) {
 	// If limiter doesn't exist, create it
 	if spam.ChatLogs[user].Limiter == nil {
 		spam.Mutex.Lock()
@@ -79,7 +79,7 @@ func (spam *AntiSpam) UserLimiter(user *users.User, tokens int) {
 
 // Enforces a global rate-limiter for the bot. Telegram has some hard rate-limits,
 // including a 30 messages-per-second send limit for messages under 512 bytes.
-func (spam *AntiSpam) GlobalLimiter(tokens int) {
+func (spam *Spam) GlobalLimiter(tokens int) {
 	// Take the required amount of tokens, sleep if required
 	err := spam.Limiter.WaitN(context.Background(), tokens)
 
@@ -89,14 +89,14 @@ func (spam *AntiSpam) GlobalLimiter(tokens int) {
 }
 
 // A wrapper method to run both the global and user limiter at once
-func (spam *AntiSpam) RunBothLimiters(user *users.User, tokens int) {
+func (spam *Spam) RunBothLimiters(user *users.User, tokens int) {
 	// The user-limiter is ran first, as it's far more restricting
 	spam.UserLimiter(user, tokens)
 	spam.GlobalLimiter(tokens)
 }
 
 // When an interaction is received, ensure the sender is qualified for it
-func (spam *AntiSpam) PreHandler(interaction *Interaction, chat *users.User, stats *stats.Statistics) bool {
+func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *stats.Statistics) bool {
 	if interaction.IsGroup {
 		// In groups, we need to ensure that regular users cannot do funny things
 		if interaction.IsAdminOnly || !chat.AnyoneCanSendCommands {
