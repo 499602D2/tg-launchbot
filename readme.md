@@ -150,6 +150,8 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 
 	- ✅ Dequeue messages properly to stay within API limits
 
+	- ✅ Smart spam management for commands and callbacks, which reduces rate-limiting
+
 	- ✅ Remove excessive complexity in storage and caching
 
 	- ✅ Modularize most functions so that adding e.g. Discord functionality is easier
@@ -171,6 +173,8 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 	- [ ] Support for general event types (event/upcoming endpoint)
 
 		- Wrap launches in an Event{} type
+
+	- [ ] "Featured launches" subscription option, for interesting one-off launches
 
 	- [ ] Weekly summary messages
 
@@ -218,7 +222,7 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 	- [x] Active users
 		- [x] Regularly clean cache (once a day, e.g.)
 
-- [ ] Other, backend
+- [x] Other, backend
 	- [x] Update stats wherever needed
 	- [x] Dump statistics to disk regularly + on ctrl+c
 
@@ -230,7 +234,7 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 
 - [ ] Add commands
 	- [x] /settings
-		- [ ] Remove the Subscription settings -menu: add a direct button to notification time settings?
+		- [x] Remove the Subscription settings -menu: add a direct button to notification time settings?
 	- [x] /next
 		- [ ] Edge-case: preserve behavior of only showing subscribed launches?
 			- [ ] Allow to be configured in settings...? (Pretty easy to do)
@@ -238,9 +242,16 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 	- [x] /schedule
 	- [x] /stats
 	- [x] /feedback + response script
-	- [ ] Admin functions (/debug)
+	- [ ] Admin functions (/admin)
+		- [ ] Functions through an inline keyboard
+			- [ ] Run an API update immediately
+			- [ ] Dump logs to chat
+			- [ ] Dump database to chat
+			- [ ] Restart program
+	- [ ] Simplify message response templates by using struct methods
+		- [ ] Can be its own package, e.g. templates
 
-- [ ] Implement callbacks
+- [x] Implement callbacks
 		- [x] Notifications
 			- [x] Mute
 				- [x] Only allow admins to mute a launch
@@ -254,6 +265,7 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 - [ ] Notifications
 	- [x] Scheduling
 		- [ ] Schedule early with the help of the notification size + recipient list length
+		- [ ] Schedule post-launch checks (if last type was 5min, schedule next early)
 	- [ ] Pre-send API update (just compare NETs)
 		- [x] Postpone notifications
 			- [ ] Verify they work (tests for recipients)
@@ -270,6 +282,10 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 	- [x] Add "More info" button
 		- [x] Implement for description
 		- [ ] Implement for reuse information
+			- [ ] F9, etc.
+			- [ ] Multi-core vehicles like FH
+		- [ ] Astronaut count (can be in mission info)
+		- [ ] Spacecraft type (capsule serials)
 - [x] Remove manual time zone feature to reduce complexity
 - [ ] Purge log-files when they become too large
 	- Also, be smarter about telebot's logging (raise an issue?)
