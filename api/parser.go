@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jdkato/prose/v2"
 	"github.com/rs/zerolog/log"
 )
 
@@ -87,6 +88,24 @@ func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, 
 		switch launch.Status.Id {
 		case 3, 4, 6, 7:
 			launch.Launched = true
+		}
+
+		// Shorten description, by keeping the first two sentences
+		document, err := prose.NewDocument(launch.Mission.Description)
+		sentences := []string{}
+
+		if err != nil {
+			log.Error().Err(err).Msgf("Processing description for launch=%s failed", launch.Id)
+		} else {
+			if len(document.Sentences()) > 2 {
+				// More than two sentences: move their text content to an array
+				for _, sentence := range document.Sentences() {
+					sentences = append(sentences, sentence.Text)
+				}
+
+				// Join first two sentences
+				launch.Mission.Description = strings.Join(sentences[:2], " ")
+			}
 		}
 
 		// Shorten launch pad names
