@@ -1,12 +1,13 @@
-package bots
+package telegram
 
 import (
 	"errors"
 	"fmt"
+	"launchbot/bots"
+	"launchbot/bots/templates"
 	"launchbot/db"
 	"launchbot/sendables"
 	"launchbot/stats"
-	"launchbot/users"
 	"launchbot/utils"
 	"net/http"
 	"strconv"
@@ -18,88 +19,31 @@ import (
 	tb "gopkg.in/telebot.v3"
 )
 
-type TelegramBot struct {
-	Bot          *tb.Bot
-	Db           *db.Database
-	Cache        *db.Cache
-	Queue        *Queue
-	HighPriority *HighPriorityQueue
-	Spam         *AntiSpam
-	Stats        *stats.Statistics
-	Keyboard     Keyboard
-	Owner        int64
+// TODO
+// - throw into its own package (bots/Telegram)
+
+type Bot struct {
+	Bot      *tb.Bot
+	Db       *db.Database
+	Cache    *db.Cache
+	Queue    *bots.Queue
+	Spam     *bots.AntiSpam
+	Stats    *stats.Statistics
+	Template templates.Telegram
+	Owner    int64
 }
 
-// Constant message text contents
-// TODO use struct methods
-const (
-	startMessage = "🌟 *Welcome to LaunchBot!* LaunchBot is your one-stop shop into the world of rocket launches. Subscribe to the launches of your favorite " +
-		"space agency, or follow that one rocket company you're a fan of.\n\n" +
-		"🐙 *LaunchBot is open-source, 100 % free, and respects your privacy.* If you're a developer and want to see a new feature, " +
-		"you can open a pull request in GITHUBLINK.\n\n" +
-		"🌠 *To get started, you can subscribe to some notifications, or try out the commands.* If you have any feedback, or a request for improvement, " +
-		"you can use the feedback command."
-
-	startMessageGroupExtra = "\n\n👷 *Note for group admins!* To reduce spam, LaunchBot only responds to requests by admins. " +
-		"LaunchBot can also automatically delete commands it won't reply to, if given the permission to delete messages. " +
-		"If you'd like everyone to be able to send commands, just flip a switch in the settings!"
-
-	feedbackMessageText = "🌟 *LaunchBot* | *Developer feedback*\n" +
-		"Here, you can send feedback that goes directly to the developer. To send feedback, just write a message that starts with /feedback!\n\n" +
-		"An example would be `/feedback Great bot, thank you!`\n\n" +
-		"*Thank you for using LaunchBot!*"
-
-	feedbackReceivedText = "🌟 *Thank you for your feedback!* Your feedback was received successfully."
-
-	// TODO add user's time zone
-	settingsMainText = "*LaunchBot* | *User settings*\n" +
-		"🚀 *Launch subscription settings* allow you to choose what launches you receive notifications for, like SpaceX's or NASA's.\n\n" +
-		"⏰ *Notification settings* allow you to choose when you receive notifications.\n\n" +
-		"🌍 *Time zone settings* let you set your time zone, so all dates and times are in your local time, instead of UTC+0."
-
-	settingsMainGroupExtra = "\n\n👷 *Group settings* let admins change some group-specific settings, such as allowing all users to send commands."
-
-	notificationSettingsByCountryCode = "🚀 *LaunchBot* | *Subscription settings*\n" +
-		"You can search for specific launch-providers with the country flags, or simply enable notifications for all launch providers.\n\n" +
-		"As an example, SpaceX can be found under the 🇺🇸-flag, and ISRO can be found under 🇮🇳-flag. You can also choose to enable all notifications."
-
-	settingsNotificationTimes = "⏰ *LaunchBot* | *Notification time settings*\n" +
-		"Notifications are delivered 24 hours, 12 hours, 60 minutes, and 5 minutes before a launch.\n\n" +
-		"By default, you will receive a notification 24 hours before, and 5 minutes before a launch. You can adjust this behavior here.\n\n" +
-		"You can also toggle postpone notifications, which are sent when a launch has its launch time moved (if a notification has already been sent)."
-
-	settingsTzMain = "🌍 *LaunchBot* | *Time zone settings*\n" +
-		"LaunchBot sets your time zone with the help of Telegram's location sharing feature.\n\n" +
-		"This is entirely privacy preserving, as your exact location is not required. Only the general " +
-		"location is stored in the form of LINKHERE, such as Europe/Berlin or America/Lima.\n\n" +
-		"*Your current time zone is: USERTIMEZONE.* You can remove your time zone information from LaunchBot's server at any time."
-
-	settingsTzSetup = "🌍 *LaunchBot* | *Time zone set-up*\n" +
-		"To complete the time zone setup, follow the instructions below using your phone:\n\n" +
-		"*1.* Make sure you are *replying* to *this message!*\n\n" +
-		"*2.* Tap 📎 next to the text field, then choose `📍` `Location`.\n\n" +
-		"*3.* As a reply, send the bot a location that is in your time zone. This can be a different city, or even a different country!" +
-		"\n\n*Note:* location sharing is not supported in Telegram Desktop, so use your phone or tablet!"
-
-	settingsGroupMain = "👷 *LaunchBot* | *Group settings*\n" +
-		"These are LaunchBot's settings only available to groups, which will be expanded in the future. Currently, " +
-		"they allow admins to enable command-access to all group participants."
-
-	interactionNotAllowed = "⚠️ You're not allowed to do that"
-)
-
 // Simple method to initialize the TelegramBot object
-func (tg *TelegramBot) Initialize(token string) {
-	// Create primary Telegram queue
-	tg.Queue = &Queue{
-		Sendables: make(map[string]*sendables.Sendable),
+func (tg *Bot) Initialize(token string) {
+	// Create queue for Telegram messages
+	tg.Queue = &bots.Queue{
+		Sendables:    make(map[string]*sendables.Sendable),
+		HighPriority: &bots.HighPriorityQueue{HasItemsInQueue: false},
 	}
 
-	// Create the high-priority queue
-	tg.HighPriority = &HighPriorityQueue{HasItemsInQueue: false}
-
 	// Init keyboard-holder struct
-	tg.Keyboard = Keyboard{Settings: Settings{}, Command: Command{}}
+	tg.Template = templates.Telegram{}
+	tg.Template.Init()
 
 	var err error
 
@@ -147,24 +91,24 @@ func (tg *TelegramBot) Initialize(token string) {
 }
 
 // Handle the /start command and events where the bot is added to a new chat
-func (tg *TelegramBot) startHandler(ctx tb.Context) error {
+func (tg *Bot) startHandler(ctx tb.Context) error {
 	// Load chat
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
-	adminOnlyCommand := true
-	if !PreHandler(tg, chat, ctx, 2, adminOnlyCommand, true, "start") {
-		return nil
+	// Build interaction for spam handling
+	interaction := bots.Interaction{
+		IsAdminOnly: true, IsCommand: true, IsGroup: isGroup(ctx.Chat().Type),
+		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "start", Tokens: 2,
 	}
 
-	var textContent string
-
-	if isGroup(ctx.Chat().Type) {
-		// If a group, add extra information for admins
-		textContent = utils.PrepareInputForMarkdown(startMessage+startMessageGroupExtra, "text")
-	} else {
-		// Otherwise, use the standard message format
-		textContent = utils.PrepareInputForMarkdown(startMessage, "text")
+	// Run permission and spam management
+	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+		return tg.interactionNotAllowed(ctx, true)
 	}
+
+	// Get text for message
+	textContent := tg.Template.Messages.Command.Start(isGroup(ctx.Chat().Type))
+	textContent = utils.PrepareInputForMarkdown(textContent, "text")
 
 	// Set the Github link
 	link := utils.PrepareInputForMarkdown("https://github.com/499602D2/tg-launchbot", "link")
@@ -172,7 +116,7 @@ func (tg *TelegramBot) startHandler(ctx tb.Context) error {
 	textContent = strings.ReplaceAll(textContent, "GITHUBLINK", fmt.Sprintf("[*%s*](%s)", linkText, link))
 
 	// Load send-options
-	sendOptions, _ := tg.Keyboard.Command.Start()
+	sendOptions, _ := tg.Template.Keyboard.Command.Start()
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
@@ -187,7 +131,7 @@ func (tg *TelegramBot) startHandler(ctx tb.Context) error {
 	sendable.AddRecipient(chat, false)
 
 	// Add to queue as a high-priority message
-	go tg.Queue.Enqueue(&sendable, tg, true)
+	go tg.Queue.Enqueue(&sendable, true)
 
 	// Check if chat is new
 	if chat.Stats.SentCommands == 0 {
@@ -216,21 +160,33 @@ func (tg *TelegramBot) startHandler(ctx tb.Context) error {
 }
 
 // Handle feedback
-func (tg *TelegramBot) feedbackHandler(ctx tb.Context) error {
+func (tg *Bot) feedbackHandler(ctx tb.Context) error {
 	// Load user
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
-	adminOnlyCommand := true
-	if !PreHandler(tg, chat, ctx, 1, adminOnlyCommand, true, "feedback") {
-		return nil
+	// Build interaction for spam handling
+	interaction := bots.Interaction{
+		IsAdminOnly: true, IsCommand: true, IsGroup: isGroup(ctx.Chat().Type),
+		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "feedback", Tokens: 1,
 	}
 
-	// If the command has no parameters, send instruction message
-	if len(strings.Split(ctx.Data(), " ")) == 1 {
-		log.Debug().Msgf("Chat=%s requested feedback instructions", chat.Id)
-		text := utils.PrepareInputForMarkdown(feedbackMessageText, "text")
-		go tg.Queue.Enqueue(sendables.TextOnlySendable(text, chat), tg, true)
+	// Run permission and spam management
+	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+		return tg.interactionNotAllowed(ctx, true)
+	}
 
+	// If no command parameters, we're not receiving feedback
+	receivingFeedback := len(strings.Split(ctx.Data(), " ")) > 1
+
+	// Load message
+	message := tg.Template.Messages.Command.Feedback(receivingFeedback)
+
+	// If the command has no parameters, send instruction message
+	if !receivingFeedback {
+		log.Debug().Msgf("Chat=%s requested feedback instructions", chat.Id)
+		text := utils.PrepareInputForMarkdown(message, "text")
+
+		go tg.Queue.Enqueue(sendables.TextOnlySendable(text, chat), true)
 		return nil
 	}
 
@@ -238,34 +194,37 @@ func (tg *TelegramBot) feedbackHandler(ctx tb.Context) error {
 	feedbackLog := fmt.Sprintf("✍️ *Got feedback from %s:* %s", chat.Id, ctx.Data())
 	log.Info().Msgf(feedbackLog)
 
-	go tg.Queue.Enqueue(sendables.TextOnlySendable(
-		utils.PrepareInputForMarkdown(feedbackLog, "text"),
-		tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")),
-		tg, true,
+	go tg.Queue.Enqueue(
+		sendables.TextOnlySendable(
+			utils.PrepareInputForMarkdown(feedbackLog, "text"),
+			tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")),
+		true,
 	)
 
 	// Send a message confirming we received the feedback
-	newText := utils.PrepareInputForMarkdown(feedbackReceivedText, "text")
-	go tg.Queue.Enqueue(sendables.TextOnlySendable(newText, chat), tg, true)
+	newText := utils.PrepareInputForMarkdown(message, "text")
+	go tg.Queue.Enqueue(sendables.TextOnlySendable(newText, chat), true)
 
 	return nil
 }
 
 // Handles the /schedule command
-func (tg *TelegramBot) scheduleHandler(ctx tb.Context) error {
+func (tg *Bot) scheduleHandler(ctx tb.Context) error {
 	// Load chat
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
 	// Request is a command if the callback is nil
 	isCommand := (ctx.Callback() == nil)
 
-	adminOnlyCommand := false
-	if !PreHandler(tg, chat, ctx, 2, adminOnlyCommand, isCommand, "schedule") {
-		if !isCommand {
-			return tg.respondToCallback(ctx, interactionNotAllowed, true)
-		}
+	// Build interaction for spam handling
+	interaction := bots.Interaction{
+		IsAdminOnly: false, IsCommand: isCommand, IsGroup: isGroup(ctx.Chat().Type),
+		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "schedule", Tokens: 2,
+	}
 
-		return nil
+	// Run permission and spam management
+	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+		return tg.interactionNotAllowed(ctx, true)
 	}
 
 	// The mode to use, either "v" for vehicles, or "m" for missions
@@ -282,7 +241,7 @@ func (tg *TelegramBot) scheduleHandler(ctx tb.Context) error {
 
 	// Get text for the message
 	scheduleMsg := tg.Cache.ScheduleMessage(chat, mode == "m")
-	sendOptions, _ := tg.Keyboard.Command.Schedule(mode)
+	sendOptions, _ := tg.Template.Keyboard.Command.Schedule(mode)
 
 	if isCommand {
 		// Construct message
@@ -299,7 +258,7 @@ func (tg *TelegramBot) scheduleHandler(ctx tb.Context) error {
 
 		// Add to send queue as high-priority
 		sendable.AddRecipient(chat, false)
-		go tg.Queue.Enqueue(&sendable, tg, true)
+		go tg.Queue.Enqueue(&sendable, true)
 	} else {
 		tg.editCbMessage(ctx.Callback(), scheduleMsg, sendOptions)
 		return tg.respondToCallback(ctx, "🔄 Schedule loaded", false)
@@ -309,25 +268,27 @@ func (tg *TelegramBot) scheduleHandler(ctx tb.Context) error {
 }
 
 // Handles the /next command
-func (tg *TelegramBot) nextHandler(ctx tb.Context) error {
+func (tg *Bot) nextHandler(ctx tb.Context) error {
 	// Load chat
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
 	// Request is a command if the callback is nil
 	isCommand := (ctx.Callback() == nil)
-	cbData := []string{}
 
-	adminOnlyCommand := false
-	if !PreHandler(tg, chat, ctx, 2, adminOnlyCommand, isCommand, "next") {
-		if !isCommand {
-			return tg.respondToCallback(ctx, interactionNotAllowed, true)
-		}
+	// Build interaction for spam handling
+	interaction := bots.Interaction{
+		IsAdminOnly: false, IsCommand: isCommand, IsGroup: isGroup(ctx.Chat().Type),
+		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "next", Tokens: 2,
+	}
 
-		return nil
+	// Run permission and spam management
+	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+		return tg.interactionNotAllowed(ctx, true)
 	}
 
 	// Index we're loading the launch at
 	index := 0
+	cbData := []string{}
 
 	if !isCommand {
 		// For callbacks, load the index the user is requesting
@@ -342,7 +303,7 @@ func (tg *TelegramBot) nextHandler(ctx tb.Context) error {
 
 	// Get text, send-options for the message
 	textContent := tg.Cache.NextLaunchMessage(chat, index)
-	sendOptions, _ := tg.Keyboard.Command.Next(index, len(tg.Cache.Launches))
+	sendOptions, _ := tg.Template.Keyboard.Command.Next(index, len(tg.Cache.Launches))
 
 	if isCommand {
 		// Construct message
@@ -360,7 +321,7 @@ func (tg *TelegramBot) nextHandler(ctx tb.Context) error {
 		}
 
 		// Add to send queue as high-priority
-		go tg.Queue.Enqueue(&sendable, tg, true)
+		go tg.Queue.Enqueue(&sendable, true)
 		sendable.AddRecipient(chat, false)
 
 		return nil
@@ -393,20 +354,22 @@ func (tg *TelegramBot) nextHandler(ctx tb.Context) error {
 }
 
 // Handles the /stats command
-func (tg *TelegramBot) statsHandler(ctx tb.Context) error {
+func (tg *Bot) statsHandler(ctx tb.Context) error {
 	// Load chat
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
 	// Request is a command if the callback is nil
 	isCommand := (ctx.Callback() == nil)
 
-	adminOnlyCommand := false
-	if !PreHandler(tg, chat, ctx, 1, adminOnlyCommand, isCommand, "stats") {
-		if !isCommand {
-			return tg.respondToCallback(ctx, interactionNotAllowed, true)
-		}
+	// Build interaction for spam handling
+	interaction := bots.Interaction{
+		IsAdminOnly: false, IsCommand: isCommand, IsGroup: isGroup(ctx.Chat().Type),
+		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "stats", Tokens: 1,
+	}
 
-		return nil
+	// Run permission and spam management
+	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+		return tg.interactionNotAllowed(ctx, true)
 	}
 
 	// Reload some statistics
@@ -417,7 +380,7 @@ func (tg *TelegramBot) statsHandler(ctx tb.Context) error {
 	textContent := tg.Stats.String(subscribers)
 
 	// Get keyboard
-	sendOptions, _ := tg.Keyboard.Command.Statistics()
+	sendOptions, _ := tg.Template.Keyboard.Command.Statistics()
 
 	// If a command, throw the message into the queue
 	if isCommand {
@@ -433,7 +396,7 @@ func (tg *TelegramBot) statsHandler(ctx tb.Context) error {
 		sendable.AddRecipient(chat, false)
 
 		// Add to send queue as high-priority
-		go tg.Queue.Enqueue(&sendable, tg, true)
+		go tg.Queue.Enqueue(&sendable, true)
 		return nil
 	}
 
@@ -443,38 +406,36 @@ func (tg *TelegramBot) statsHandler(ctx tb.Context) error {
 }
 
 // Handles the /settings command
-func (tg *TelegramBot) settingsHandler(ctx tb.Context) error {
+func (tg *Bot) settingsHandler(ctx tb.Context) error {
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
 	// TODO handle all settings-related things
 	isCommand := true
 
-	adminOnlyCommand := true
-	if !PreHandler(tg, chat, ctx, 1, adminOnlyCommand, true, "settings") {
-		if !isCommand {
-			return tg.respondToCallback(ctx, interactionNotAllowed, true)
-		}
-
-		return nil
+	// Build interaction for spam handling
+	interaction := bots.Interaction{
+		IsAdminOnly: true, IsCommand: isCommand, IsGroup: isGroup(ctx.Chat().Type),
+		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "settings", Tokens: 1,
 	}
+
+	// Run permission and spam management
+	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+		return tg.interactionNotAllowed(ctx, true)
+	}
+
+	// Is chat a group-chat?
+	isGroup := isGroup(ctx.Chat().Type)
 
 	// Load keyboard
-	_, kb := tg.Keyboard.Settings.Main(isGroup(ctx.Chat().Type))
+	_, kb := tg.Template.Keyboard.Settings.Main(isGroup)
 
-	// Init text so we don't need to run it twice thorugh the markdown escaper
-	var text string
-
-	// If chat is a group, show the group-specific settings
-	if isGroup(ctx.Chat().Type) {
-		text = utils.PrepareInputForMarkdown(settingsMainText+settingsMainGroupExtra, "text")
-	} else {
-		// Not a group, so use the standard text
-		text = utils.PrepareInputForMarkdown(settingsMainText, "text")
-	}
+	// Load message text content
+	message := tg.Template.Messages.Settings.Main(isGroup)
+	message = utils.PrepareInputForMarkdown(message, "text")
 
 	// Construct message
 	msg := sendables.Message{
-		TextContent: text,
+		TextContent: message,
 		SendOptions: tb.SendOptions{
 			ParseMode:   "MarkdownV2",
 			ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
@@ -490,13 +451,13 @@ func (tg *TelegramBot) settingsHandler(ctx tb.Context) error {
 	sendable.AddRecipient(chat, false)
 
 	// Add to send queue as high-priority
-	go tg.Queue.Enqueue(&sendable, tg, true)
+	go tg.Queue.Enqueue(&sendable, true)
 
 	return nil
 }
 
 // Handles requests to view a list of launch providers associated with a country code
-func (tg *TelegramBot) countryCodeListCallback(ctx tb.Context) error {
+func (tg *Bot) countryCodeListCallback(ctx tb.Context) error {
 	// Ensure callback data is valid
 	data := strings.Split(ctx.Callback().Data, "/")
 
@@ -509,17 +470,26 @@ func (tg *TelegramBot) countryCodeListCallback(ctx tb.Context) error {
 	// Get chat
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
-	adminOnlyCallback := true
-	if !PreHandler(tg, chat, ctx, 1, adminOnlyCallback, false, "settings") {
-		return tg.respondToCallback(ctx, interactionNotAllowed, true)
+	// Build interaction for spam handling
+	interaction := bots.Interaction{
+		IsAdminOnly: true, IsCommand: false, IsGroup: isGroup(ctx.Chat().Type),
+		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "settings", Tokens: 1,
+	}
+
+	// Run permission and spam management
+	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+		return tg.interactionNotAllowed(ctx, true)
 	}
 
 	// Get send-options
-	sendOptions, _ := tg.Keyboard.Settings.Subscription.ByCountryCode(chat, data[1])
+	sendOptions, _ := tg.Template.Keyboard.Settings.Subscription.ByCountryCode(chat, data[1])
 
-	// Edit message
-	text := utils.PrepareInputForMarkdown(notificationSettingsByCountryCode, "text")
-	tg.editCbMessage(ctx.Callback(), text, sendOptions)
+	// Load message
+	message := tg.Template.Messages.Settings.Subscription.ByCountryCode()
+	message = utils.PrepareInputForMarkdown(message, "text")
+
+	// Edit callback
+	tg.editCbMessage(ctx.Callback(), message, sendOptions)
 
 	// Respond to callback
 	_ = tg.respondToCallback(ctx, fmt.Sprintf("Loaded %s", db.CountryCodeToName[data[1]]), false)
@@ -528,14 +498,20 @@ func (tg *TelegramBot) countryCodeListCallback(ctx tb.Context) error {
 }
 
 // Handles callbacks related to toggling notification settings
-func (tg *TelegramBot) notificationToggleCallback(ctx tb.Context) error {
+func (tg *Bot) notificationToggleCallback(ctx tb.Context) error {
 	// Callback is of form (id, cc, all, time)/(id, cc, time-type, all-state)/(id-state, cc-state, time-state)
 	data := strings.Split(ctx.Callback().Data, "/")
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
-	adminOnlyCallback := true
-	if !PreHandler(tg, chat, ctx, 1, adminOnlyCallback, false, "settings") {
-		return tg.respondToCallback(ctx, interactionNotAllowed, true)
+	// Build interaction for spam handling
+	interaction := bots.Interaction{
+		IsAdminOnly: true, IsCommand: false, IsGroup: isGroup(ctx.Chat().Type),
+		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "settings", Tokens: 1,
+	}
+
+	// Run permission and spam management
+	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+		return tg.interactionNotAllowed(ctx, true)
 	}
 
 	// Variable for updated keyboard following a callback
@@ -551,7 +527,7 @@ func (tg *TelegramBot) notificationToggleCallback(ctx tb.Context) error {
 		chat.SetAllFlag(toggleTo)
 
 		// Update keyboard
-		_, updatedKeyboard = tg.Keyboard.Settings.Subscription.Main(chat)
+		_, updatedKeyboard = tg.Template.Keyboard.Settings.Subscription.Main(chat)
 
 		// Callback response
 		cbText = fmt.Sprintf("%s all notifications", utils.NotificationToggleCallbackString(toggleTo))
@@ -565,7 +541,7 @@ func (tg *TelegramBot) notificationToggleCallback(ctx tb.Context) error {
 		intId, _ := strconv.Atoi(data[1])
 
 		// Update keyboard
-		_, updatedKeyboard = tg.Keyboard.Settings.Subscription.ByCountryCode(chat, db.LSPShorthands[intId].Cc)
+		_, updatedKeyboard = tg.Template.Keyboard.Settings.Subscription.ByCountryCode(chat, db.LSPShorthands[intId].Cc)
 
 		// Callback response
 		cbText = fmt.Sprintf("%s %s", utils.NotificationToggleCallbackString(toggleTo), db.LSPShorthands[intId].Name)
@@ -579,7 +555,7 @@ func (tg *TelegramBot) notificationToggleCallback(ctx tb.Context) error {
 		chat.ToggleIdSubscription(ids, toggleTo)
 
 		// Update keyboard
-		_, updatedKeyboard = tg.Keyboard.Settings.Subscription.ByCountryCode(chat, data[1])
+		_, updatedKeyboard = tg.Template.Keyboard.Settings.Subscription.ByCountryCode(chat, data[1])
 
 		// Callback response
 		cbText = fmt.Sprintf("%s all for %s", utils.NotificationToggleCallbackString(toggleTo), db.CountryCodeToName[data[1]])
@@ -595,7 +571,7 @@ func (tg *TelegramBot) notificationToggleCallback(ctx tb.Context) error {
 		chat.SetNotificationTimeFlag(data[1], toggleTo)
 
 		// Update keyboard
-		_, updatedKeyboard = tg.Keyboard.Settings.Notifications(chat)
+		_, updatedKeyboard = tg.Template.Keyboard.Settings.Notifications(chat)
 
 		// Callback response
 		cbText = fmt.Sprintf("%s %s notifications", utils.NotificationToggleCallbackString(toggleTo), data[1])
@@ -611,7 +587,7 @@ func (tg *TelegramBot) notificationToggleCallback(ctx tb.Context) error {
 		chat.ToggleCommandPermissionStatus(data[1], toggleTo)
 
 		// Update keyboard
-		_, updatedKeyboard = tg.Keyboard.Settings.Group(chat)
+		_, updatedKeyboard = tg.Template.Keyboard.Settings.Group(chat)
 
 		// Callback response
 		cbText = fmt.Sprintf("%s permission status", utils.NotificationToggleCallbackString(toggleTo))
@@ -636,14 +612,20 @@ func (tg *TelegramBot) notificationToggleCallback(ctx tb.Context) error {
 }
 
 // Handle launch mute/unmute callbacks
-func (tg *TelegramBot) muteCallback(ctx tb.Context) error {
+func (tg *Bot) muteCallback(ctx tb.Context) error {
 	// Data is in the format mute/id/toggleTo/notificationType
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 	data := strings.Split(ctx.Callback().Data, "/")
 
-	adminOnlyCallback := true
-	if !PreHandler(tg, chat, ctx, 1, adminOnlyCallback, false, "mute") {
-		return tg.respondToCallback(ctx, interactionNotAllowed, true)
+	// Build interaction for spam handling
+	interaction := bots.Interaction{
+		IsAdminOnly: true, IsCommand: false, IsGroup: isGroup(ctx.Chat().Type),
+		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "mute", Tokens: 1,
+	}
+
+	// Run permission and spam management
+	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+		return tg.interactionNotAllowed(ctx, true)
 	}
 
 	if len(data) != 4 {
@@ -712,37 +694,37 @@ func (tg *TelegramBot) muteCallback(ctx tb.Context) error {
 }
 
 // Handler for settings callback requests. Returns a callback response and showAlert bool.
-func (tg *TelegramBot) settingsCallback(ctx tb.Context) error {
+// TODO use the "Unique" property of inline buttons to do better callback handling
+func (tg *Bot) settingsCallback(ctx tb.Context) error {
 	// Load chat
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
-	// Ensure callback sender is an admin
-	adminOnlyCallback := true
-	if !PreHandler(tg, chat, ctx, 1, adminOnlyCallback, false, "settings") {
-		return tg.respondToCallback(ctx, interactionNotAllowed, true)
+	// Build interaction for spam handling
+	interaction := bots.Interaction{
+		IsAdminOnly: true, IsCommand: false, IsGroup: isGroup(ctx.Chat().Type),
+		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "settings", Tokens: 1,
+	}
+
+	// Run permission and spam management
+	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+		return tg.interactionNotAllowed(ctx, true)
 	}
 
 	// Split data into an array
 	cb := ctx.Callback()
 	callbackData := strings.Split(cb.Data, "/")
 
-	// TODO use the "Unique" property of inline buttons to do better callback handling
-
 	switch callbackData[1] {
 	case "main": // User requested main settings menu
+		// Load text based on the chat being a group or not
+		isGroup := isGroup(cb.Message.Chat.Type)
+
 		// Load keyboard
-		sendOptions, _ := tg.Keyboard.Settings.Main(isGroup(cb.Message.Chat.Type))
+		sendOptions, _ := tg.Template.Keyboard.Settings.Main(isGroup)
 
 		// Init text so we don't need to run it twice thorugh the markdown escaper
-		var text string
-
-		// If chat is a group, show the group-specific settings
-		if isGroup(cb.Message.Chat.Type) {
-			text = utils.PrepareInputForMarkdown(settingsMainText+settingsMainGroupExtra, "text")
-		} else {
-			// Not a group, so use the standard text
-			text = utils.PrepareInputForMarkdown(settingsMainText, "text")
-		}
+		message := tg.Template.Messages.Settings.Main(isGroup)
+		message = utils.PrepareInputForMarkdown(message, "text")
 
 		if len(callbackData) == 3 && callbackData[2] == "newMessage" {
 			// Remove the keyboard button from the start message
@@ -754,7 +736,7 @@ func (tg *TelegramBot) settingsCallback(ctx tb.Context) error {
 
 			// If a new message is requested, wrap into a sendable and send as new
 			msg := sendables.Message{
-				TextContent: text,
+				TextContent: message,
 				SendOptions: sendOptions,
 			}
 
@@ -765,9 +747,9 @@ func (tg *TelegramBot) settingsCallback(ctx tb.Context) error {
 			}
 
 			sendable.AddRecipient(chat, false)
-			go tg.Queue.Enqueue(&sendable, tg, true)
+			go tg.Queue.Enqueue(&sendable, true)
 		} else {
-			tg.editCbMessage(cb, text, sendOptions)
+			tg.editCbMessage(cb, message, sendOptions)
 		}
 
 		return tg.respondToCallback(ctx, "⚙️ Loaded settings", false)
@@ -775,28 +757,25 @@ func (tg *TelegramBot) settingsCallback(ctx tb.Context) error {
 	case "tz":
 		switch callbackData[2] {
 		case "main":
-			// Message text: add user time zone
-			text := strings.ReplaceAll(settingsTzMain, "USERTIMEZONE", chat.SavedTimeZoneInfo())
-			text = utils.PrepareInputForMarkdown(text, "text")
-
-			// Set link
-			link := fmt.Sprintf("[a time zone database entry](%s)",
-				utils.PrepareInputForMarkdown("https://en.wikipedia.org/wiki/List_of_tz_database_time_zones", "link"))
-			text = strings.ReplaceAll(text, "LINKHERE", link)
+			// Message text
+			message := tg.Template.Messages.Settings.TimeZone.Main(chat.SavedTimeZoneInfo())
 
 			// Load keyboard
-			sendOptions, _ := tg.Keyboard.Settings.TimeZone.Main()
+			sendOptions, _ := tg.Template.Keyboard.Settings.TimeZone.Main()
 
-			tg.editCbMessage(cb, text, sendOptions)
+			tg.editCbMessage(cb, message, sendOptions)
 			return tg.respondToCallback(ctx, "🌍 Loaded time zone settings", false)
 
-		case "begin": // User requested time zone setup
-			// Message text, keyboard
-			text := utils.PrepareInputForMarkdown(settingsTzSetup, "text")
-			sendOptions, _ := tg.Keyboard.Settings.TimeZone.Setup()
+		case "begin":
+			// Message text
+			message := tg.Template.Messages.Settings.TimeZone.Setup()
+			message = utils.PrepareInputForMarkdown(message, "text")
+
+			// Load keyboard
+			sendOptions, _ := tg.Template.Keyboard.Settings.TimeZone.Setup()
 
 			// Edit message
-			tg.editCbMessage(cb, text, sendOptions)
+			tg.editCbMessage(cb, message, sendOptions)
 			return tg.respondToCallback(ctx, "🌍 Loaded time zone set-up", false)
 
 		case "del":
@@ -804,27 +783,14 @@ func (tg *TelegramBot) settingsCallback(ctx tb.Context) error {
 			chat.DeleteTimeZone()
 			tg.Db.SaveUser(chat)
 
-			text := "🌍 *LaunchBot* | *Time zone settings*\n" +
-				"Your time zone information was successfully deleted! " +
-				fmt.Sprintf("Your new time zone is: *%s.*", chat.SavedTimeZoneInfo())
+			// Message
+			message := tg.Template.Messages.Settings.TimeZone.Deleted(chat.SavedTimeZoneInfo())
+			message = utils.PrepareInputForMarkdown(message, "text")
 
-			text = utils.PrepareInputForMarkdown(text, "text")
+			// Load keyboard
+			sendOptions, _ := tg.Template.Keyboard.Settings.TimeZone.Deleted()
 
-			retBtn := tb.InlineButton{
-				Unique: "settings",
-				Text:   "⬅️ Back to settings",
-				Data:   "set/main",
-			}
-
-			kb := [][]tb.InlineButton{{retBtn}}
-
-			sendOptions := tb.SendOptions{
-				ParseMode:             "MarkdownV2",
-				DisableWebPagePreview: true,
-				ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
-			}
-
-			tg.editCbMessage(cb, text, sendOptions)
+			tg.editCbMessage(cb, message, sendOptions)
 			return tg.respondToCallback(ctx, "✅ Successfully deleted your time zone information!", true)
 		}
 
@@ -832,27 +798,34 @@ func (tg *TelegramBot) settingsCallback(ctx tb.Context) error {
 		// User requested subscription settings
 		switch callbackData[2] {
 		case "times":
-			// Text content, send-options with the keyboard
-			text := utils.PrepareInputForMarkdown(settingsNotificationTimes, "text")
-			sendOptions, _ := tg.Keyboard.Settings.Notifications(chat)
+			// Send-options with the keyboard
+			sendOptions, _ := tg.Template.Keyboard.Settings.Notifications(chat)
 
-			tg.editCbMessage(cb, text, sendOptions)
+			// Text
+			message := tg.Template.Messages.Settings.Notifications()
+			message = utils.PrepareInputForMarkdown(message, "text")
+
+			tg.editCbMessage(cb, message, sendOptions)
 			return tg.respondToCallback(ctx, "⏲️ Loaded notification time settings", false)
 		case "bycountry":
 			// Dynamically generated notification preferences
-			sendOptions, _ := tg.Keyboard.Settings.Subscription.Main(chat)
-			text := utils.PrepareInputForMarkdown(notificationSettingsByCountryCode, "text")
+			sendOptions, _ := tg.Template.Keyboard.Settings.Subscription.Main(chat)
 
-			tg.editCbMessage(cb, text, sendOptions)
+			// Text for update
+			message := tg.Template.Messages.Settings.Subscription.ByCountryCode()
+			message = utils.PrepareInputForMarkdown(message, "text")
+
+			tg.editCbMessage(cb, message, sendOptions)
 			return tg.respondToCallback(ctx, "🔔 Notification settings loaded", false)
 		}
 
 	case "group":
 		// Group-specific settings
-		text := settingsGroupMain
-
+		text := tg.Template.Messages.Settings.Group()
 		text = utils.PrepareInputForMarkdown(text, "text")
-		sendOptions, _ := tg.Keyboard.Settings.Group(chat)
+
+		// Keyboard
+		sendOptions, _ := tg.Template.Keyboard.Settings.Group(chat)
 
 		// Capture the message ID of this setup message
 		tg.editCbMessage(cb, text, sendOptions)
@@ -863,19 +836,30 @@ func (tg *TelegramBot) settingsCallback(ctx tb.Context) error {
 }
 
 // Handle notification message expansions
-func (tg *TelegramBot) expandMessageContent(ctx tb.Context) error {
+func (tg *Bot) expandMessageContent(ctx tb.Context) error {
 	// Pointer to received callback
 	cb := ctx.Callback()
 
 	// User
 	chat := tg.Cache.FindUser(fmt.Sprint(cb.Message.Chat.ID), "tg")
 
+	// Build interaction for spam handling
+	interaction := bots.Interaction{
+		IsAdminOnly: false, IsCommand: false, IsGroup: isGroup(ctx.Chat().Type),
+		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "settings", Tokens: 1,
+	}
+
+	// Run permission and spam management
+	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+		return tg.interactionNotAllowed(ctx, true)
+	}
+
 	// Split data field
 	callbackData := strings.Split(cb.Data, "/")
 
 	// Extract ID and notification type
 	launchId := callbackData[1]
-	notifType := callbackData[2]
+	notification := callbackData[2]
 
 	// Find launch by ID (it may not exist in the cache anymore)
 	launch, err := tg.Cache.FindLaunchById(launchId)
@@ -886,25 +870,14 @@ func (tg *TelegramBot) expandMessageContent(ctx tb.Context) error {
 	}
 
 	// Get text for this launch
-	newText := launch.NotificationMessage(notifType, true)
+	newText := launch.NotificationMessage(notification, true)
 	newText = sendables.SetTime(newText, chat, launch.NETUnix, true, false, false)
 
 	// Load mute status
 	muted := chat.HasMutedLaunch(launch.Id)
 
-	// Add mute button
-	muteBtn := tb.InlineButton{
-		Unique: "muteToggle",
-		Text:   map[bool]string{true: "🔊 Unmute launch", false: "🔇 Mute launch"}[muted],
-		Data:   fmt.Sprintf("mute/%s/%s/%s", launch.Id, utils.ToggleBoolStateAsString[muted], notifType),
-	}
-
-	// Construct the keyboard and send-options
-	kb := [][]tb.InlineButton{{muteBtn}}
-	sendOptions := tb.SendOptions{
-		ParseMode:   "MarkdownV2",
-		ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
-	}
+	// Load keyboard
+	sendOptions, _ := tg.Template.Keyboard.Command.Expand(launch.Id, notification, muted)
 
 	// Edit message
 	sent, err := tg.Bot.Edit(cb.Message, newText, &sendOptions)
@@ -920,7 +893,7 @@ func (tg *TelegramBot) expandMessageContent(ctx tb.Context) error {
 }
 
 // Handles locations that the bot receives in a chat
-func (tg *TelegramBot) locationReplyHandler(ctx tb.Context) error {
+func (tg *Bot) locationReplyHandler(ctx tb.Context) error {
 	// Verify sender is an admin
 	if !tg.senderIsAdmin(ctx) {
 		log.Debug().Msg("Location sender is not an admin")
@@ -1005,7 +978,7 @@ func (tg *TelegramBot) locationReplyHandler(ctx tb.Context) error {
 	sendable.AddRecipient(chat, false)
 
 	// Add to send queue as high-priority
-	go tg.Queue.Enqueue(&sendable, tg, true)
+	go tg.Queue.Enqueue(&sendable, true)
 
 	// Delete the setup message
 	err := tg.Bot.Delete(tb.Editable(ctx.Message().ReplyTo))
@@ -1020,7 +993,7 @@ func (tg *TelegramBot) locationReplyHandler(ctx tb.Context) error {
 }
 
 // Handles migration service messages
-func (tg *TelegramBot) migrationHandler(ctx tb.Context) error {
+func (tg *Bot) migrationHandler(ctx tb.Context) error {
 	from, to := ctx.Migration()
 	log.Info().Msgf("Chat upgraded to a supergroup: migrating chat from %d to %d...", from, to)
 
@@ -1029,7 +1002,7 @@ func (tg *TelegramBot) migrationHandler(ctx tb.Context) error {
 }
 
 // Handles changes related to the bot's member status in a chat
-func (tg *TelegramBot) botMemberChangeHandler(ctx tb.Context) error {
+func (tg *Bot) botMemberChangeHandler(ctx tb.Context) error {
 	// Chat associated with this update
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
@@ -1043,7 +1016,7 @@ func (tg *TelegramBot) botMemberChangeHandler(ctx tb.Context) error {
 }
 
 // Edit a message following a callback, and handle any errors
-func (tg *TelegramBot) editCbMessage(cb *tb.Callback, text string, sendOptions tb.SendOptions) *tb.Message {
+func (tg *Bot) editCbMessage(cb *tb.Callback, text string, sendOptions tb.SendOptions) *tb.Message {
 	// Edit message
 	msg, err := tg.Bot.Edit(cb.Message, text, &sendOptions)
 
@@ -1058,7 +1031,7 @@ func (tg *TelegramBot) editCbMessage(cb *tb.Callback, text string, sendOptions t
 }
 
 // Responds to a callback with text, show alert if configured
-func (tg *TelegramBot) respondToCallback(ctx tb.Context, text string, showAlert bool) error {
+func (tg *Bot) respondToCallback(ctx tb.Context, text string, showAlert bool) error {
 	// Create callback response
 	cbResp := tb.CallbackResponse{
 		CallbackID: ctx.Callback().ID,
@@ -1071,7 +1044,7 @@ func (tg *TelegramBot) respondToCallback(ctx tb.Context, text string, showAlert 
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error responding to callback")
-		recoverable := handleTelegramError(nil, err, tg)
+		recoverable := handleTelegramError(ctx, err, tg)
 
 		if recoverable {
 			log.Error().Err(err).Msg("Recoverable error when responding to callback")
@@ -1082,14 +1055,14 @@ func (tg *TelegramBot) respondToCallback(ctx tb.Context, text string, showAlert 
 }
 
 // Attempt deleting the message associated with a context
-func (tg *TelegramBot) tryRemovingMessage(ctx tb.Context) {
+func (tg *Bot) tryRemovingMessage(ctx tb.Context) error {
 	// Get bot's member status
 	bot, err := tg.Bot.ChatMemberOf(ctx.Chat(), tg.Bot.Me)
 
 	if err != nil {
 		log.Error().Msg("Loading bot's permissions in chat failed")
 		handleTelegramError(ctx, err, tg)
-		return
+		return err
 	}
 
 	if bot.CanDeleteMessages {
@@ -1098,21 +1071,22 @@ func (tg *TelegramBot) tryRemovingMessage(ctx tb.Context) {
 	} else {
 		// If You're not allowed to do that, return
 		log.Debug().Msgf("Cannot delete messages in chat=%d", ctx.Chat().ID)
-		return
+		return errors.New("Cannot delete message in chat")
 	}
 
 	// Check errors
 	if err != nil {
 		log.Error().Msg("Deleting message sent by a non-admin failed")
 		handleTelegramError(ctx, err, tg)
-		return
+		return errors.New("Deleting message sent by a non-admin failed")
 	}
 
 	log.Debug().Msgf("Deleted message by non-admin in chat=%d", ctx.Chat().ID)
+	return nil
 }
 
 // Test notification sends
-func (tg *TelegramBot) fauxNotificationSender(ctx tb.Context) error {
+func (tg *Bot) fauxNotificationSender(ctx tb.Context) error {
 	// Admin-only function
 	if ctx.Message().Sender.ID != tg.Owner {
 		log.Error().Msgf("/test called by non-admin (%d)", ctx.Message().Sender.ID)
@@ -1127,7 +1101,7 @@ func (tg *TelegramBot) fauxNotificationSender(ctx tb.Context) error {
 
 	if len(testId) == 0 {
 		sendable := sendables.TextOnlySendable("No launch ID entered", chat)
-		go tg.Queue.Enqueue(sendable, tg, true)
+		go tg.Queue.Enqueue(sendable, true)
 		return nil
 	}
 
@@ -1180,15 +1154,20 @@ func (tg *TelegramBot) fauxNotificationSender(ctx tb.Context) error {
 		Message:  &msg, Recipients: subscribers,
 	}
 
-	// Add to send queue as a high-priority message
-	go tg.Queue.Enqueue(&sendable, tg, false)
+	// Add to send queue as a normal notification
+	go tg.Queue.Enqueue(&sendable, false)
 
 	return nil
 }
 
 // Return a chat user's admin status
 // FUTURE: cache, and keep track of member status changes as they happen
-func (tg *TelegramBot) senderIsAdmin(ctx tb.Context) bool {
+func (tg *Bot) senderIsAdmin(ctx tb.Context) bool {
+	// If not a group, return true
+	if !isGroup(ctx.Chat().Type) {
+		return true
+	}
+
 	// Load member
 	member, err := tg.Bot.ChatMemberOf(ctx.Chat(), ctx.Sender())
 
@@ -1201,13 +1180,18 @@ func (tg *TelegramBot) senderIsAdmin(ctx tb.Context) bool {
 	return member.Role == tb.Administrator || member.Role == tb.Creator
 }
 
-// Stat updater for pre-handler: update the field according to cmd/cb
-func (tg *TelegramBot) UpdateStats(chat *users.User, isCommand bool) {
+// Return true if chat is a group
+// TODO determine whether this works in channels or not
+func isGroup(chatType tb.ChatType) bool {
+	return chatType == tb.ChatGroup || chatType == tb.ChatSuperGroup
+}
+
+func (tg *Bot) interactionNotAllowed(ctx tb.Context, isCommand bool) error {
 	if isCommand {
-		chat.Stats.SentCommands++
-		tg.Stats.Commands++
-	} else {
-		chat.Stats.SentCallbacks++
-		tg.Stats.Callbacks++
+		// If a command, try removing the message
+		return tg.tryRemovingMessage(ctx)
 	}
+
+	// Otherwise, respond with a callback
+	return tg.respondToCallback(ctx, tg.Template.Messages.Service.InteractionNotAllowed(), true)
 }

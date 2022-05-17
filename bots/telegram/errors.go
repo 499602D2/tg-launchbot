@@ -1,4 +1,4 @@
-package bots
+package telegram
 
 import (
 	"fmt"
@@ -57,7 +57,7 @@ var (
 https://github.com/go-telebot/telebot/blob/v3.0.0/errors.go#L33
 */
 
-func errorMonitor(tg *TelegramBot, err error) {
+func errorMonitor(tg *Bot, err error) {
 	// Create a simple error message
 	errMsg := fmt.Sprintf("Unknown Telegram error: %#v", err.Error())
 	msg := sendables.Message{TextContent: errMsg, SendOptions: tb.SendOptions{}}
@@ -71,11 +71,11 @@ func errorMonitor(tg *TelegramBot, err error) {
 	sendable.AddRecipient(user, false)
 
 	// Enqueue message as high-priority
-	tg.Queue.Enqueue(&sendable, tg, true)
+	tg.Queue.Enqueue(&sendable, true)
 }
 
 /* Wrapper for warning of unhandled errors */
-func warnUnhandled(tg *TelegramBot, err error) {
+func warnUnhandled(tg *Bot, err error) {
 	log.Error().Err(err).Msg("Unhandled Telegram error")
 	errorMonitor(tg, err)
 }
@@ -89,7 +89,7 @@ Returns:
 
 // Handle errors associated with outgoing data, such as sends and edits
 // TODO use handleTelegramError by throwing chat ID at it
-func handleSendError(chatId int64, sent *tb.Message, err error, tg *TelegramBot) bool {
+func handleSendError(chatId int64, sent *tb.Message, err error, tg *Bot) bool {
 	// Load user
 	chat := tg.Cache.FindUser(fmt.Sprint(chatId), "tg")
 
@@ -134,7 +134,7 @@ func handleSendError(chatId int64, sent *tb.Message, err error, tg *TelegramBot)
 }
 
 // Handle errors associated with incoming requests
-func handleTelegramError(ctx tb.Context, err error, tg *TelegramBot) bool {
+func handleTelegramError(ctx tb.Context, err error, tg *Bot) bool {
 	// Load user
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
