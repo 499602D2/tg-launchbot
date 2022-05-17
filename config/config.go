@@ -23,7 +23,7 @@ import (
 type Session struct {
 	Telegram          *telegram.Bot                       // Telegram bot this session runs
 	Discord           *discord.Bot                        // Discord bot this session runs
-	Spam              *bots.AntiSpam                      // Anti-spam struct for session
+	Spam              *bots.Spam                          // Anti-spam struct for session
 	Config            *Config                             // Configuration for session
 	LaunchCache       *db.Cache                           // Launch cache
 	Db                *db.Database                        // Pointer to the database object

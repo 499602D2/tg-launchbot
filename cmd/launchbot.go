@@ -84,7 +84,7 @@ func initSession(version string) *config.Session {
 	session.LaunchCache.Database = session.Db
 
 	// Create and initialize the anti-spam system
-	session.Spam = &bots.AntiSpam{}
+	session.Spam = &bots.Spam{}
 	session.Spam.Initialize()
 
 	// Initialize the Telegram bot
