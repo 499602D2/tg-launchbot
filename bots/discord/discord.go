@@ -1,11 +1,13 @@
-package bots
+package discord
 
 import (
+	"launchbot/bots"
+
 	dg "github.com/bwmarrin/discordgo"
 )
 
-type DiscordBot struct {
+type Bot struct {
 	Bot   *dg.Session
-	Queue *Queue
+	Queue *bots.Queue
 	Owner string
 }
