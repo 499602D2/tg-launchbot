@@ -76,3 +76,19 @@ func (stats *Statistics) String(subscribers int) string {
 
 	return text
 }
+
+func (stats *Statistics) Update(isCommand bool) {
+	if isCommand {
+		stats.Commands++
+	} else {
+		stats.Callbacks++
+	}
+}
+
+func (userStats *User) Update(isCommand bool) {
+	if isCommand {
+		userStats.SentCommands++
+	} else {
+		userStats.SentCallbacks++
+	}
+}
