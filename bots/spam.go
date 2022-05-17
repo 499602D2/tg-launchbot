@@ -25,7 +25,7 @@ type Chat struct {
 	Limiter *rate.Limiter // Per-chat ratelimiter
 }
 
-// A call handled by preHandler
+// An interaction handled by preHandler
 type Interaction struct {
 	IsAdminOnly   bool
 	IsCommand     bool

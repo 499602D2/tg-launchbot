@@ -22,7 +22,7 @@ type HighPriorityQueue struct {
 	Mutex           sync.Mutex
 }
 
-// Adds a message to the Telegram message queue
+// Enqueues a message into a queue
 func (queue *Queue) Enqueue(sendable *sendables.Sendable, highPriority bool) {
 	// Unique ID for this sendable
 	uuid := uuid.NewV4().String()

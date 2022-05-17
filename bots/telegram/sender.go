@@ -62,8 +62,8 @@ func clearPriorityQueue(tg *Bot) {
 	tg.Queue.HighPriority.Mutex.Unlock()
 }
 
-// Delete a Telegram message
-func DeleteMessage(tg *Bot, sendable *sendables.Sendable, user *users.User) {
+// Delete a Telegram message with a chat ID and a message ID
+func DeleteNotificationMessage(tg *Bot, sendable *sendables.Sendable, user *users.User) {
 	// Load ID pair
 	msgId, ok := sendable.MessageIDs[user.Id]
 
@@ -173,7 +173,7 @@ func Sender(tg *Bot) {
 							user.Stats.ReceivedNotifications++
 						}
 					case "delete":
-						DeleteMessage(tg, sendable, user)
+						DeleteNotificationMessage(tg, sendable, user)
 					}
 
 					/* Periodically, during long sends, check if the TelegramBot.PriorityQueued is set.
