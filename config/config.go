@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"launchbot/bots"
+	"launchbot/bots/discord"
+	"launchbot/bots/telegram"
 	"launchbot/db"
 	"os"
 	"path/filepath"
@@ -19,8 +21,8 @@ import (
 
 // Session is a superstruct to simplify passing around other structs
 type Session struct {
-	Telegram          *bots.TelegramBot                   // Telegram bot this session runs
-	Discord           *bots.DiscordBot                    // Discord bot this session runs
+	Telegram          *telegram.Bot                       // Telegram bot this session runs
+	Discord           *discord.Bot                        // Discord bot this session runs
 	Spam              *bots.AntiSpam                      // Anti-spam struct for session
 	Config            *Config                             // Configuration for session
 	LaunchCache       *db.Cache                           // Launch cache

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"launchbot/api"
 	"launchbot/bots"
+	"launchbot/bots/telegram"
 	"launchbot/config"
 	"launchbot/db"
 	"launchbot/logs"
@@ -87,7 +88,7 @@ func initSession(version string) *config.Session {
 	session.Spam.Initialize()
 
 	// Initialize the Telegram bot
-	session.Telegram = &bots.TelegramBot{}
+	session.Telegram = &telegram.Bot{}
 	session.Telegram.Owner = session.Config.Owner
 	session.Telegram.Spam = session.Spam
 	session.Telegram.Cache = session.LaunchCache
@@ -190,8 +191,8 @@ func main() {
 	// Run scheduled jobs async
 	scheduler.StartAsync()
 
-	// Start the sender in a go-routine
-	go bots.TelegramSender(session.Telegram)
+	// Start the Telegram-sender in a go-routine
+	go telegram.Sender(session.Telegram)
 
 	// Start the bot in a go-routine
 	go session.Telegram.Bot.Start()
