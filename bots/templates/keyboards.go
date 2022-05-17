@@ -1,4 +1,4 @@
-package bots
+package templates
 
 /*
 	This module separates the ugly, space-intensive button generation code into its own file,
@@ -15,31 +15,31 @@ import (
 	tb "gopkg.in/telebot.v3"
 )
 
-// Main keyboard type
+// Keyboard template wrapper
 type Keyboard struct {
-	Settings Settings
-	Command  Command
+	Settings SettingsKeyboard
+	Command  CommandKeyboard
 }
 
-// Settings-related keyboards
-type Settings struct {
-	TimeZone     TimeZone
-	Subscription Subscription
+// Settings sub-sections
+type SettingsKeyboard struct {
+	TimeZone     TimeZoneKeyboard
+	Subscription SubscriptionKeyboard
 }
 
-// Extend Settings{} keyboards for time zone settings
-type TimeZone struct {
+// Extend Settings{} with time-zone settings
+type TimeZoneKeyboard struct {
 }
 
-// Extend Settings{} keyboards for subscription settings
-type Subscription struct {
+// Extend Settings{} with subscription settings
+type SubscriptionKeyboard struct {
 }
 
-// Keyboards for commands
-type Command struct {
+// Command templates
+type CommandKeyboard struct {
 }
 
-func (settings *Settings) Main(isGroup bool) (tb.SendOptions, [][]tb.InlineButton) {
+func (settings *SettingsKeyboard) Main(isGroup bool) (tb.SendOptions, [][]tb.InlineButton) {
 	subscribeBtn := tb.InlineButton{
 		Unique: "settings",
 		Text:   "🚀 Subscribe to launches",
@@ -83,7 +83,7 @@ func (settings *Settings) Main(isGroup bool) (tb.SendOptions, [][]tb.InlineButto
 	return sendOptions, kb
 }
 
-func (settings *Settings) Group(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
+func (settings *SettingsKeyboard) Group(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
 	// Map status of current command access to a button label
 	label := map[bool]string{
 		true:  "🔇 Disable user commands",
@@ -114,7 +114,7 @@ func (settings *Settings) Group(chat *users.User) (tb.SendOptions, [][]tb.Inline
 	return sendOptions, kb
 }
 
-func (settings *Settings) Notifications(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
+func (settings *SettingsKeyboard) Notifications(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
 	time24hBtn := tb.InlineButton{
 		Unique: "notificationToggle",
 		Text:   fmt.Sprintf("%s 24-hour", utils.BoolStateIndicator[chat.Enabled24h]),
@@ -163,7 +163,7 @@ func (settings *Settings) Notifications(chat *users.User) (tb.SendOptions, [][]t
 	return sendOptions, kb
 }
 
-func (tz *TimeZone) Main() (tb.SendOptions, [][]tb.InlineButton) {
+func (tz *TimeZoneKeyboard) Main() (tb.SendOptions, [][]tb.InlineButton) {
 	// Construct the keyboard and send-options
 	setBtn := tb.InlineButton{
 		Unique: "settings",
@@ -194,7 +194,7 @@ func (tz *TimeZone) Main() (tb.SendOptions, [][]tb.InlineButton) {
 	return sendOptions, kb
 }
 
-func (tz *TimeZone) Setup() (tb.SendOptions, [][]tb.InlineButton) {
+func (tz *TimeZoneKeyboard) Setup() (tb.SendOptions, [][]tb.InlineButton) {
 	kb := [][]tb.InlineButton{{
 		tb.InlineButton{
 			Unique: "settings",
@@ -213,7 +213,25 @@ func (tz *TimeZone) Setup() (tb.SendOptions, [][]tb.InlineButton) {
 	return sendOptions, kb
 }
 
-func (subscription *Subscription) Main(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
+func (tz *TimeZoneKeyboard) Deleted() (tb.SendOptions, [][]tb.InlineButton) {
+	retBtn := tb.InlineButton{
+		Unique: "settings",
+		Text:   "⬅️ Back to settings",
+		Data:   "set/main",
+	}
+
+	kb := [][]tb.InlineButton{{retBtn}}
+
+	sendOptions := tb.SendOptions{
+		ParseMode:             "MarkdownV2",
+		DisableWebPagePreview: true,
+		ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+	}
+
+	return sendOptions, kb
+}
+
+func (subscription *SubscriptionKeyboard) Main(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
 	// Has user enabled all notifications?
 	allEnabled := false
 
@@ -266,7 +284,7 @@ func (subscription *Subscription) Main(chat *users.User) (tb.SendOptions, [][]tb
 	return sendOptions, kb
 }
 
-func (subscription *Subscription) ByCountryCode(chat *users.User, cc string) (tb.SendOptions, [][]tb.InlineButton) {
+func (subscription *SubscriptionKeyboard) ByCountryCode(chat *users.User, cc string) (tb.SendOptions, [][]tb.InlineButton) {
 	// Status of all being enabled for this country code
 	allEnabled := true
 
@@ -324,7 +342,7 @@ func (subscription *Subscription) ByCountryCode(chat *users.User, cc string) (tb
 	return sendOptions, kb
 }
 
-func (command *Command) Statistics() (tb.SendOptions, [][]tb.InlineButton) {
+func (command *CommandKeyboard) Statistics() (tb.SendOptions, [][]tb.InlineButton) {
 	// Construct the keyboard and send-options
 	kb := [][]tb.InlineButton{{
 		tb.InlineButton{
@@ -342,7 +360,7 @@ func (command *Command) Statistics() (tb.SendOptions, [][]tb.InlineButton) {
 	return sendOptions, kb
 }
 
-func (command *Command) Start() (tb.SendOptions, [][]tb.InlineButton) {
+func (command *CommandKeyboard) Start() (tb.SendOptions, [][]tb.InlineButton) {
 	// Set buttons
 	settingsBtn := tb.InlineButton{
 		Unique: "settings",
@@ -360,7 +378,7 @@ func (command *Command) Start() (tb.SendOptions, [][]tb.InlineButton) {
 	return sendOptions, kb
 }
 
-func (command *Command) Schedule(mode string) (tb.SendOptions, [][]tb.InlineButton) {
+func (command *CommandKeyboard) Schedule(mode string) (tb.SendOptions, [][]tb.InlineButton) {
 	// Refresh button (schedule/refresh/mode)
 	updateBtn := tb.InlineButton{
 		Unique: "schedule",
@@ -396,7 +414,7 @@ func (command *Command) Schedule(mode string) (tb.SendOptions, [][]tb.InlineButt
 	return sendOptions, kb
 }
 
-func (command *Command) Next(index int, cacheLength int) (tb.SendOptions, [][]tb.InlineButton) {
+func (command *CommandKeyboard) Next(index int, cacheLength int) (tb.SendOptions, [][]tb.InlineButton) {
 	// Create return kb
 	var kb [][]tb.InlineButton
 
@@ -463,6 +481,24 @@ func (command *Command) Next(index int, cacheLength int) (tb.SendOptions, [][]tb
 		// Construct the keyboard
 		kb = [][]tb.InlineButton{{prevBtn, nextBtn}, {returnBtn, refreshBtn}}
 	}
+
+	sendOptions := tb.SendOptions{
+		ParseMode:   "MarkdownV2",
+		ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
+	}
+
+	return sendOptions, kb
+}
+
+func (command *CommandKeyboard) Expand(id string, notification string, muted bool) (tb.SendOptions, [][]tb.InlineButton) {
+	muteBtn := tb.InlineButton{
+		Unique: "muteToggle",
+		Text:   map[bool]string{true: "🔊 Unmute launch", false: "🔇 Mute launch"}[muted],
+		Data:   fmt.Sprintf("mute/%s/%s/%s", id, utils.ToggleBoolStateAsString[muted], notification),
+	}
+
+	// Construct the keyboard and send-options
+	kb := [][]tb.InlineButton{{muteBtn}}
 
 	sendOptions := tb.SendOptions{
 		ParseMode:   "MarkdownV2",
