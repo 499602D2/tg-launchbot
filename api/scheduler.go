@@ -152,7 +152,7 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 		log.Info().Msgf("[%d] Creating sendable for launch with name=%s", i+1, launch.Name)
 
 		sendable := Notify(launch, session.Db)
-		session.Telegram.Queue.Enqueue(sendable, session.Telegram, false)
+		session.Telegram.Queue.Enqueue(sendable, false)
 	}
 
 	return true
