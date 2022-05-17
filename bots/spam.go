@@ -14,16 +14,14 @@ import (
 
 // In-memory struct keeping track of banned chats and per-chat activity
 type Spam struct {
-	ChatBanned               map[*users.User]bool    // Simple "if ChatBanned[chat] { do }" checks
-	ChatBannedUntilTimestamp map[*users.User]int64   // How long banned chats are banned for
-	ChatLogs                 map[*users.User]ChatLog // Map chat ID to a ChatLog struct
-	Rules                    map[string]int64        // Arbitrary rules for code flexibility
-	Limiter                  *rate.Limiter           // Main rate-limiter
-	Mutex                    sync.Mutex              // Mutex to avoid concurrent map writes
+	Chats   map[*users.User]Chat // Map chat ID to a per-chat spam struct
+	Rules   map[string]int64     // Arbitrary rules for code flexibility
+	Limiter *rate.Limiter        // Main rate-limiter
+	Mutex   sync.Mutex           // Mutex to avoid concurrent map writes
 }
 
 // Per-chat struct keeping track of activity for spam management
-type ChatLog struct {
+type Chat struct {
 	Limiter *rate.Limiter // Per-chat ratelimiter
 }
 
@@ -39,10 +37,8 @@ type Interaction struct {
 
 // Initialize the spam struct
 func (spam *Spam) Initialize() {
-	// Create all maps for the spam struct
-	spam.ChatBannedUntilTimestamp = make(map[*users.User]int64)
-	spam.ChatLogs = make(map[*users.User]ChatLog)
-	spam.ChatBanned = make(map[*users.User]bool)
+	// Create maps for the spam struct
+	spam.Chats = make(map[*users.User]Chat)
 	spam.Rules = make(map[string]int64)
 
 	// Enforce a global rate-limiter: sustain 25 msg/sec, with 30 msg/sec bursts
@@ -54,20 +50,20 @@ func (spam *Spam) Initialize() {
 // can be sent to one chat.
 func (spam *Spam) UserLimiter(user *users.User, tokens int) {
 	// If limiter doesn't exist, create it
-	if spam.ChatLogs[user].Limiter == nil {
+	if spam.Chats[user].Limiter == nil {
 		spam.Mutex.Lock()
 
 		// Load user's chatLog, assign new limiter, save back
-		chatLog := spam.ChatLogs[user]
+		chatLog := spam.Chats[user]
 		chatLog.Limiter = rate.NewLimiter(rate.Every(time.Second*3), 2)
-		spam.ChatLogs[user] = chatLog
+		spam.Chats[user] = chatLog
 
 		spam.Mutex.Unlock()
 	}
 
 	// Wait until we can take as many tokens as we need
 	start := time.Now()
-	err := spam.ChatLogs[user].Limiter.WaitN(context.Background(), tokens)
+	err := spam.Chats[user].Limiter.WaitN(context.Background(), tokens)
 
 	// TODO track average time user-limiter runs for? Track secs + run count -> mean + avg
 	log.Debug().Msgf("-> Limiter executed after %s", durafmt.Parse(time.Since(start)).LimitFirstN(1))
