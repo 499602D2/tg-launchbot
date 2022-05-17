@@ -2,13 +2,14 @@ package bots
 
 import (
 	"context"
+	"launchbot/stats"
 	"launchbot/users"
 	"sync"
 	"time"
 
+	"github.com/hako/durafmt"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/time/rate"
-	tb "gopkg.in/telebot.v3"
 )
 
 // In-memory struct keeping track of banned chats and per-chat activity
@@ -26,6 +27,16 @@ type ChatLog struct {
 	Limiter *rate.Limiter // Per-chat ratelimiter
 }
 
+// A call handled by preHandler
+type Interaction struct {
+	IsAdminOnly   bool
+	IsCommand     bool
+	IsGroup       bool   // Called from a group?
+	CallerIsAdmin bool   // Is the caller an admin?
+	Name          string // Name of command or callback
+	Tokens        int    // Token-count this call requires
+}
+
 // Initialize the spam struct
 func (spam *AntiSpam) Initialize() {
 	// Create all maps for the spam struct
@@ -35,6 +46,7 @@ func (spam *AntiSpam) Initialize() {
 	spam.Rules = make(map[string]int64)
 
 	// Enforce a global rate-limiter: sustain 25 msg/sec, with 30 msg/sec bursts
+	// A change of 5 msg/sec is 300 more messages in a minute (!)
 	spam.Limiter = rate.NewLimiter(25, 30)
 }
 
@@ -54,7 +66,11 @@ func (spam *AntiSpam) UserLimiter(user *users.User, tokens int) {
 	}
 
 	// Wait until we can take as many tokens as we need
+	start := time.Now()
 	err := spam.ChatLogs[user].Limiter.WaitN(context.Background(), tokens)
+
+	// TODO track average time user-limiter runs for? Track secs + run count -> mean + avg
+	log.Debug().Msgf("-> Limiter executed after %s", durafmt.Parse(time.Since(start)).LimitFirstN(1))
 
 	if err != nil {
 		log.Error().Err(err).Msgf("Error using chat's Limiter.Wait()")
@@ -74,40 +90,38 @@ func (spam *AntiSpam) GlobalLimiter(tokens int) {
 
 // A wrapper method to run both the global and user limiter at once
 func (spam *AntiSpam) RunBothLimiters(user *users.User, tokens int) {
-	spam.GlobalLimiter(tokens)
+	// The user-limiter is ran first, as it's far more restricting
 	spam.UserLimiter(user, tokens)
-}
-
-// Return true if chat is a group
-func isGroup(chatType tb.ChatType) bool {
-	return chatType == tb.ChatGroup || chatType == tb.ChatSuperGroup
+	spam.GlobalLimiter(tokens)
 }
 
 // When an interaction is received, ensure the sender is qualified for it
-func PreHandler(tg *TelegramBot, chat *users.User, ctx tb.Context, tokens int, adminOnly bool, isCommand bool, cmdName string) bool {
-	if isGroup(ctx.Chat().Type) {
+func (spam *AntiSpam) PreHandler(interaction *Interaction, chat *users.User, stats *stats.Statistics) bool {
+	if interaction.IsGroup {
 		// In groups, we need to ensure that regular users cannot do funny things
-		if adminOnly || !chat.AnyoneCanSendCommands {
+		if interaction.IsAdminOnly || !chat.AnyoneCanSendCommands {
 			// Admin-only interaction, or group doesn't allow users to interact with the bot
-			if !tg.senderIsAdmin(ctx) {
-				if isCommand {
-					tg.tryRemovingMessage(ctx)
+			if !interaction.CallerIsAdmin {
+				if interaction.IsCommand {
+					// Run the global limiter for message deletions, as they're trivial to spam.
+					// Callbacks show an alert, which slows users down enough.
+					spam.GlobalLimiter(1)
 				}
-
-				// Don't run user-limiter, as otherwise users can spam the chat out of their tokens
-				tg.Spam.GlobalLimiter(1)
 
 				return false
 			}
 		}
 	}
 
-	// Processing allowed: save statistics
-	if cmdName != "stats" || isCommand {
-		tg.UpdateStats(chat, isCommand)
+	// Ensure command counter cannot be iterated by spamming the stats refresh button
+	if interaction.Name != "stats" || interaction.IsCommand {
+		// Processing allowed: save statistics (global stats + user's stats)
+		stats.Update(interaction.IsCommand)
+		chat.Stats.Update(interaction.IsCommand)
 	}
 
-	// FUTURE: ensure message initiator is same as callback sender (send command replies with replyTo parameter?)
-	tg.Spam.RunBothLimiters(chat, tokens)
+	// Run both limiters for successful requests
+	spam.RunBothLimiters(chat, interaction.Tokens)
+
 	return true
 }
