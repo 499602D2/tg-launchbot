@@ -55,6 +55,7 @@ type UserList struct {
 	Mutex    sync.Mutex
 }
 
+// Toggle mute for launch with id
 func (user *User) ToggleLaunchMute(id string, toggleTo bool) bool {
 	// Verify the new state does not match the existing state
 	if toggleTo == user.HasMutedLaunch(id) {
@@ -137,6 +138,7 @@ func (user *User) GetNotificationStates() ([]int, []int) {
 	return enabledIds, disabledIds
 }
 
+// Get an id:enabled_bool map for all launch provider IDs for this user
 func (user *User) GetNotificationStateMap() map[int]bool {
 	enabled, disabled := user.GetNotificationStates()
 	stateMap := map[int]bool{}
@@ -168,15 +170,17 @@ func (user *User) GetNotificationStatusById(id int) bool {
 	return false
 }
 
+// Set the SubscribedAll flag for a user, and do some special handling
 func (user *User) SetAllFlag(newState bool) {
 	// Flip the flag
 	user.SubscribedAll = newState
 
-	// Remove any manually set IDs
+	// Default manual fields: nothing is unsubscribed from, and everything is subscribed to
 	user.SubscribedTo = ""
 	user.UnsubscribedFrom = ""
 }
 
+// Toggle a single notification-time subscription status
 func (user *User) SetNotificationTimeFlag(flagName string, newState bool) {
 	switch flagName {
 	case "24h":
@@ -189,9 +193,12 @@ func (user *User) SetNotificationTimeFlag(flagName string, newState bool) {
 		user.Enabled5min = newState
 	case "postpone":
 		user.EnabledPostpone = newState
+	default:
+		log.Warn().Msgf("Invalid flag in SetNotificationTimeFlag: %s", flagName)
 	}
 
 	// Disable postpone notifications if user disables all other notification types
+	// User can still explicitly enable only postpone notifications.
 	if !user.Enabled24h && !user.Enabled12h && !user.Enabled1h && !user.Enabled5min {
 		if flagName != "postpone" {
 			user.EnabledPostpone = false
@@ -199,10 +206,12 @@ func (user *User) SetNotificationTimeFlag(flagName string, newState bool) {
 	}
 }
 
+// Has user subscribed to all notification times?
 func (user *User) AllNotificationTimesEnabled() bool {
 	return user.Enabled24h && user.Enabled12h && user.Enabled1h && user.Enabled5min && user.EnabledPostpone
 }
 
+// Toggle subscription status for a list of launch provider IDs
 func (user *User) ToggleIdSubscription(ids []string, newState bool) {
 	// Load notification states as a map of id:bool for easy updates
 	stateMap := user.GetNotificationStateMap()
@@ -222,6 +231,7 @@ func (user *User) ToggleIdSubscription(ids []string, newState bool) {
 	user.SaveFromMap(stateMap)
 }
 
+// Toggle the status of a command permission flag
 func (user *User) ToggleCommandPermissionStatus(permission string, newState bool) {
 	switch permission {
 	case "all":
