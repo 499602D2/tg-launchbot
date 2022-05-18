@@ -89,12 +89,14 @@ func (cache *Cache) FlushUser(id string, platform string) {
 	// Checks if the chat ID already exists
 	i := sort.SearchStrings(userCache.InCache, id)
 
-	if i < userCache.Count && userCache.Users[i].Id == id {
-		// User is in cache: flush from list of user pointers
-		userCache.Users = append(userCache.Users[:i], userCache.Users[i+1:]...)
+	if len(userCache.InCache) > 0 {
+		if i < userCache.Count && userCache.Users[i].Id == id {
+			// User is in cache: flush from list of user pointers
+			userCache.Users = append(userCache.Users[:i], userCache.Users[i+1:]...)
 
-		// Flush from slice of user IDs in cache
-		userCache.InCache = append(userCache.InCache[:i], userCache.InCache[i+1:]...)
+			// Flush from slice of user IDs in cache
+			userCache.InCache = append(userCache.InCache[:i], userCache.InCache[i+1:]...)
+		}
 	}
 }
 
@@ -117,7 +119,7 @@ func (db *Database) LoadUser(id string, platform string) *users.User {
 		return &user
 	case gorm.ErrRecordNotFound:
 		// Record doesn't exist: insert as new
-		log.Info().Msgf("Chat not found in db: inserting as new with id=%s", user.Id)
+		log.Debug().Msgf("Chat not found in db: inserting as new with id=%s", user.Id)
 		result = db.Conn.Create(&user)
 	default:
 		// Other error: log
