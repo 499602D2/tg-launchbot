@@ -37,11 +37,14 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 	// Set userCache ptr
 	userCache := cache.Users
 
+	log.Debug().Msgf("Finding user=%s from cache", id)
+
 	// Checks if the chat ID already exists
 	i := sort.SearchStrings(userCache.InCache, id)
 
+	log.Debug().Msgf("Got index: %d", i)
 	if len(userCache.InCache) > 0 {
-		if i < userCache.Count && userCache.Users[i].Id == id {
+		if i < len(userCache.InCache) && userCache.Users[i].Id == id {
 			// User is in cache, return
 			return userCache.Users[i]
 		}
@@ -54,8 +57,10 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 	userCache.Mutex.Lock()
 	defer userCache.Mutex.Unlock()
 
+	log.Debug().Msgf("User not in cache: inserting...")
+
 	// Add user to cache so that the cache stays ordered
-	if userCache.Count == i {
+	if len(userCache.InCache) == i {
 		// Nil or empty slice, or after last element
 		userCache.Users = append(userCache.Users, user)
 		userCache.InCache = append(userCache.InCache, user.Id)
@@ -72,8 +77,9 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 		userCache.InCache[i] = user.Id
 	}
 
+	log.Debug().Msgf("User inserted")
+
 	// log.Debug().Msgf("Added chat=%s:%s to cache", userCache.Users[i].Id, userCache.Users[i].Platform)
-	userCache.Count++
 	return user
 }
 
@@ -83,14 +89,15 @@ func (cache *Cache) FlushUser(id string, platform string) {
 	cache.Users.Mutex.Lock()
 	defer cache.Users.Mutex.Unlock()
 
-	// Extract current cache
+	// Pointer to the user-cache
 	userCache := cache.Users
 
 	// Checks if the chat ID already exists
 	i := sort.SearchStrings(userCache.InCache, id)
 
+	log.Debug().Msgf("Flushing user=%s at idx=%d", id, i)
 	if len(userCache.InCache) > 0 {
-		if i < userCache.Count && userCache.Users[i].Id == id {
+		if i < len(userCache.InCache) && userCache.Users[i].Id == id {
 			// User is in cache: flush from list of user pointers
 			userCache.Users = append(userCache.Users[:i], userCache.Users[i+1:]...)
 
@@ -98,6 +105,7 @@ func (cache *Cache) FlushUser(id string, platform string) {
 			userCache.InCache = append(userCache.InCache[:i], userCache.InCache[i+1:]...)
 		}
 	}
+	log.Debug().Msgf("Flushed user=%s", id)
 }
 
 // Load a user from the database. If the user is not found, initialize it in
@@ -165,6 +173,7 @@ func (db *Database) SaveUser(user *users.User) {
 func (db *Database) RemoveUser(user *users.User) {
 	// Do an unscoped delete so we aren't left with ghost entries
 	result := db.Conn.Unscoped().Delete(user)
+
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msgf("Error deleting user=%s:%s",
 			user.Id, user.Platform)

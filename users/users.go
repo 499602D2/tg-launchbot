@@ -43,7 +43,6 @@ type UserTime struct {
 type UserCache struct {
 	Users   []*User
 	InCache []string
-	Count   int
 	Mutex   sync.Mutex
 }
 

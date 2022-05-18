@@ -76,7 +76,7 @@ func initSession(version string) *config.Session {
 		Launches:  []*db.Launch{},
 		LaunchMap: make(map[string]*db.Launch)}
 
-	session.LaunchCache.Users = &users.UserCache{Count: 0}
+	session.LaunchCache.Users = &users.UserCache{}
 
 	// Open database (TODO remove owner tag)
 	session.Db = &db.Database{Owner: session.Config.Owner, Cache: session.LaunchCache}
