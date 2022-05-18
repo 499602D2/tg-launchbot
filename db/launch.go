@@ -261,7 +261,8 @@ func (launch *Launch) NotificationMessage(notifType string, expanded bool) strin
 	}[notifType]
 
 	if !ok {
-		log.Warn().Msgf("%s not found when mapping notif.Type to header", notifType)
+		log.Warn().Msgf("%s not found when mapping notif.Type to header in NotificationMessage (%s)",
+			notifType, launch.Slug)
 	}
 
 	// If notification type is 5-minute, use real launch time for clarity
@@ -333,6 +334,32 @@ func (launch *Launch) NotificationMessage(notifType string, expanded bool) strin
 	}
 
 	return text
+}
+
+func (launch *Launch) TelegramNotificationKeyboard(notificationType string) [][]tb.InlineButton {
+	// Construct the keeb
+	kb := [][]tb.InlineButton{}
+
+	// Notification is only sent to users that don't have the launch muted
+	muteBtn := tb.InlineButton{
+		Unique: "muteToggle",
+		Text:   "🔇 Mute launch",
+		Data:   fmt.Sprintf("mute/%s/1/%s", launch.Id, notificationType),
+	}
+
+	kb = append(kb, []tb.InlineButton{muteBtn})
+
+	if launch.Mission.Description != "" {
+		expandBtn := tb.InlineButton{
+			Unique: "expand",
+			Text:   "ℹ️ Expand description",
+			Data:   fmt.Sprintf("exp/%s/%s", launch.Id, notificationType),
+		}
+
+		kb = append(kb, []tb.InlineButton{expandBtn})
+	}
+
+	return kb
 }
 
 // Creates a schedule message from the launch cache
@@ -654,6 +681,7 @@ func (launch *Launch) NextNotification(db *Database) Notification {
 
 			// Sent is false and has not been missed: return type
 			notifType = strings.ReplaceAll(notifType, "Sent", "")
+
 			return Notification{
 				Type: notifType, SendTime: sendTime, LaunchId: launch.Id,
 				LaunchName: launch.Name, Count: 1,

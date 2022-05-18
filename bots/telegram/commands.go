@@ -938,24 +938,9 @@ func (tg *Bot) fauxNotification(ctx tb.Context) error {
 	}
 
 	notifType := "1h"
+
 	text := launch.NotificationMessage(notifType, false)
-
-	muteBtn := tb.InlineButton{
-		Unique: "muteToggle",
-		Text:   "🔇 Mute launch",
-		Data:   fmt.Sprintf("mute/%s/1/%s", launch.Id, notifType),
-	}
-
-	expandBtn := tb.InlineButton{
-		Unique: "expand",
-		Text:   "ℹ️ Expand description",
-		Data:   fmt.Sprintf("exp/%s/%s", launch.Id, notifType),
-	}
-
-	// Construct the keeb
-	kb := [][]tb.InlineButton{
-		{muteBtn}, {expandBtn},
-	}
+	kb := launch.TelegramNotificationKeyboard(notifType)
 
 	// Message
 	msg := sendables.Message{

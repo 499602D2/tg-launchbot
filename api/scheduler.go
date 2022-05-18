@@ -21,27 +21,10 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 
 	// Text content of the notification
 	text := launch.NotificationMessage(thisNotif.Type, false)
+	kb := launch.TelegramNotificationKeyboard(thisNotif.Type)
 
 	// FUTURE make launch.NotificationMessage produce sendables for multiple platforms
 	// V3.1+
-
-	// Notification is only sent to users that don't have the launch muted
-	muteBtn := tb.InlineButton{
-		Unique: "muteToggle",
-		Text:   "🔇 Mute launch",
-		Data:   fmt.Sprintf("mute/%s/1/%s", launch.Id, thisNotif.Type),
-	}
-
-	expandBtn := tb.InlineButton{
-		Unique: "expand",
-		Text:   "ℹ️ Expand description",
-		Data:   fmt.Sprintf("exp/%s/%s", launch.Id, thisNotif.Type),
-	}
-
-	// Construct the keeb
-	kb := [][]tb.InlineButton{
-		{muteBtn}, {expandBtn},
-	}
 
 	// Message
 	msg := sendables.Message{
@@ -62,6 +45,7 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 
 	// Get list of recipients
 	platform := "tg"
+	log.Debug().Msgf("Calling NotificationRecipients from scheduler.Notify()")
 	recipients := launch.NotificationRecipients(database, thisNotif.Type, platform)
 
 	// Create sendable
@@ -155,6 +139,9 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 		session.Telegram.Queue.Enqueue(sendable, false)
 	}
 
+	log.Debug().Msgf("notificationWrapper exiting normally: running scheduler...")
+	Scheduler(session, false)
+
 	return true
 }
 
@@ -172,6 +159,7 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification, 
 
 	// Check if a task has been scheduled for this time instance
 	scheduled, ok := session.NotificationTasks[scheduledTime]
+
 	if ok {
 		log.Warn().Msgf("Found already scheduled task for this send-time: %+v", scheduled)
 	}
@@ -179,14 +167,16 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification, 
 	// Create task
 	task, err := session.Scheduler.Schedule(func(ctx context.Context) {
 		// Run notification sender
-		notificationWrapper(session, notifTime.IDs, refresh)
+		success := notificationWrapper(session, notifTime.IDs, refresh)
+
+		log.Debug().Msgf("NotificationScheduler task: notificationWrapper returned %v", success)
 
 		// Schedule next API update with some margin for an API call
-		Scheduler(session, false)
+		// Scheduler(session, false)
 	}, chrono.WithTime(scheduledTime))
 
 	if err != nil {
-		log.Error().Err(err).Msg("Error creating notification task")
+		log.Error().Err(err).Msg("Error creating notification task!")
 		return false
 	}
 
@@ -198,9 +188,8 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification, 
 
 	session.Mutex.Unlock()
 
-	until := time.Until(scheduledTime)
-	log.Debug().Msgf("Notifications scheduled for %d launch(es), in %s",
-		len(notifTime.IDs), until.String())
+	log.Info().Msgf("Notifications scheduled for %d launch(es), in %s",
+		len(notifTime.IDs), durafmt.Parse(time.Until(scheduledTime)).LimitFirstN(2))
 
 	return true
 }
