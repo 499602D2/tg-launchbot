@@ -110,6 +110,7 @@ func (launch *Launch) AnyStatesResetByNetSlip(slip int64) (bool, map[string]bool
 
 // Gets all notification recipients for this notification
 func (launch *Launch) NotificationRecipients(db *Database, notificationType string, platform string) []*users.User {
+	// Load users from database
 	usersWithNotificationEnabled := []*users.User{}
 
 	// Map notification type to a database table name
@@ -120,6 +121,9 @@ func (launch *Launch) NotificationRecipients(db *Database, notificationType stri
 	} else {
 		tableNotifType = fmt.Sprintf("enabled%s", notificationType)
 	}
+
+	log.Debug().Msgf("NotificationRecipients() called with notificationType=%s, platform=%s (launch=%s)",
+		notificationType, platform, launch.Slug)
 
 	// Get all chats that have this notification type enabled
 	result := db.Conn.Model(&users.User{}).Where(
@@ -152,6 +156,7 @@ func (launch *Launch) NotificationRecipients(db *Database, notificationType stri
 		recipients = append(recipients, user)
 	}
 
+	log.Debug().Msgf("%d recipient(s) loaded for launch=%s", len(recipients), launch.Slug)
 	return recipients
 }
 

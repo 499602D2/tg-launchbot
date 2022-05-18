@@ -13,11 +13,12 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/hako/durafmt"
 	"github.com/rs/zerolog/log"
 )
 
 // Performs an LL2 API call
-func apiCall(client *resty.Client, useDevEndpoint bool) (db.LaunchUpdate, error) {
+func apiCall(client *resty.Client, useDevEndpoint bool) (*db.LaunchUpdate, error) {
 	const apiVersion = "2.2.0"
 	const requestPath = "launch/upcoming"
 	const apiParams = "mode=detailed&limit=30"
@@ -42,13 +43,13 @@ func apiCall(client *resty.Client, useDevEndpoint bool) (db.LaunchUpdate, error)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error performing GET request")
-		return db.LaunchUpdate{}, err
+		return &db.LaunchUpdate{}, err
 	}
 
 	// Check status code
 	if resp.StatusCode() != 200 {
 		err = errors.New(fmt.Sprintf("Status code != 200 (code %d)", resp.StatusCode()))
-		return db.LaunchUpdate{}, err
+		return &db.LaunchUpdate{}, err
 	}
 
 	// Unmarshal into a launch update struct
@@ -57,54 +58,81 @@ func apiCall(client *resty.Client, useDevEndpoint bool) (db.LaunchUpdate, error)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error unmarshaling JSON")
-		return db.LaunchUpdate{}, err
+		return &db.LaunchUpdate{}, err
 	}
 
-	// Set update count manually
-	update.Count = len(update.Launches)
-
-	return update, nil
+	return &update, nil
 }
 
-// Handles the API request flow, requesting new data and updating
-// the cached and on-disk data.
-func Updater(session *config.Session, scheduleNext bool) bool {
-	log.Debug().Msg("Starting LL2 API updater...")
+// Function that chrono calls when a scheduled API update runs.
+func updateWrapper(session *config.Session, scheduleNext bool) {
+	log.Debug().Msgf("Running updateWrapper with scheduleNext=%v", scheduleNext)
 
+	// Run updater in a re-try loop
+	for i := 0; ; i++ {
+		// Check for success
+		success := Updater(session, scheduleNext)
+
+		if !success {
+			// If updater failed, do exponential back-off
+			retryAfter := 60*2 ^ i
+
+			log.Warn().Msgf("Re-try number %d failed, trying again in %d minutes", i, retryAfter)
+
+			// Sleep, continue loop
+			time.Sleep(time.Duration(retryAfter) * time.Second)
+			continue
+		}
+
+		if i > 0 {
+			log.Debug().Msgf("Update succeeded after %d attempt(s)", i+1)
+		}
+
+		break
+	}
+
+	log.Debug().Msgf("updateWrapper finished successfully")
+}
+
+// Handles the API request flow, requesting new data and updating the cached and on-disk data.
+func Updater(session *config.Session, scheduleNext bool) bool {
 	// Create http-client
 	client := resty.New()
 	client.SetTimeout(time.Duration(1 * time.Minute))
 	client.SetHeader("user-agent", "github.com/499602D2/launchbot-go")
 
 	// Do API call
+	log.Info().Msg("Running LL2 API updater...")
 	update, err := apiCall(client, session.UseDevEndpoint)
 
 	// TODO use api.errors
 	if err != nil || len(update.Launches) == 0 {
-		log.Error().Err(err).Msg("Error performing API update")
+		apiErrorHandler(err)
 		return false
 	}
 
 	// Parse any relevant data before dumping to disk
-	launches, postponedLaunches, err := parseLaunchUpdate(session.LaunchCache, &update)
+	parseStartTime := time.Now()
+	launches, postponedLaunches, err := parseLaunchUpdate(session.LaunchCache, update)
 
-	log.Debug().Msgf("Launch update parsed (%d launches)", update.Count)
+	log.Debug().Msgf("➙ Launch update parsed in %s (%d launches)",
+		durafmt.Parse(time.Since(parseStartTime)).LimitFirstN(1), len(update.Launches))
 
 	if err != nil {
-		log.Error().Err(err).Msg("Error parsing launch update")
+		log.Error().Err(err).Msg("➙ Error parsing launch update")
 		return false
 	}
 
 	// Update hot launch cache
 	session.LaunchCache.Update(launches)
-	log.Debug().Msg("Hot launch cache updated")
+	log.Debug().Msg("➙ Hot launch cache updated")
 
 	// Update on-disk database
 	err = session.Db.Update(launches, true, true)
-	log.Info().Msg("Launch database updated")
+	log.Info().Msg("➙ Launch database updated")
 
 	if err != nil {
-		log.Error().Err(err).Msg("Error inserting launches to database")
+		log.Error().Err(err).Msg("➙ Error inserting launches to database")
 		return false
 	}
 
@@ -112,13 +140,13 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	err = session.Db.CleanSlippedLaunches()
 
 	if err != nil {
-		log.Error().Err(err).Msg("Error cleaning launch database")
+		log.Error().Err(err).Msg("➙ Error cleaning launch database")
 		return false
 	}
 
 	// If launches were postponed, notify
 	if len(postponedLaunches) != 0 {
-		log.Info().Msgf("%d launches were postponed", len(postponedLaunches))
+		log.Info().Msgf("➙ %d launches were postponed", len(postponedLaunches))
 		for launch, postpone := range postponedLaunches {
 			// Create sendable for this postpone
 			sendable := launch.PostponeNotificationSendable(session.Db, postpone, "tg")
@@ -127,7 +155,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 			session.Telegram.Queue.Enqueue(sendable, false)
 		}
 	} else {
-		log.Debug().Msg("No launches were postponed")
+		log.Debug().Msg("➙ No launches were postponed")
 	}
 
 	// Save stats
@@ -139,30 +167,4 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	}
 
 	return true
-}
-
-// Function that chrono calls when a scheduled API update runs.
-func updateWrapper(session *config.Session, scheduleNext bool) {
-	log.Info().Msgf("Running scheduled update...")
-
-	// Check return value of updater
-	success := Updater(session, scheduleNext)
-
-	if !success {
-		log.Warn().Msg("Updater failed: re-trying in 60 seconds...")
-
-		// Retry twice
-		for i := 1; ; i++ {
-			success = Updater(session, scheduleNext)
-
-			if !success {
-				retryAfter := 60*i ^ 2
-				log.Warn().Msgf("Re-try number %d failed, trying again in %d minutes", i, retryAfter)
-				time.Sleep(time.Duration(retryAfter) * time.Second)
-			} else {
-				log.Info().Msgf("Success after %d retries", i)
-				break
-			}
-		}
-	}
 }

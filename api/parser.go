@@ -11,16 +11,15 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// GetHighestPriorityVideoLink finds the highest-priority link for the launch
-func GetHighestPriorityVideoLink(links []db.ContentURL) *db.ContentURL {
+// Finds the highest-priority link for the launch
+func getHighestPriorityVideoLink(links []db.ContentURL) *db.ContentURL {
 	// If no links available, return a nil
 	if len(links) == 0 {
 		return &db.ContentURL{}
 	}
 
 	// The highest-priority link has the lowest value for priority-field
-	highestPriorityIndex := 0
-	highestPriority := -1
+	highestPriorityIndex, highestPriority := 0, -1
 
 	for idx, link := range links {
 		if link.Priority < highestPriority || highestPriority == -1 {
@@ -33,8 +32,8 @@ func GetHighestPriorityVideoLink(links []db.ContentURL) *db.ContentURL {
 }
 
 // Checks if the NET of a launch slipped from one update to another.
-// Returns a bool indicating if this happened, and a Postpone{} characterizing the slip
-func netSlipped(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
+// Returns a bool indicating if this happened, and a Postpone{} characterizing the NET slip.
+func netParser(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
 	/* Launch not found in cache, check on disk
 
 	The launch could have e.g. launched between the two checks, and might thus
@@ -42,6 +41,8 @@ func netSlipped(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
 	cacheLaunch, ok := cache.LaunchMap[freshLaunch.Id]
 
 	if !ok {
+		// Typically, a launch is not cached if it has slipped outside of range, or has already launched.
+		// This also frequently occurs when switching back and forth between the main- and dev-endpoint of LL2.
 		if time.Now().Unix() > freshLaunch.NETUnix {
 			log.Debug().Msgf("(OK) Launch is in the past, and not found in cache slug=%s", freshLaunch.Slug)
 		} else {
@@ -57,6 +58,7 @@ func netSlipped(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
 
 		// If no notifications have been sent, the postponement does not matter
 		if !cacheLaunch.NotificationState.AnyNotificationsSent() {
+			log.Debug().Msgf("Launch NETs don't match, but no notifications have been sent: returning false")
 			return false, db.Postpone{}
 		}
 
@@ -64,8 +66,11 @@ func netSlipped(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
 		anyReset, resetStates := cacheLaunch.AnyStatesResetByNetSlip(netSlip)
 		if anyReset {
 			// Launch had one or more notification states reset: all handled behind the scenes.
+			log.Debug().Msgf("Launch NET moved, and a notification state was reset")
 			return true, db.Postpone{PostponedBy: netSlip, ResetStates: resetStates}
 		}
+
+		log.Debug().Msgf("Launch NET moved, but no states were reset despite notifications having been previously sent")
 	}
 
 	return false, db.Postpone{}
@@ -83,8 +88,7 @@ func processLaunch(launch *db.Launch, launchUpdate *db.LaunchUpdate, idx int, ca
 	// Convert to unix time, store
 	launch.NETUnix = time.Time.Unix(utcTime)
 
-	// Set launched status
-	// 3: success, 4: failure, 6: in-flight, 7: partial failure
+	// Set launched status, 3: success, 4: failure, 6: in-flight, 7: partial failure
 	switch launch.Status.Id {
 	case 3, 4, 6, 7:
 		launch.Launched = true
@@ -93,15 +97,21 @@ func processLaunch(launch *db.Launch, launchUpdate *db.LaunchUpdate, idx int, ca
 	// Shorten description, by keeping the first two sentences
 	// Extremely slow, approx. 300 ms per launch.
 	document, err := prose.NewDocument(launch.Mission.Description)
-	sentences := make([]string, len(document.Sentences()))
 
 	if err != nil {
 		log.Error().Err(err).Msgf("Processing description for launch=%s failed", launch.Id)
 	} else {
 		if len(document.Sentences()) > 2 {
+			// Prepare the array
+			sentences := make([]string, 2)
+
 			// More than two sentences: move their text content to an array
-			for _, sentence := range document.Sentences() {
-				sentences = append(sentences, sentence.Text)
+			for i, sentence := range document.Sentences() {
+				sentences[i] = sentence.Text
+
+				if i == 1 {
+					break
+				}
 			}
 
 			// Join first two sentences
@@ -115,19 +125,19 @@ func processLaunch(launch *db.Launch, launchUpdate *db.LaunchUpdate, idx int, ca
 	launch.LaunchPad.Name = strings.ReplaceAll(launch.LaunchPad.Name, "Launch Complex ", "LC-")
 
 	// Get the highest priority webcast URL
-	highestPriorityUrl := GetHighestPriorityVideoLink(launch.VidURL)
+	highestPriorityUrl := getHighestPriorityVideoLink(launch.VidURL)
 	launch.WebcastLink = highestPriorityUrl.Url
 
 	// TODO If reused stage information, parse...
 
 	// If launch slipped enough to reset a notification state, save it
-	postponed, postponeStatus := netSlipped(cache, launch)
+	wasPostponed, postponeStatus := netParser(cache, launch)
 
 	// Lock mutex so we can save the launch
 	launchUpdate.Mutex.Lock()
 	defer launchUpdate.Mutex.Unlock()
 
-	if postponed {
+	if wasPostponed {
 		// If launch was postponed, add it to the update
 		launchUpdate.Postponed[launch] = postponeStatus
 	}
