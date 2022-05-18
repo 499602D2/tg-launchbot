@@ -238,7 +238,7 @@ func Sender(tg *Bot) {
 						deletionSendable := sendables.SendableForMessageRemoval(sendable, previouslySentIds)
 
 						// Load recipients, so we can ignore chats that have muted this launch
-						deletionSendable.Recipients = launch.NotificationRecipients(tg.Db, "postpone", "tg")
+						deletionSendable.Recipients = sendable.Recipients
 
 						// Enqueue the sendable for removing the old notifications
 						go tg.Queue.Enqueue(deletionSendable, false)
