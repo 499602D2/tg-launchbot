@@ -28,7 +28,7 @@ type Sendable struct {
 }
 
 // The message content of a sendable
-// TODO implement an interface for messages -> TgMessage and DscMessage
+// TODO implement an interface for messages -> TgMessage and DcMessage
 type Message struct {
 	TextContent string
 	AddUserTime bool  // If flipped to true, TextContent contains "$USERTIME"
@@ -42,9 +42,6 @@ func (sendable *Sendable) PerceivedByteSize() int {
 		return 0
 	}
 
-	// Raw byte-count
-	byteCount := len(sendable.Message.TextContent)
-
 	/* Some notes on just _how_ fast we can send stuff at Telegram's API
 
 	- link tags []() do _not_ count towards the perceived byte-size of
@@ -54,11 +51,8 @@ func (sendable *Sendable) PerceivedByteSize() int {
 
 	https://telegra.ph/So-your-bot-is-rate-limited-01-26 */
 
-	/* Set rate-limit based on text length
-	- TODO count markdown, ignore links (calculate before link insertion? Ignore link tag?)
-	- does markdown formatting count?
-	- other considerations? */
-	perceivedByteCount := byteCount
+	// Initialize with raw byte-count
+	perceivedByteCount := len(sendable.Message.TextContent)
 
 	// Additional 4 bytes per newline (a newline counts as 5 bytes)
 	perceivedByteCount += strings.Count(sendable.Message.TextContent, "\n") * 4
@@ -73,16 +67,12 @@ func (sendable *Sendable) PerceivedByteSize() int {
 		_, afterLinkTag, found := strings.Cut(sendable.Message.TextContent, "]")
 
 		if found {
-			// Slice afterLinkTag to remove the link
-			// [Link text]|CUT HERE|(https://...)
+			// Slice afterLinkTag to remove the link: [Link text]|CUT HERE|(https://...)
 			linkString, _, found := strings.Cut(afterLinkTag, ")")
 
 			if found {
-				// Remove the link tag + the cut closing paranthesis
-				// This is of the form (https://...)
+				// Remove the link tag + the cut closing paranthesis (https://...)
 				perceivedByteCount -= len(linkString) + 1
-				log.Debug().Msgf("Removed %d bytes from perceived byte-count [%s]",
-					len(linkString)+1, linkString+")")
 			}
 		}
 	}
