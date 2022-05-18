@@ -1,7 +1,5 @@
 package db
 
-import "github.com/rs/zerolog/log"
-
 // FUTURE save in a database table + cache (V3.1)
 // - when a new LSP ID is encountered in /launch/upcoming endpoint, request its info and insert into LSP table
 // Currently contains all featured launch providers + a couple extra
@@ -77,8 +75,9 @@ func (provider *LaunchProvider) ShortName() string {
 
 	// Log long names we encounter
 	if len(provider.Name) > len("Virgin Orbit") {
-		log.Warn().Msgf("Provider name '%s' not found in LSPShorthands, id=%d (not warning again)",
-			provider.Name, provider.Id)
+		// TODO only warn once (keep track of warned LSP IDs)
+		// log.Warn().Msgf("Provider name '%s' not found in LSPShorthands, id=%d (not warning again)",
+		// 	provider.Name, provider.Id)
 
 		return provider.Abbrev
 	}
