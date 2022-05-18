@@ -154,8 +154,6 @@ func (db *Database) Update(launches []*Launch, apiUpdate bool, useCacheNotifStat
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msg("Batch insert failed")
 		return result.Error
-	} else {
-		log.Info().Msgf("Updated %d row(s) successfully", result.RowsAffected)
 	}
 
 	// Store LastUpdated value in the database struct
