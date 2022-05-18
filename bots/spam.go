@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hako/durafmt"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/time/rate"
 )
@@ -48,7 +47,7 @@ func (spam *Spam) Initialize() {
 
 // Enforce a per-chat rate-limiter. Typically, roughly 20 messages per minute
 // can be sent to one chat.
-func (spam *Spam) UserLimiter(user *users.User, tokens int) {
+func (spam *Spam) UserLimiter(user *users.User, stats *stats.Statistics, tokens int) {
 	// If limiter doesn't exist, create it
 	if spam.Chats[user].Limiter == nil {
 		spam.Mutex.Lock()
@@ -61,12 +60,21 @@ func (spam *Spam) UserLimiter(user *users.User, tokens int) {
 		spam.Mutex.Unlock()
 	}
 
-	// Wait until we can take as many tokens as we need
+	// Log limit start
 	start := time.Now()
+
+	// Wait until we can take as many tokens as we need
 	err := spam.Chats[user].Limiter.WaitN(context.Background(), tokens)
 
-	// TODO track average time user-limiter runs for? Track secs + run count -> mean + avg
-	log.Debug().Msgf("-> Limiter executed after %s", durafmt.Parse(time.Since(start)).LimitFirstN(1))
+	// Track enforced limits
+	duration := int64(time.Since(start))
+	stats.LimitsEnforced++
+
+	if stats.LimitsEnforced == 1 {
+		stats.LimitsAverage = duration
+	} else {
+		stats.LimitsAverage = (stats.LimitsAverage) + (duration-stats.LimitsAverage)/stats.LimitsEnforced
+	}
 
 	if err != nil {
 		log.Error().Err(err).Msgf("Error using chat's Limiter.Wait()")
@@ -85,9 +93,9 @@ func (spam *Spam) GlobalLimiter(tokens int) {
 }
 
 // A wrapper method to run both the global and user limiter at once
-func (spam *Spam) RunBothLimiters(user *users.User, tokens int) {
+func (spam *Spam) RunBothLimiters(user *users.User, tokens int, stats *stats.Statistics) {
 	// The user-limiter is ran first, as it's far more restricting
-	spam.UserLimiter(user, tokens)
+	spam.UserLimiter(user, stats, tokens)
 	spam.GlobalLimiter(tokens)
 }
 
@@ -117,7 +125,7 @@ func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *
 	}
 
 	// Run both limiters for successful requests
-	spam.RunBothLimiters(chat, interaction.Tokens)
+	spam.RunBothLimiters(chat, interaction.Tokens, stats)
 
 	return true
 }
