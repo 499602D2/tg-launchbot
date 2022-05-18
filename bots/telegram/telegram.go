@@ -8,6 +8,7 @@ import (
 	"launchbot/db"
 	"launchbot/sendables"
 	"launchbot/stats"
+	"launchbot/users"
 	"net/http"
 	"time"
 
@@ -97,11 +98,7 @@ func (tg *Bot) respondToCallback(ctx tb.Context, text string, showAlert bool) er
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error responding to callback")
-		recoverable := handleTelegramError(ctx, err, tg)
-
-		if recoverable {
-			log.Error().Err(err).Msg("Recoverable error when responding to callback")
-		}
+		tg.handleError(ctx, nil, err, ctx.Chat().ID)
 	}
 
 	return err
@@ -113,13 +110,50 @@ func (tg *Bot) editCbMessage(cb *tb.Callback, text string, sendOptions tb.SendOp
 	msg, err := tg.Bot.Edit(cb.Message, text, &sendOptions)
 
 	if err != nil {
-		// If not recoverable, return
-		if !handleSendError(cb.Message.Chat.ID, msg, err, tg) {
-			return nil
-		}
+		tg.handleError(nil, msg, err, cb.Message.Chat.ID)
+		return nil
 	}
 
 	return msg
+}
+
+func (tg *Bot) buildInteraction(ctx tb.Context, adminOnly bool, name string) (*users.User, *bots.Interaction, error) {
+	// Load chat
+	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+
+	// Is chat a group?
+	isGroup := isGroup(ctx.Chat().Type)
+	senderIsAdmin := false
+
+	// If chat is a group _and_ command is admin-only, or users cannot send commands
+	if isGroup && (adminOnly || !chat.AnyoneCanSendCommands) {
+		// Call senderIsAdmin separately, as it's an API call and may fail due to e.g. migration
+		var err error
+		senderIsAdmin, err = tg.senderIsAdmin(ctx)
+
+		if err != nil {
+			log.Error().Err(err).Msg("Loading sender's admin status failed")
+			return nil, nil, err
+		}
+	}
+
+	// Request is a command if the callback is nil
+	isCommand := (ctx.Callback() == nil)
+
+	// Take tokens depending on interaction type
+	tokens := map[bool]int{true: 2, false: 1}[isCommand]
+
+	// Build interaction for spam handling
+	interaction := bots.Interaction{
+		IsAdminOnly:   adminOnly,
+		IsCommand:     isCommand,
+		IsGroup:       isGroup,
+		CallerIsAdmin: senderIsAdmin,
+		Name:          name,
+		Tokens:        tokens,
+	}
+
+	return chat, &interaction, nil
 }
 
 // Attempt deleting the message associated with a context
@@ -129,7 +163,7 @@ func (tg *Bot) tryRemovingMessage(ctx tb.Context) error {
 
 	if err != nil {
 		log.Error().Msg("Loading bot's permissions in chat failed")
-		handleTelegramError(ctx, err, tg)
+		tg.handleError(ctx, nil, err, ctx.Chat().ID)
 		return err
 	}
 
@@ -137,15 +171,15 @@ func (tg *Bot) tryRemovingMessage(ctx tb.Context) error {
 		// If we have permission to delete messages, delete the command message
 		err = tg.Bot.Delete(ctx.Message())
 	} else {
-		// If You're not allowed to do that, return
-		log.Debug().Msgf("Cannot delete messages in chat=%d", ctx.Chat().ID)
-		return errors.New("Cannot delete message in chat")
+		// If the bot is not allowed to delete messages, return
+		log.Error().Msgf("Cannot delete messages in chat=%d", ctx.Chat().ID)
+		return errors.New("Cannot delete messages in chat")
 	}
 
 	// Check errors
 	if err != nil {
 		log.Error().Msg("Deleting message sent by a non-admin failed")
-		handleTelegramError(ctx, err, tg)
+		tg.handleError(ctx, nil, err, ctx.Chat().ID)
 		return errors.New("Deleting message sent by a non-admin failed")
 	}
 
@@ -189,22 +223,24 @@ func (tg *Bot) botMemberChangeHandler(ctx tb.Context) error {
 
 // Return a chat user's admin status
 // FUTURE: cache, and keep track of member status changes as they happen
-func (tg *Bot) senderIsAdmin(ctx tb.Context) bool {
+func (tg *Bot) senderIsAdmin(ctx tb.Context) (bool, error) {
 	// If not a group, return true
 	if !isGroup(ctx.Chat().Type) {
-		return true
+		return true, nil
 	}
 
 	// Load member
 	member, err := tg.Bot.ChatMemberOf(ctx.Chat(), ctx.Sender())
 
 	if err != nil {
-		log.Error().Err(err).Msg("Getting ChatMemberOf() failed in isAdmin")
-		return false
+		log.Error().Err(err).Msg("Getting ChatMemberOf() failed in senderIsAdmin")
+		tg.handleError(ctx, nil, err, ctx.Chat().ID)
+
+		return false, err
 	}
 
 	// Return true if user is admin or creator
-	return member.Role == tb.Administrator || member.Role == tb.Creator
+	return member.Role == tb.Administrator || member.Role == tb.Creator, nil
 }
 
 // Return true if chat is a group

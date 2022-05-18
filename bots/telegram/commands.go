@@ -3,7 +3,6 @@ package telegram
 import (
 	"errors"
 	"fmt"
-	"launchbot/bots"
 	"launchbot/db"
 	"launchbot/sendables"
 	"launchbot/utils"
@@ -17,17 +16,16 @@ import (
 
 // Handle the /start command and events where the bot is added to a new chat
 func (tg *Bot) startHandler(ctx tb.Context) error {
-	// Load chat
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+	// Load chat and generate the interaction
+	chat, interaction, err := tg.buildInteraction(ctx, true, "start")
 
-	// Build interaction for spam handling
-	interaction := bots.Interaction{
-		IsAdminOnly: true, IsCommand: true, IsGroup: isGroup(ctx.Chat().Type),
-		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "start", Tokens: 2,
+	if err != nil {
+		log.Warn().Msg("Running startHandler failed")
+		return nil
 	}
 
 	// Run permission and spam management
-	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
 		return tg.interactionNotAllowed(ctx, true)
 	}
 
@@ -59,7 +57,7 @@ func (tg *Bot) startHandler(ctx tb.Context) error {
 	go tg.Queue.Enqueue(&sendable, true)
 
 	// Check if chat is new
-	if chat.Stats.SentCommands == 0 {
+	if chat.Stats.SentCommands == 0 || chat.Stats.SentCommands == 1 {
 		log.Debug().Msgf("🌟 Bot added to a new chat! (id=%s)", chat.Id)
 
 		if ctx.Chat().Type != tb.ChatPrivate {
@@ -68,7 +66,7 @@ func (tg *Bot) startHandler(ctx tb.Context) error {
 
 			if err != nil {
 				log.Error().Err(err).Msg("Loading chat's member-count failed")
-				handleTelegramError(ctx, err, tg)
+				tg.handleError(ctx, nil, err, ctx.Chat().ID)
 				return nil
 			}
 
@@ -86,17 +84,16 @@ func (tg *Bot) startHandler(ctx tb.Context) error {
 
 // Handle feedback
 func (tg *Bot) feedbackHandler(ctx tb.Context) error {
-	// Load user
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+	// Load chat and generate the interaction
+	chat, interaction, err := tg.buildInteraction(ctx, true, "feedback")
 
-	// Build interaction for spam handling
-	interaction := bots.Interaction{
-		IsAdminOnly: true, IsCommand: true, IsGroup: isGroup(ctx.Chat().Type),
-		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "feedback", Tokens: 1,
+	if err != nil {
+		log.Warn().Msg("Running feedbackHandler failed")
+		return nil
 	}
 
 	// Run permission and spam management
-	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
 		return tg.interactionNotAllowed(ctx, true)
 	}
 
@@ -135,27 +132,23 @@ func (tg *Bot) feedbackHandler(ctx tb.Context) error {
 
 // Handles the /schedule command
 func (tg *Bot) scheduleHandler(ctx tb.Context) error {
-	// Load chat
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+	// Load chat and generate the interaction
+	chat, interaction, err := tg.buildInteraction(ctx, false, "schedule")
 
-	// Request is a command if the callback is nil
-	isCommand := (ctx.Callback() == nil)
-
-	// Build interaction for spam handling
-	interaction := bots.Interaction{
-		IsAdminOnly: false, IsCommand: isCommand, IsGroup: isGroup(ctx.Chat().Type),
-		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "schedule", Tokens: 2,
+	if err != nil {
+		log.Warn().Msg("Running scheduleHandler failed")
+		return nil
 	}
 
 	// Run permission and spam management
-	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
 		return tg.interactionNotAllowed(ctx, true)
 	}
 
 	// The mode to use, either "v" for vehicles, or "m" for missions
 	var mode string
 
-	if isCommand {
+	if interaction.IsCommand {
 		// If a command, use the default vehicle mode
 		mode = "v"
 	} else {
@@ -168,7 +161,7 @@ func (tg *Bot) scheduleHandler(ctx tb.Context) error {
 	scheduleMsg := tg.Cache.ScheduleMessage(chat, mode == "m")
 	sendOptions, _ := tg.Template.Keyboard.Command.Schedule(mode)
 
-	if isCommand {
+	if interaction.IsCommand {
 		// Construct message
 		msg := sendables.Message{
 			TextContent: scheduleMsg,
@@ -194,20 +187,16 @@ func (tg *Bot) scheduleHandler(ctx tb.Context) error {
 
 // Handles the /next command
 func (tg *Bot) nextHandler(ctx tb.Context) error {
-	// Load chat
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+	// Load chat and generate the interaction
+	chat, interaction, err := tg.buildInteraction(ctx, false, "next")
 
-	// Request is a command if the callback is nil
-	isCommand := (ctx.Callback() == nil)
-
-	// Build interaction for spam handling
-	interaction := bots.Interaction{
-		IsAdminOnly: false, IsCommand: isCommand, IsGroup: isGroup(ctx.Chat().Type),
-		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "next", Tokens: 2,
+	if err != nil {
+		log.Warn().Msg("Running nextHandler failed")
+		return nil
 	}
 
 	// Run permission and spam management
-	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
 		return tg.interactionNotAllowed(ctx, true)
 	}
 
@@ -215,7 +204,7 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 	index := 0
 	cbData := []string{}
 
-	if !isCommand {
+	if !interaction.IsCommand {
 		// For callbacks, load the index the user is requesting
 		var err error
 		cbData = strings.Split(ctx.Callback().Data, "/")
@@ -230,7 +219,7 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 	textContent := tg.Cache.NextLaunchMessage(chat, index)
 	sendOptions, _ := tg.Template.Keyboard.Command.Next(index, len(tg.Cache.Launches))
 
-	if isCommand {
+	if interaction.IsCommand {
 		// Construct message
 		msg := sendables.Message{
 			TextContent: textContent,
@@ -280,20 +269,16 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 
 // Handles the /stats command
 func (tg *Bot) statsHandler(ctx tb.Context) error {
-	// Load chat
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+	// Load chat and generate the interaction
+	chat, interaction, err := tg.buildInteraction(ctx, false, "stats")
 
-	// Request is a command if the callback is nil
-	isCommand := (ctx.Callback() == nil)
-
-	// Build interaction for spam handling
-	interaction := bots.Interaction{
-		IsAdminOnly: false, IsCommand: isCommand, IsGroup: isGroup(ctx.Chat().Type),
-		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "stats", Tokens: 1,
+	if err != nil {
+		log.Warn().Msg("Running statsHandler failed")
+		return nil
 	}
 
 	// Run permission and spam management
-	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
 		return tg.interactionNotAllowed(ctx, true)
 	}
 
@@ -308,7 +293,7 @@ func (tg *Bot) statsHandler(ctx tb.Context) error {
 	sendOptions, _ := tg.Template.Keyboard.Command.Statistics()
 
 	// If a command, throw the message into the queue
-	if isCommand {
+	if interaction.IsCommand {
 		// Wrap into a sendable
 		sendable := sendables.Sendable{
 			Type: "command",
@@ -332,19 +317,16 @@ func (tg *Bot) statsHandler(ctx tb.Context) error {
 
 // Handles the /settings command
 func (tg *Bot) settingsHandler(ctx tb.Context) error {
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+	// Load chat and generate the interaction
+	chat, interaction, err := tg.buildInteraction(ctx, true, "settings")
 
-	// TODO handle all settings-related things
-	isCommand := true
-
-	// Build interaction for spam handling
-	interaction := bots.Interaction{
-		IsAdminOnly: true, IsCommand: isCommand, IsGroup: isGroup(ctx.Chat().Type),
-		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "settings", Tokens: 1,
+	if err != nil {
+		log.Warn().Msg("Running settingsHandler failed")
+		return nil
 	}
 
 	// Run permission and spam management
-	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
 		return tg.interactionNotAllowed(ctx, true)
 	}
 
@@ -387,22 +369,20 @@ func (tg *Bot) countryCodeListCallback(ctx tb.Context) error {
 	data := strings.Split(ctx.Callback().Data, "/")
 
 	if len(data) != 2 {
-		err := errors.New(fmt.Sprintf("Got arbitrary data at cc/.. endpoint with length=%d", len(data)))
-		log.Error().Err(err)
-		return err
+		log.Error().Msgf("Got arbitrary data at cc/.. endpoint with length=%d", len(data))
+		return nil
 	}
 
-	// Get chat
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+	// Load chat and generate the interaction
+	chat, interaction, err := tg.buildInteraction(ctx, true, "settings")
 
-	// Build interaction for spam handling
-	interaction := bots.Interaction{
-		IsAdminOnly: true, IsCommand: false, IsGroup: isGroup(ctx.Chat().Type),
-		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "settings", Tokens: 1,
+	if err != nil {
+		log.Warn().Msg("Running countryCodeListCallback failed")
+		return nil
 	}
 
 	// Run permission and spam management
-	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
 		return tg.interactionNotAllowed(ctx, true)
 	}
 
@@ -426,16 +406,17 @@ func (tg *Bot) countryCodeListCallback(ctx tb.Context) error {
 func (tg *Bot) notificationToggleCallback(ctx tb.Context) error {
 	// Callback is of form (id, cc, all, time)/(id, cc, time-type, all-state)/(id-state, cc-state, time-state)
 	data := strings.Split(ctx.Callback().Data, "/")
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
-	// Build interaction for spam handling
-	interaction := bots.Interaction{
-		IsAdminOnly: true, IsCommand: false, IsGroup: isGroup(ctx.Chat().Type),
-		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "settings", Tokens: 1,
+	// Load chat and generate the interaction
+	chat, interaction, err := tg.buildInteraction(ctx, true, "settings")
+
+	if err != nil {
+		log.Warn().Msg("Running notificationToggleCallback failed")
+		return nil
 	}
 
 	// Run permission and spam management
-	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
 		return tg.interactionNotAllowed(ctx, true)
 	}
 
@@ -526,10 +507,12 @@ func (tg *Bot) notificationToggleCallback(ctx tb.Context) error {
 	go tg.Db.SaveUser(chat)
 
 	// Update the keyboard, as the state was modified
-	modified, err := tg.Bot.EditReplyMarkup(ctx.Message(), &tb.ReplyMarkup{InlineKeyboard: updatedKeyboard})
+	sent, err := tg.Bot.EditReplyMarkup(ctx.Message(), &tb.ReplyMarkup{InlineKeyboard: updatedKeyboard})
 
 	if err != nil {
-		handleSendError(ctx.Chat().ID, modified, err, tg)
+		if !tg.handleError(nil, sent, err, ctx.Chat().ID) {
+			return errors.New("Could not finish notification callback handling")
+		}
 	}
 
 	// Respond to callback
@@ -539,17 +522,18 @@ func (tg *Bot) notificationToggleCallback(ctx tb.Context) error {
 // Handle launch mute/unmute callbacks
 func (tg *Bot) muteCallback(ctx tb.Context) error {
 	// Data is in the format mute/id/toggleTo/notificationType
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 	data := strings.Split(ctx.Callback().Data, "/")
 
-	// Build interaction for spam handling
-	interaction := bots.Interaction{
-		IsAdminOnly: true, IsCommand: false, IsGroup: isGroup(ctx.Chat().Type),
-		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "mute", Tokens: 1,
+	// Load chat and generate the interaction
+	chat, interaction, err := tg.buildInteraction(ctx, true, "mute")
+
+	if err != nil {
+		log.Warn().Msg("Running muteCallback failed")
+		return nil
 	}
 
 	// Run permission and spam management
-	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
 		return tg.interactionNotAllowed(ctx, true)
 	}
 
@@ -587,8 +571,8 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 
 		if err != nil {
 			// If not recoverable, return
-			if !handleSendError(ctx.Chat().ID, modified, err, tg) {
-				return nil
+			if !tg.handleError(nil, modified, err, ctx.Chat().ID) {
+				return errors.New("Could not modify replyMarkup when handling a mute callback")
 			}
 		}
 
@@ -609,10 +593,11 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 	}
 
 	// Respond to callback
-	err := tg.Bot.Respond(ctx.Callback(), &cbResp)
+	err = tg.Bot.Respond(ctx.Callback(), &cbResp)
 
 	if err != nil {
-		handleTelegramError(ctx, err, tg)
+		tg.handleError(ctx, nil, err, ctx.Chat().ID)
+		return errors.New("Could not respond to mute callback")
 	}
 
 	return nil
@@ -621,17 +606,16 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 // Handler for settings callback requests. Returns a callback response and showAlert bool.
 // TODO use the "Unique" property of inline buttons to do better callback handling
 func (tg *Bot) settingsCallback(ctx tb.Context) error {
-	// Load chat
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+	// Load chat and generate the interaction
+	chat, interaction, err := tg.buildInteraction(ctx, true, "settings")
 
-	// Build interaction for spam handling
-	interaction := bots.Interaction{
-		IsAdminOnly: true, IsCommand: false, IsGroup: isGroup(ctx.Chat().Type),
-		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "settings", Tokens: 1,
+	if err != nil {
+		log.Warn().Msg("Running settingsCallback failed")
+		return nil
 	}
 
 	// Run permission and spam management
-	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
 		return tg.interactionNotAllowed(ctx, true)
 	}
 
@@ -656,7 +640,9 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 			modified, err := tg.Bot.EditReplyMarkup(ctx.Message(), &tb.ReplyMarkup{})
 
 			if err != nil {
-				handleSendError(ctx.Chat().ID, modified, err, tg)
+				if !tg.handleError(nil, modified, err, ctx.Chat().ID) {
+					return errors.New("Modifying settings.Main replyMarkup failed")
+				}
 			}
 
 			// If a new message is requested, wrap into a sendable and send as new
@@ -765,17 +751,16 @@ func (tg *Bot) expandMessageContent(ctx tb.Context) error {
 	// Pointer to received callback
 	cb := ctx.Callback()
 
-	// User
-	chat := tg.Cache.FindUser(fmt.Sprint(cb.Message.Chat.ID), "tg")
+	// Load chat and generate the interaction
+	chat, interaction, err := tg.buildInteraction(ctx, true, "settings")
 
-	// Build interaction for spam handling
-	interaction := bots.Interaction{
-		IsAdminOnly: false, IsCommand: false, IsGroup: isGroup(ctx.Chat().Type),
-		CallerIsAdmin: tg.senderIsAdmin(ctx), Name: "settings", Tokens: 1,
+	if err != nil {
+		log.Warn().Msg("Running expandMessageContent failed")
+		return nil
 	}
 
 	// Run permission and spam management
-	if !tg.Spam.PreHandler(&interaction, chat, tg.Stats) {
+	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
 		return tg.interactionNotAllowed(ctx, true)
 	}
 
@@ -809,7 +794,7 @@ func (tg *Bot) expandMessageContent(ctx tb.Context) error {
 
 	if err != nil {
 		// If not recoverable, return
-		if !handleSendError(ctx.Chat().ID, sent, err, tg) {
+		if !tg.handleError(nil, sent, err, ctx.Chat().ID) {
 			return nil
 		}
 	}
@@ -819,8 +804,16 @@ func (tg *Bot) expandMessageContent(ctx tb.Context) error {
 
 // Handles locations that the bot receives in a chat
 func (tg *Bot) locationReplyHandler(ctx tb.Context) error {
+	// Call senderIsAdmin separately, as it's an API call and may fail due to e.g. migration
+	senderIsAdmin, err := tg.senderIsAdmin(ctx)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Loading sender's admin status failed")
+		return nil
+	}
+
 	// Verify sender is an admin
-	if !tg.senderIsAdmin(ctx) {
+	if !senderIsAdmin {
 		log.Debug().Msg("Location sender is not an admin")
 		return nil
 	}
@@ -906,10 +899,10 @@ func (tg *Bot) locationReplyHandler(ctx tb.Context) error {
 	go tg.Queue.Enqueue(&sendable, true)
 
 	// Delete the setup message
-	err := tg.Bot.Delete(tb.Editable(ctx.Message().ReplyTo))
+	err = tg.Bot.Delete(tb.Editable(ctx.Message().ReplyTo))
 
 	if err != nil {
-		if !handleTelegramError(nil, err, tg) {
+		if !tg.handleError(ctx, nil, err, ctx.Chat().ID) {
 			log.Warn().Msg("Deleting time zone setup message failed")
 		}
 	}
