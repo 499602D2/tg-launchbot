@@ -7,6 +7,7 @@ import (
 	"launchbot/utils"
 	"math"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -20,8 +21,9 @@ import (
 )
 
 type LaunchUpdate struct {
-	Count    int
-	Launches []*Launch `json:"results"`
+	Launches  []*Launch            `json:"results"`
+	Postponed map[*Launch]Postpone // Map of postponed launches
+	Mutex     sync.Mutex           // A mutex for concurrently parsing launches
 }
 
 type Launch struct {
@@ -308,7 +310,7 @@ func (launch *Launch) NotificationMessage(notifType string, expanded bool) strin
 
 	// TODO add bot username dynamically
 	text := fmt.Sprintf(
-		"🚀 *%s: %s*\n"+
+		"🚀 *%s*: *%s*\n"+
 			"%s"+
 
 			"🕙 *$USERDATE*\n"+
