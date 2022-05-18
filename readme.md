@@ -166,6 +166,8 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 
 	## 3.1 and onwards
 
+	- [ ] Inline queries (should be trivial to do)
+
 	- [ ] Handle window starts/ends
 
 		- Instead of continuous postponements, notify of window start -> 5 min notification
@@ -203,7 +205,10 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 		- [x] Catch-all type handlers
 		- [x] Chat migrations
 		- [ ] Odd edge-case handlers (check launchbot.py)
-	
+	- [ ] Telegram message sender
+		- [x] Catch rate-limits
+		- [x] Modify message token-count if rate-limited
+		- [ ] Try sending again after recoverable errors, e.g. rate-limits
 
 ### Caching, database
 
@@ -248,14 +253,15 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 			- [ ] Dump logs to chat
 			- [ ] Dump database to chat
 			- [ ] Restart program
-	- [ ] Simplify message response templates by using struct methods
-		- [ ] Can be its own package, e.g. templates
+	- [x] Simplify message response templates by using struct methods
+		- [x] Commands
 
 - [x] Implement callbacks
 		- [x] Notifications
 			- [x] Mute
 				- [x] Only allow admins to mute a launch
 			- [x] Expand description
+				- [x] Remove button from notifications if no description 
 		- [x] Commands
 	- [x] Use a dual-limiter
 	- [ ] Ensure sender IDs are not used, and if they are, ensure we handle errors where the user has no ID associated with it
@@ -276,8 +282,8 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 	- [x] Sending
 	- [x] Delete old notifications for users that have not muted the launch
 
-
 ## Must-haves before 3.0.0
+
 - [x] "Compress" messages to improve send-rates
 	- [x] Add "More info" button
 		- [x] Implement for description
@@ -291,6 +297,7 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 	- Also, be smarter about telebot's logging (raise an issue?)
 
 ## Nice-to-haves before 3.0.0
+
 - [x] Notify admin on any processing failure
 	- [x] Telegram
 - [x] Allow postpone notifications to be disabled
