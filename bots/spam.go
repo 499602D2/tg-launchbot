@@ -47,15 +47,15 @@ func (spam *Spam) Initialize() {
 
 // Enforce a per-chat rate-limiter. Typically, roughly 20 messages per minute
 // can be sent to one chat.
-func (spam *Spam) UserLimiter(user *users.User, stats *stats.Statistics, tokens int) {
+func (spam *Spam) UserLimiter(chat *users.User, stats *stats.Statistics, tokens int) {
 	// If limiter doesn't exist, create it
-	if spam.Chats[user].Limiter == nil {
+	if spam.Chats[chat].Limiter == nil {
 		spam.Mutex.Lock()
 
 		// Load user's chatLog, assign new limiter, save back
-		chatLog := spam.Chats[user]
+		chatLog := spam.Chats[chat]
 		chatLog.Limiter = rate.NewLimiter(rate.Every(time.Second*3), 2)
-		spam.Chats[user] = chatLog
+		spam.Chats[chat] = chatLog
 
 		spam.Mutex.Unlock()
 	}
@@ -64,7 +64,7 @@ func (spam *Spam) UserLimiter(user *users.User, stats *stats.Statistics, tokens 
 	start := time.Now()
 
 	// Wait until we can take as many tokens as we need
-	err := spam.Chats[user].Limiter.WaitN(context.Background(), tokens)
+	err := spam.Chats[chat].Limiter.WaitN(context.Background(), tokens)
 
 	// Track enforced limits
 	duration := int64(time.Since(start))
