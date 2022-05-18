@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"errors"
 	"fmt"
 	"launchbot/sendables"
 	"launchbot/users"
@@ -27,7 +28,7 @@ func highPrioritySender(tg *Bot, message *sendables.Message, chat *users.User) b
 	sent, err := tg.Bot.Send(tb.ChatID(id), text, &message.SendOptions)
 
 	if err != nil {
-		if !handleSendError(int64(id), sent, err, tg) {
+		if !tg.handleError(nil, sent, err, int64(id)) {
 			// If error is non-recoverable, continue the loop
 			log.Warn().Msg("Unrecoverable error in high-priority sender")
 			return false
@@ -89,9 +90,11 @@ func DeleteNotificationMessage(tg *Bot, sendable *sendables.Sendable, user *user
 	}
 
 	// Build tb.Message, and delete it
-	err = tg.Bot.Delete(&tb.Message{ID: messageId, Chat: &tb.Chat{ID: int64(chatId)}})
+	messageToBeDeleted := &tb.Message{ID: messageId, Chat: &tb.Chat{ID: int64(chatId)}}
+	err = tg.Bot.Delete(messageToBeDeleted)
 
 	if err != nil {
+		tg.handleError(nil, messageToBeDeleted, err, int64(chatId))
 		log.Error().Err(err).Msgf("Deleting message %s:%s failed", user.Id, msgId)
 	}
 }
@@ -112,13 +115,26 @@ func SendNotification(tg *Bot, sendable *sendables.Sendable, user *users.User) (
 	sent, err := tg.Bot.Send(tb.ChatID(id), text, &sendable.Message.SendOptions)
 
 	if err != nil {
-		if !handleSendError(int64(id), sent, err, tg) {
+		var floodErr tb.FloodError
+
+		// If error is a rate-limit message, add one token
+		if errors.As(err, &floodErr) {
+			log.Warn().Err(err).Msgf("Received a tb.FloodError (retryAfter=%d): adding one token (tokens=%d+1)",
+				floodErr.RetryAfter, sendable.Tokens)
+
+			if sendable.Tokens < 6 {
+				sendable.Tokens++
+			}
+		}
+
+		if !tg.handleError(nil, sent, err, int64(id)) {
 			log.Warn().Msg("Non-recoverable error in sender, continuing loop")
 			return "", false
-		} else {
-			// TODO Error is recoverable: try sending again SendNotification(...)
-			log.Error().Err(err).Msg("NOT IMPLEMENTED: message re-try after recoverable error (e.g. timeout)")
 		}
+
+		// TODO Error is recoverable: try sending again SendNotification(...)
+		log.Error().Err(err).Msg("Not implemented: message re-try after recoverable error")
+		return "", false
 	}
 
 	// On success, return a string in the form of 'user_id:msg_id', and a bool indicating success
@@ -160,7 +176,7 @@ func Sender(tg *Bot) {
 					tg.Spam.GlobalLimiter(sendable.Tokens)
 
 					// Run a light user-limiter: max tokens is 2
-					tg.Spam.UserLimiter(user, 1)
+					tg.Spam.UserLimiter(user, tg.Stats, 1)
 
 					// Switch-case the sendable's type
 					switch sendable.Type {

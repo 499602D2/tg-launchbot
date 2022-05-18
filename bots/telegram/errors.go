@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"errors"
 	"fmt"
 	"launchbot/sendables"
 
@@ -57,174 +58,211 @@ var (
 https://github.com/go-telebot/telebot/blob/v3.0.0/errors.go#L33
 */
 
-func errorMonitor(tg *Bot, err error) {
+// On unhandled errors, send a notification to the administrator
+func errorMonitor(tg *Bot, err error, wasGeneric bool) {
 	// Create a simple error message
-	errMsg := fmt.Sprintf("Unknown Telegram error: %#v", err.Error())
-	msg := sendables.Message{TextContent: errMsg, SendOptions: tb.SendOptions{}}
+	var errMsg string
+	if wasGeneric {
+		errMsg = fmt.Sprintf("Unhandled error: %#v", err.Error())
+	} else {
+		errMsg = fmt.Sprintf("Unhandled Telegram error: %#v", err.Error())
+	}
+
+	// Load owner
 	user := tg.Cache.FindUser(fmt.Sprintf("%d", tg.Owner), "tg")
 
 	// Wrap in a sendable
 	sendable := sendables.Sendable{
-		Message: &msg,
+		Message: &sendables.Message{TextContent: errMsg, SendOptions: tb.SendOptions{}},
 	}
 
+	// Add owner as recipient
 	sendable.AddRecipient(user, false)
 
 	// Enqueue message as high-priority
 	tg.Queue.Enqueue(&sendable, true)
 }
 
-/* Wrapper for warning of unhandled errors */
-func warnUnhandled(tg *Bot, err error) {
-	log.Error().Err(err).Msg("Unhandled Telegram error")
-	errorMonitor(tg, err)
+// Wrapper for warning of unhandled errors */
+func warnUnhandled(tg *Bot, err error, wasGeneric bool) {
+	if wasGeneric {
+		log.Error().Err(err).Msgf("Unhandled error in handleGenericError")
+	} else {
+		log.Error().Err(err).Msg("Unhandled Telegram error")
+	}
+	errorMonitor(tg, err, wasGeneric)
 }
 
-/* Telegram error handler
+// A generic error handler
+func (tg *Bot) handleGenericError(err error) bool {
+	warnUnhandled(tg, err, true)
+	return false
+}
 
-Returns:
-- bool: indicates if the error is recoverable, as in if the previous execution
-				can still proceed after the error.
-*/
-
-// Handle errors associated with outgoing data, such as sends and edits
-// TODO use handleTelegramError by throwing chat ID at it
-func handleSendError(chatId int64, sent *tb.Message, err error, tg *Bot) bool {
-	// Load user
-	chat := tg.Cache.FindUser(fmt.Sprint(chatId), "tg")
-
-	switch err.Error() {
-	case tb.ErrQueryTooOld.Error():
-		return false
-
-	case tb.ErrMessageNotModified.Error():
+func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64) bool {
+	// We may unintentionally call error handler with a nil error
+	if err == nil {
+		log.Warn().Msg("handleGenericError called with a nil error")
 		return true
-
-	case tb.ErrSameMessageContent.Error():
-		return true
-
-	case tb.ErrBlockedByUser.Error():
-		log.Debug().Msgf("Bot was blocked by user=%s, removing from database...", chat.Id)
-		tg.Db.RemoveUser(chat)
-
-	case tb.ErrKickedFromGroup.Error():
-		log.Debug().Msgf("Bot was kicked from group=%s, removing from database...", chat.Id)
-		tg.Db.RemoveUser(chat)
-
-	case tb.ErrKickedFromSuperGroup.Error():
-		log.Debug().Msgf("Bot was kicked from supergroup=%s, removing from database...", chat.Id)
-		tg.Db.RemoveUser(chat)
-
-	case tb.ErrNotStartedByUser.Error():
-		log.Debug().Msgf("Bot was never started by user=%s, removing from database...", chat.Id)
-		tg.Db.RemoveUser(chat)
-
-	case tb.ErrUserIsDeactivated.Error():
-		log.Debug().Msgf("User=%s has been deactivated, removing from database...", chat.Id)
-		tg.Db.RemoveUser(chat)
-
-	case tb.ErrGroupMigrated.Error():
-		log.Trace().Err(err).Msg("Send-error: group migrated (tb.ErrGroupMigrated)")
-
-	default:
-		log.Error().Err(err).Msg("Error during send")
 	}
 
-	return true
-}
-
-// Handle errors associated with incoming requests
-func handleTelegramError(ctx tb.Context, err error, tg *Bot) bool {
 	// Load user
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+	chat := tg.Cache.FindUser(fmt.Sprint(id), "tg")
 
-	switch err.Error() {
-	case "":
-		log.Warn().Msg("handleTelegramError called with nil error")
+	// Context might be nil: if it is, then this is a send-related error
+	// Send-related errors are handled differently, mainly during migrations
+	isSendError := ctx == nil
+
+	// Two special error cases: flood-errors and group-errors
+	var floodErr tb.FloodError
+	var groupErr tb.GroupError
+
+	// Check if error is a rate-limit
+	if errors.As(err, &floodErr) {
+		log.Warn().Err(err).Msgf("Received a tb.FloodError (retryAfter=%d)", floodErr.RetryAfter)
 		return true
+	}
 
-	// General errors (400, 401, 404, 500)
-	case tb.ErrTooLarge.Error():
-		warnUnhandled(tg, err)
-	case tb.ErrUnauthorized.Error():
-		warnUnhandled(tg, err)
-	case tb.ErrNotFound.Error():
-		warnUnhandled(tg, err)
-	case tb.ErrInternal.Error():
-		warnUnhandled(tg, err)
-
-	case tb.ErrBadButtonData.Error():
-		log.Trace().Err(err).Msg("Bad button data in message")
-
-	case tb.ErrCantEditMessage.Error():
-		log.Trace().Err(err).Msg("Cannot edit message")
-
-	case tb.ErrQueryTooOld.Error():
-		return false
-
-	case tb.ErrMessageNotModified.Error():
-		return true
-
-	case tb.ErrSameMessageContent.Error():
-		return true
-
-	case tb.ErrChatNotFound.Error():
-		warnUnhandled(tg, err)
-
-	case tb.ErrEmptyChatID.Error():
-		log.Trace().Err(err).Msg("Empty chat ID in message")
-
-	case tb.ErrEmptyMessage.Error():
-		log.Trace().Err(err).Msg("Empty message")
-
-	case tb.ErrEmptyText.Error():
-		log.Trace().Err(err).Msg("Empty text in message")
-
-	case tb.ErrGroupMigrated.Error():
+	// Check if error is a group-error
+	if errors.As(err, &groupErr) {
 		// TODO implement a FindMigratedUser -> send new message?
-		log.Trace().Err(err).Msg("Group migrated (tb.ErrGroupMigrated): running migration")
-		from, to := ctx.Migration()
-		log.Trace().Msgf("From=%d, to=%d", from, to)
-		tg.Db.MigrateGroup(from, to, "tg")
+		log.Warn().Err(err).Msgf("tb.ErrGroupMigrated: running migration (isSendError=%v, groupErr=%#v)", isSendError, groupErr)
+		migratedTo := groupErr.MigratedTo
 
-	case tb.ErrNoRightsToDelete.Error():
-		log.Trace().Err(err).Msg("No rights to delete message")
+		if isSendError {
+			// If called with a send-error, log the message
+			log.Warn().Msgf("Migration encountered with a send error, sent=%#v, groupErr=%#v", sent, groupErr)
 
-	case tb.ErrNoRightsToSend.Error():
-		log.Trace().Err(err).Msgf("Bot not allowed to send messages in chat=%s", chat.Id)
+			if sent != nil {
+				log.Warn().Msgf("Migration properties of sendable: %d ➙ %d", id, migratedTo)
+				tg.Db.MigrateGroup(id, migratedTo, "tg")
+			}
+		} else {
+			// When we have a context, re-send the message
+			log.Info().Msgf("Migration properties of context: %d ➙ %d", id, migratedTo)
+			tg.Db.MigrateGroup(id, migratedTo, "tg")
 
-	case tb.ErrNotFoundToDelete.Error():
-		log.Trace().Err(err).Msg("Message not found for deletion")
-	case tb.ErrTooLongMarkup.Error():
-		log.Trace().Err(err).Msg("Markup is too long")
-	case tb.ErrTooLongMessage.Error():
-		log.Trace().Err(err).Msg("Message is too long")
-	case tb.ErrWrongURL.Error():
-		log.Trace().Err(err).Msg("Wrong URL")
-	case tb.ErrNotFoundToReply.Error():
-		log.Trace().Err(err).Msg("Message not found to reply")
+			// Swap chat IDs
+			newChat := tb.ChatID(migratedTo)
 
-	// Error 403 (forbidden) [all handled]
-	case tb.ErrBlockedByUser.Error():
+			// Re-send the original message associated with this callback
+			originalMessage := ctx.Callback().Message
+
+			// Re-send the message to the new chat ID
+			sent, err := tg.Bot.Send(newChat, originalMessage.Text, originalMessage.ReplyMarkup)
+
+			if err != nil {
+				log.Error().Err(err).Msg("Attempting to re-send migrated message yielded an error")
+				tg.handleError(nil, sent, err, migratedTo)
+			} else {
+				log.Info().Msg("Successfully sent a message to the migrated chat")
+			}
+		}
+
+		return false
+	}
+
+	switch err {
+	// General errors
+	// https://github.com/go-telebot/telebot/blob/8ad1e044ee330c22eb24e2ff9fdd0ed92e523648/errors.go#L69
+	case tb.ErrTooLarge:
+		log.Error().Err(err).Msgf("Message too large, isSendError=%v", isSendError)
+		warnUnhandled(tg, err, false)
+
+	case tb.ErrUnauthorized:
+		log.Error().Err(err).Msgf("Unauthorized in sender, isSendError=%v", isSendError)
+		warnUnhandled(tg, err, false)
+
+	case tb.ErrNotFound:
+		log.Error().Err(err).Msgf("Not found, isSendError=%v", isSendError)
+		warnUnhandled(tg, err, false)
+
+	case tb.ErrInternal:
+		log.Error().Err(err).Msgf("Internal server error, isSendError=%v", isSendError)
+		warnUnhandled(tg, err, false)
+
+	// Bad request errors (relevant cases handled)
+	// https://github.com/go-telebot/telebot/blob/8ad1e044ee330c22eb24e2ff9fdd0ed92e523648/errors.go#L77
+	case tb.ErrBadButtonData:
+		warnUnhandled(tg, err, false)
+
+	case tb.ErrCantEditMessage:
+		warnUnhandled(tg, err, false)
+
+	case tb.ErrQueryTooOld:
+		// Nothing we can de about too old queries
+		return true
+
+	case tb.ErrMessageNotModified:
+		// No error, message may not be modified following a callback
+		return true
+
+	case tb.ErrSameMessageContent:
+		// No error, message may not be modified following an edit
+		return true
+
+	case tb.ErrChatNotFound:
+		warnUnhandled(tg, err, false)
+
+	case tb.ErrEmptyChatID:
+		warnUnhandled(tg, err, false)
+
+	case tb.ErrEmptyMessage:
+		warnUnhandled(tg, err, false)
+
+	case tb.ErrEmptyText:
+		warnUnhandled(tg, err, false)
+
+	case tb.ErrGroupMigrated:
+		log.Error().Msg("Caught a tb.ErrGroupMigrated in the switch-case?")
+
+	case tb.ErrNoRightsToDelete:
+		warnUnhandled(tg, err, false)
+
+	case tb.ErrNoRightsToSend:
+		warnUnhandled(tg, err, false)
+
+	case tb.ErrNotFoundToDelete:
+		// Not really an error, as a user may have manually deleted a mesage
+		log.Warn().Err(err).Msg("Message not found for deletion")
+
+	case tb.ErrTooLongMarkup:
+		warnUnhandled(tg, err, false)
+
+	case tb.ErrTooLongMessage:
+		warnUnhandled(tg, err, false)
+
+	case tb.ErrWrongURL:
+		warnUnhandled(tg, err, false)
+
+	case tb.ErrNotFoundToReply:
+		warnUnhandled(tg, err, false)
+
+	// Forbidden errors
+	// https://github.com/go-telebot/telebot/blob/8ad1e044ee330c22eb24e2ff9fdd0ed92e523648/errors.go#L122
+	case tb.ErrBlockedByUser:
 		log.Debug().Msgf("Bot was blocked by user=%s, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
-	case tb.ErrKickedFromGroup.Error():
+
+	case tb.ErrKickedFromGroup:
 		log.Debug().Msgf("Bot was kicked from group=%s, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
-	case tb.ErrKickedFromSuperGroup.Error():
+
+	case tb.ErrKickedFromSuperGroup:
 		log.Debug().Msgf("Bot was kicked from supergroup=%s, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
-	case tb.ErrNotStartedByUser.Error():
+
+	case tb.ErrNotStartedByUser:
 		log.Debug().Msgf("Bot was never started by user=%s, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
-	case tb.ErrUserIsDeactivated.Error():
+
+	case tb.ErrUserIsDeactivated:
 		log.Debug().Msgf("User=%s has been deactivated, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
 
-	// If the error is not in the cases, default to unhandled
 	default:
-		log.Trace().Err(err).Msg("Error case fell through (defaulted)")
-		warnUnhandled(tg, err)
+		// If none of the earlier switch-cases caught the error, default here
+		tg.handleGenericError(err)
 	}
 
 	return false
