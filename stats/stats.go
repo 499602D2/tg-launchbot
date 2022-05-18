@@ -24,6 +24,8 @@ type Statistics struct {
 	Commands       int
 	Callbacks      int
 	ApiRequests    int
+	LimitsAverage  int64 // Track average enforced limit duration
+	LimitsEnforced int64 // Track count of enforced limits
 	LastApiUpdate  time.Time
 	NextApiUpdate  time.Time
 	StartedAt      time.Time
@@ -43,10 +45,10 @@ type User struct {
 func (stats *Statistics) String(subscribers int) string {
 	// Time-related stats
 	dbLastUpdated := durafmt.Parse(time.Since(stats.LastApiUpdate)).LimitFirstN(2)
-	// dbNextUpdate := durafmt.Parse(time.Until(stats.NextApiUpdate)).LimitFirstN(2)
+	nextUpdate := durafmt.Parse(time.Until(stats.NextApiUpdate)).LimitFirstN(2)
 	sinceStartup := humanize.Time(stats.StartedAt)
 
-	// Db size
+	// Db size; humanize it
 	dbSize := humanize.Bytes(uint64(stats.DbSize))
 
 	text := fmt.Sprintf(
@@ -57,14 +59,16 @@ func (stats *Statistics) String(subscribers int) string {
 
 			"💾 *Database information*\n"+
 			"Updated: %s ago\n"+
+			"Next update in: %s\n"+
 			"Storage used: %s\n\n"+
 
 			"🌍 *Server information*\n"+
 			"Bot started %s\n"+
+			"Average limit %s\n"+
 			"GITHUBLINK",
 
 		stats.Notifications, stats.Commands+stats.Callbacks, subscribers,
-		dbLastUpdated, dbSize, sinceStartup,
+		dbLastUpdated, nextUpdate, dbSize, sinceStartup, durafmt.Parse(time.Duration(stats.LimitsAverage)).LimitFirstN(1),
 	)
 
 	text = utils.PrepareInputForMarkdown(text, "text")
