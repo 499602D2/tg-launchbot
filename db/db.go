@@ -4,6 +4,7 @@ import (
 	"launchbot/users"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"launchbot/stats"
@@ -23,6 +24,7 @@ type Database struct {
 	Size        int64     // Db size in bytes
 	Path        string    // Path on disk
 	Owner       int64     // Telegram admin ID
+	Mutex       sync.Mutex
 }
 
 func (db *Database) SetSize() {
@@ -170,26 +172,19 @@ func (db *Database) Update(launches []*Launch, apiUpdate bool, useCacheNotifStat
 // deleted.
 func (db *Database) CleanSlippedLaunches() error {
 	// Dummy launch from grom
-	launch := Launch{}
 	nowUnix := time.Now().Unix()
 
 	// Find all launches that have launched=0, and weren't updated in the last update
-	result := db.Conn.Where(
-		"launched = ? AND updated_at < ? AND net_unix > ?",
-		0, db.LastUpdated, nowUnix,
-	).Find(&launch)
+	result := db.Conn.Unscoped().Where(
+		"launched = ? AND updated_at < ? AND net_unix > ?", 0, db.LastUpdated, nowUnix,
+	).Delete(&Launch{})
 
 	if result.RowsAffected == 0 {
 		log.Info().Msg("Database clean: nothing to do")
-		return nil
+	} else {
+		log.Info().Msgf("Deleted %d launch(es) that have slipped out of range", result.RowsAffected)
 	}
 
-	log.Info().Msgf("Deleting %d launches that have slipped out of range", result.RowsAffected)
-	db.Conn.Where("launched = ? AND updated_at < ? AND net_unix > ?",
-		0, db.LastUpdated, nowUnix,
-	).Delete(&launch)
-
-	log.Info().Msg("Database cleaned")
 	return nil
 }
 
