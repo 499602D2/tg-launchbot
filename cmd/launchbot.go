@@ -167,7 +167,7 @@ func main() {
 			go api.Updater(session, true)
 		} else {
 			// Start scheduler normally, but use the startup flag
-			go api.Scheduler(session, true)
+			go api.Scheduler(session, true, false)
 		}
 	} else {
 		log.Warn().Msg("API updates disabled")
