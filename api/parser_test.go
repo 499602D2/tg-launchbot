@@ -53,6 +53,7 @@ func TestPostponeFunctions(t *testing.T) {
 
 	/////////////////////////////////////////////////////////////////////////////
 	// Test a postpone out of the [24h...12h] window into the pre-24h window
+	log.Info().Msg("postpone out of the [24h...12h] window into the pre-24h window //////////")
 	modifiedMap := map[string]bool{"Sent24h": true, "Sent12h": false, "Sent1h": false, "Sent5min": false}
 	origNet := time.Now().Unix() + 12*3600
 	newNet := time.Now().Unix() + 26*3600
@@ -65,10 +66,13 @@ func TestPostponeFunctions(t *testing.T) {
 		wasPostponed, postpone)
 
 	// Generate the sendable (but don't catch it)
-	postponedLaunch.PostponeNotificationSendable(cache.Database, postpone, "tg")
+	if wasPostponed {
+		postponedLaunch.PostponeNotificationSendable(cache.Database, postpone, "tg")
+	}
 
 	/////////////////////////////////////////////////////////////////////////////
 	// Test a postpone out of the [5min...launch] window into the pre-24h window
+	log.Info().Msg("Postpone out of the [5min...launch] window into the pre-24h window //////////")
 	modifiedMap = map[string]bool{"Sent24h": true, "Sent12h": true, "Sent1h": true, "Sent5min": true}
 	origNet = time.Now().Unix() + 3*60
 	newNet = time.Now().Unix() + 26*3600
@@ -81,5 +85,26 @@ func TestPostponeFunctions(t *testing.T) {
 		wasPostponed, postpone)
 
 	// Generate the sendable (but don't catch it)
-	postponedLaunch.PostponeNotificationSendable(cache.Database, postpone, "tg")
+	if wasPostponed {
+		postponedLaunch.PostponeNotificationSendable(cache.Database, postpone, "tg")
+	}
+
+	/////////////////////////////////////////////////////////////////////////////
+	// Test a postpone that does not reset any notification states
+	log.Info().Msg("Postpone that does not reset any notification states //////////")
+	modifiedMap = map[string]bool{"Sent24h": true, "Sent12h": false, "Sent1h": false, "Sent5min": false}
+	origNet = time.Now().Unix() + 16*3600 // Original net 16 hours from now (24h sent)
+	newNet = time.Now().Unix() + 22*3600  // New net 22 hours from now (no reset)
+	postponedLaunch = MoveNET(cache, origNet, newNet, modifiedMap)
+
+	// Parse
+	wasPostponed, postpone = netParser(cache, postponedLaunch)
+
+	log.Debug().Msgf("Ran netParser, wasPostponed: %v, postpone: %#v",
+		wasPostponed, postpone)
+
+	// Generate the sendable (but don't catch it)
+	if wasPostponed {
+		postponedLaunch.PostponeNotificationSendable(cache.Database, postpone, "tg")
+	}
 }
