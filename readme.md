@@ -240,12 +240,13 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 - [ ] Add commands
 	- [x] /settings
 		- [x] Remove the Subscription settings -menu: add a direct button to notification time settings?
+		- [ ] Add a warning to launch preferences if user has zero notification times enabled
 	- [x] /next
-		- [ ] Edge-case: preserve behavior of only showing subscribed launches?
+		- [x] Edge-case: preserve behavior of only showing subscribed launches?
 			- [ ] Allow to be configured in settings...? (Pretty easy to do)
 				- [ ] "Command settings"? Under "Other settings"?
 		- [ ] Reuse information
-		- [ ] Re-add "you will be notified of this launch"?
+		- [x] Re-add "you will be notified of this launch"
 	- [x] /schedule
 	- [x] /stats
 	- [x] /feedback + response script
@@ -275,11 +276,13 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 - [ ] Notifications
 	- [x] Scheduling
 		- [ ] Schedule early with the help of the notification size + recipient list length
-		- [ ] Schedule post-launch checks (if last type was 5min, schedule next early)
-	- [ ] Pre-send API update (just compare NETs)
+		- [x] Schedule post-launch checks (if last type was 5min, schedule next early)
+			- [ ] Verify these work
+	- [x] Pre-send API update (just compare NETs)
 		- [x] Postpone notifications
-			- [ ] Verify they work (tests for recipients)
-		- [ ] Cancel scheduled notification if NET moves
+			- [x] Verified to work in unit-tests
+			- [ ] Verified to work in production
+		- [x] Cancel scheduled notification if NET moves (not scheduled before pre-send check)
 	- [x] Recipient list on notification send
 		- [x] Check for mute status
 	- [x] Mute notifications
