@@ -84,7 +84,7 @@ func (tg *Bot) Initialize(token string) {
 	tg.Bot.Handle(tb.OnMyChatMember, tg.botMemberChangeHandler)
 }
 
-// Responds to a callback with text, show alert if configured
+// Responds to a callback with text, show alert if configured. Always returns a nil.
 func (tg *Bot) respondToCallback(ctx tb.Context, text string, showAlert bool) error {
 	// Create callback response
 	cbResp := tb.CallbackResponse{
@@ -101,7 +101,8 @@ func (tg *Bot) respondToCallback(ctx tb.Context, text string, showAlert bool) er
 		tg.handleError(ctx, nil, err, ctx.Chat().ID)
 	}
 
-	return err
+	// Despite the error, we always return a nil due to how Telebot handlers errors.
+	return nil
 }
 
 // Edit a message following a callback, and handle any errors

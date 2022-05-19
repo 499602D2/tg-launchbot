@@ -45,7 +45,7 @@ func (cache *Cache) Update(launches []*Launch) {
 	// Re-insert all launches into the launch list and launch map
 	for _, launch := range launches {
 		// If launch has launched, ignore
-		if launch.Launched || launch.NETUnix < time.Now().Unix() {
+		if launch.NETUnix < time.Now().Unix() {
 			log.Warn().Msgf("Ignoring launch with launched=1 or NETUnix < now in cache.Update(), slug=%s", launch.Slug)
 			continue
 		}
@@ -59,7 +59,7 @@ func (cache *Cache) Update(launches []*Launch) {
 			launch.SentNotificationIds = oldLaunch.SentNotificationIds
 		} else {
 			// If states don't exist, initialize from struct's values
-			launch.NotificationState = launch.NotificationState.UpdateMap()
+			launch.NotificationState.UpdateMap(launch)
 		}
 
 		// Save new launch
@@ -100,7 +100,7 @@ func (cache *Cache) Populate() {
 		cache.LaunchMap[launch.Id] = launch
 
 		// Init the notification states
-		launch.NotificationState = launch.NotificationState.UpdateMap()
+		launch.NotificationState.UpdateMap(launch)
 	}
 
 	// Finally, sort the cache by NET

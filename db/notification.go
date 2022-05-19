@@ -26,7 +26,7 @@ type Notification struct {
 }
 
 // Updates the notification-state map from the boolean values
-func (state *NotificationState) UpdateMap() NotificationState {
+func (state *NotificationState) UpdateMap(launch *Launch) {
 	state.Map = map[string]bool{
 		"Sent24h":  state.Sent24h,
 		"Sent12h":  state.Sent12h,
@@ -34,17 +34,18 @@ func (state *NotificationState) UpdateMap() NotificationState {
 		"Sent5min": state.Sent5min,
 	}
 
-	return *state
+	launch.NotificationState = *state
 }
 
 // Updates the notification-state booleans from the map
-func (state *NotificationState) UpdateFlags() NotificationState {
+func (state *NotificationState) UpdateFlags(launch *Launch) {
 	// Update booleans
 	state.Sent24h = state.Map["Sent24h"]
 	state.Sent12h = state.Map["Sent12h"]
 	state.Sent1h = state.Map["Sent1h"]
 	state.Sent5min = state.Map["Sent5min"]
-	return *state
+
+	launch.NotificationState = *state
 }
 
 // Return a boolean, indicating whether any notifications have been sent for this launch
@@ -62,12 +63,12 @@ func (state *NotificationState) AnyNotificationsSent() bool {
 func (launch *Launch) AnyStatesResetByNetSlip(slip int64) (bool, map[string]bool) {
 	// Map notification types to seconds
 	notificationTypePreSendTime := map[string]int64{
-		"24h": 24 * 3600, "12h": 12 * 3600, "1h": 3600, "5min": 5 * 60,
+		"Sent24h": 24 * 3600, "Sent12h": 12 * 3600, "Sent1h": 3600, "Sent5min": 5 * 60,
 	}
 
 	// Track states that are reset, if any
 	resetStates := map[string]bool{
-		"24h": false, "12h": false, "1h": false, "5min": false,
+		"Sent24h": false, "Sent12h": false, "Sent1h": false, "Sent5min": false,
 	}
 
 	// Only do a disk op if a state was altered
@@ -94,14 +95,14 @@ func (launch *Launch) AnyStatesResetByNetSlip(slip int64) (bool, map[string]bool
 			resetStates[notification] = true
 			stateAltered = true
 
-			log.Debug().Msgf("Launch had its notification state reset with delta of %s (type=%s, launch=%s)",
-				durafmt.ParseShort(time.Duration(windowDelta)*time.Second), notification, launch.Id)
+			log.Debug().Msgf("Launch had its notification=%s reset with delta of %s (launch=%s)",
+				notification, durafmt.ParseShort(time.Duration(windowDelta)*time.Second), launch.Id)
 		}
 	}
 
 	// Save updated states
 	if stateAltered {
-		launch.NotificationState.UpdateFlags()
+		launch.NotificationState.UpdateFlags(launch)
 		return true, resetStates
 	}
 

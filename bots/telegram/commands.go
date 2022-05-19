@@ -397,9 +397,7 @@ func (tg *Bot) countryCodeListCallback(ctx tb.Context) error {
 	tg.editCbMessage(ctx.Callback(), message, sendOptions)
 
 	// Respond to callback
-	_ = tg.respondToCallback(ctx, fmt.Sprintf("Loaded %s", db.CountryCodeToName[data[1]]), false)
-
-	return nil
+	return tg.respondToCallback(ctx, fmt.Sprintf("Loaded %s", db.CountryCodeToName[data[1]]), false)
 }
 
 // Handles callbacks related to toggling notification settings
@@ -585,22 +583,8 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 		cbResponseText = "⚠️ Request failed! This issue has been noted."
 	}
 
-	// Create callback response
-	cbResp := tb.CallbackResponse{
-		CallbackID: ctx.Callback().ID,
-		Text:       cbResponseText,
-		ShowAlert:  true,
-	}
-
 	// Respond to callback
-	err = tg.Bot.Respond(ctx.Callback(), &cbResp)
-
-	if err != nil {
-		tg.handleError(ctx, nil, err, ctx.Chat().ID)
-		return errors.New("Could not respond to mute callback")
-	}
-
-	return nil
+	return tg.respondToCallback(ctx, cbResponseText, true)
 }
 
 // Handler for settings callback requests. Returns a callback response and showAlert bool.
@@ -717,7 +701,7 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 			message = utils.PrepareInputForMarkdown(message, "text")
 
 			tg.editCbMessage(cb, message, sendOptions)
-			return tg.respondToCallback(ctx, "⏲️ Loaded notification time settings", false)
+			return tg.respondToCallback(ctx, "⏰ Loaded notification time settings", false)
 		case "bycountry":
 			// Dynamically generated notification preferences
 			sendOptions, _ := tg.Template.Keyboard.Settings.Subscription.Main(chat)
@@ -748,9 +732,6 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 
 // Handle notification message expansions
 func (tg *Bot) expandMessageContent(ctx tb.Context) error {
-	// Pointer to received callback
-	cb := ctx.Callback()
-
 	// Load chat and generate the interaction
 	chat, interaction, err := tg.buildInteraction(ctx, true, "settings")
 
@@ -765,7 +746,7 @@ func (tg *Bot) expandMessageContent(ctx tb.Context) error {
 	}
 
 	// Split data field
-	callbackData := strings.Split(cb.Data, "/")
+	callbackData := strings.Split(ctx.Callback().Data, "/")
 
 	// Extract ID and notification type
 	launchId := callbackData[1]
@@ -790,7 +771,7 @@ func (tg *Bot) expandMessageContent(ctx tb.Context) error {
 	sendOptions, _ := tg.Template.Keyboard.Command.Expand(launch.Id, notification, muted)
 
 	// Edit message
-	sent, err := tg.Bot.Edit(cb.Message, newText, &sendOptions)
+	sent, err := tg.Bot.Edit(ctx.Callback().Message, newText, &sendOptions)
 
 	if err != nil {
 		// If not recoverable, return

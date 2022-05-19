@@ -140,7 +140,7 @@ func (db *Database) Update(launches []*Launch, apiUpdate bool, useCacheNotifStat
 				launch.NotificationState = cacheLaunch.NotificationState
 			} else {
 				// If states don't exist, initialize from struct's values
-				launch.NotificationState = launch.NotificationState.UpdateMap()
+				launch.NotificationState.UpdateMap(launch)
 			}
 		}
 	}

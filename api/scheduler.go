@@ -95,7 +95,7 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 
 	// Flags in the notification-state map have been set: automatically update the
 	// boolean values that are thrown into the database.
-	launch.NotificationState = launch.NotificationState.UpdateFlags()
+	launch.NotificationState.UpdateFlags(launch)
 
 	// Push changes to database
 	err := database.Update([]*db.Launch{launch}, false, true)

@@ -319,7 +319,7 @@ func (launch *Launch) NotificationMessage(notifType string, expanded bool) strin
 			"🔕 *Stop with /settings@tglaunchbot*",
 
 		// Name, launching-in, provider, rocket, launch pad
-		header, name, messageBody,
+		header, utils.Monospaced(name), messageBody,
 	)
 
 	// Prepare message for Telegram's MarkdownV2 parser
@@ -513,11 +513,11 @@ func (launch *Launch) PostponeNotificationMessage(postponedBy int64) (string, tb
 		"📣 *Postponed by %s:* %s\n\n"+
 			"🕙 *New launch time*\n"+
 			"*Date* $USERDATE\n"+
-			"*Until* %s\n",
+			"*Until launch* %s\n",
 
 		durafmt.ParseShort(time.Duration(postponedBy)*time.Second),
-		launch.HeaderName(),
-		durafmt.ParseShort(untilLaunch),
+		utils.Monospaced(launch.HeaderName()),
+		durafmt.Parse(untilLaunch).LimitFirstN(2),
 	)
 
 	muteBtn := tb.InlineButton{
@@ -542,13 +542,15 @@ func (launch *Launch) PostponeNotificationSendable(db *Database, postpone Postpo
 	// Get text and send-options
 	text, sendOptions := launch.PostponeNotificationMessage(postpone.PostponedBy)
 
+	log.Debug().Msgf("Text generated:\n%s", text)
+
 	// Load recipients
 	// TODO use reset states to get users who should be notified
 	recipients := launch.NotificationRecipients(db, "postpone", platform)
 	filteredRecipients := []*users.User{}
 
 	// Iterate notification states in-order
-	orderedStates := []string{"24h", "12h", "1h", "5min"}
+	orderedStates := []string{"Sent24h", "Sent12h", "Sent1h", "Sent5min"}
 
 	// Filter all recipients that have received one of the previous notifications
 	for _, user := range recipients {
@@ -566,16 +568,18 @@ func (launch *Launch) PostponeNotificationSendable(db *Database, postpone Postpo
 
 			if reset {
 				// If state was reset, check if user was subscribed to this type
-				if userStates[state] == true {
-					log.Debug().Msgf("User=%s had reset state=%s enabled, adding to postpone recipients", user.Id, state)
+				if userStates[strings.ReplaceAll(state, "Sent", "")] == true {
+					log.Debug().Msgf("User=%s has enabled reset_state=%s, adding to recipients", user.Id, state)
 					filteredRecipients = append(filteredRecipients, user)
 					break
+				} else {
+					log.Debug().Msgf("User=%s has disabled reset_state=%s, skipping this state", user.Id, state)
 				}
 			}
 		}
 	}
 
-	log.Debug().Msgf("Filtered postpone recipients from %d down to %d", len(recipients), len(filteredRecipients))
+	log.Debug().Msgf("Filtered postpone recipients: %d ➙ %d", len(recipients), len(filteredRecipients))
 
 	sendable := sendables.Sendable{
 		Type: "notification", NotificationType: "postpone", Platform: platform,
@@ -626,7 +630,7 @@ func (launch *Launch) NextNotification(db *Database) Notification {
 	allowedSlipMins := 5
 
 	// Update map before parsing
-	launch.NotificationState = launch.NotificationState.UpdateMap()
+	launch.NotificationState.UpdateMap(launch)
 
 	// Loop over the valid notification classes (24h, 12h, 1h, 5min)
 	for _, notifType := range notificationClasses {
@@ -657,7 +661,7 @@ func (launch *Launch) NextNotification(db *Database) Notification {
 
 					// Launch was missed: log, and set as sent in database
 					launch.NotificationState.Map[notifType] = true
-					launch.NotificationState = launch.NotificationState.UpdateFlags()
+					launch.NotificationState.UpdateFlags(launch)
 
 					// Save state in db
 					err := db.Update([]*Launch{launch}, false, false)
