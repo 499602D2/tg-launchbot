@@ -25,7 +25,7 @@ type Session struct {
 	Discord           *discord.Bot                        // Discord bot this session runs
 	Spam              *bots.Spam                          // Anti-spam struct for session
 	Config            *Config                             // Configuration for session
-	LaunchCache       *db.Cache                           // Launch cache
+	Cache             *db.Cache                           // Launch cache
 	Db                *db.Database                        // Pointer to the database object
 	Scheduler         chrono.TaskScheduler                // Chrono scheduler
 	Tasks             []*chrono.ScheduledTask             // List of Chrono tasks

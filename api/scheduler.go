@@ -116,7 +116,7 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 		updateWrapper(session, false)
 
 		// Re-get all notifications
-		_, notification := session.LaunchCache.NextScheduledUpdateIn()
+		_, notification := session.Cache.NextScheduledUpdateIn()
 
 		// Re-schedule notifications
 		return NotificationScheduler(session, notification, false)
@@ -126,7 +126,7 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 
 	for i, launchId := range launchIds {
 		// Pull launch from the cache
-		launch, error := session.LaunchCache.FindLaunchById(launchId)
+		launch, error := session.Cache.FindLaunchById(launchId)
 
 		if error != nil {
 			log.Error().Msgf("[notificationWrapper] Launch with id=%s not found in cache", launchId)
@@ -198,7 +198,7 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification, 
 // the notification scheduler.
 func Scheduler(session *config.Session, startup bool) bool {
 	// Get interval until next API update and the next upcoming notification
-	untilNextUpdate, notification := session.LaunchCache.NextScheduledUpdateIn()
+	untilNextUpdate, notification := session.Cache.NextScheduledUpdateIn()
 
 	if startup {
 		// On startup, check if database needs an immediate update
@@ -257,6 +257,12 @@ func Scheduler(session *config.Session, startup bool) bool {
 
 	// Save stats
 	session.Telegram.Stats.NextApiUpdate = autoUpdateTime
+
+	// Clean user cache: no notifications coming up, so it should be safe
+	if time.Until(autoUpdateTime) > time.Duration(1)*time.Hour {
+		log.Debug().Msg("More than an hour until next update, cleaning user-cache")
+		session.Cache.CleanUserCache(session.Db, false)
+	}
 
 	return true
 }

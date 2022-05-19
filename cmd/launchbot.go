@@ -41,7 +41,7 @@ func setupSignalHandler(session *config.Session) {
 		session.Db.SaveStatsToDisk(session.Telegram.Stats)
 
 		// Save all cached users
-		session.LaunchCache.CleanUserCache(session.Db, true)
+		session.Cache.CleanUserCache(session.Db, true)
 
 		/* TODO uncomment in production
 		if session.Telegram != nil {
@@ -72,16 +72,16 @@ func initSession(version string) *config.Session {
 	session.Config = config.LoadConfig()
 
 	// Initialize cache
-	session.LaunchCache = &db.Cache{
+	session.Cache = &db.Cache{
 		Launches:  []*db.Launch{},
 		LaunchMap: make(map[string]*db.Launch)}
 
-	session.LaunchCache.Users = &users.UserCache{}
+	session.Cache.Users = &users.UserCache{}
 
 	// Open database (TODO remove owner tag)
-	session.Db = &db.Database{Owner: session.Config.Owner, Cache: session.LaunchCache}
+	session.Db = &db.Database{Owner: session.Config.Owner, Cache: session.Cache}
 	session.Db.Open(session.Config.DbFolder)
-	session.LaunchCache.Database = session.Db
+	session.Cache.Database = session.Db
 
 	// Create and initialize the anti-spam system
 	session.Spam = &bots.Spam{}
@@ -91,7 +91,7 @@ func initSession(version string) *config.Session {
 	session.Telegram = &telegram.Bot{}
 	session.Telegram.Owner = session.Config.Owner
 	session.Telegram.Spam = session.Spam
-	session.Telegram.Cache = session.LaunchCache
+	session.Telegram.Cache = session.Cache
 	session.Telegram.Db = session.Db
 
 	// Init stats
@@ -159,7 +159,7 @@ func main() {
 		session.Scheduler = chrono.NewDefaultTaskScheduler()
 
 		// Populate the cache
-		session.LaunchCache.Populate()
+		session.Cache.Populate()
 
 		if updateNow {
 			// Run API update manually and enable auto-scheduler
@@ -179,13 +179,6 @@ func main() {
 
 	if err != nil {
 		log.Fatal().Err(err).Msg("Starting statistics gocron job failed")
-	}
-
-	// Clean user-cache once an hour
-	_, err = scheduler.Every(1).Hour().Do(session.LaunchCache.CleanUserCache, session.Db, false)
-
-	if err != nil {
-		log.Fatal().Err(err).Msg("Starting cache-flush gocron job failed")
 	}
 
 	// Run scheduled jobs async

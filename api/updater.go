@@ -113,7 +113,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 
 	// Parse any relevant data before dumping to disk
 	parseStartTime := time.Now()
-	launches, postponedLaunches, err := parseLaunchUpdate(session.LaunchCache, update)
+	launches, postponedLaunches, err := parseLaunchUpdate(session.Cache, update)
 
 	log.Debug().Msgf("➙ Launch update parsed in %s (%d launches)",
 		durafmt.Parse(time.Since(parseStartTime)).LimitFirstN(1), len(update.Launches))
@@ -124,7 +124,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	}
 
 	// Update hot launch cache
-	session.LaunchCache.Update(launches)
+	session.Cache.Update(launches)
 	log.Debug().Msg("➙ Hot launch cache updated")
 
 	// Update on-disk database
