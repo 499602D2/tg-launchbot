@@ -129,6 +129,10 @@ func (db *Database) LoadUser(id string, platform string) *users.User {
 	case gorm.ErrRecordNotFound:
 		// Record doesn't exist: insert as new
 		log.Debug().Msgf("Chat not found in db: inserting as new with id=%s", user.Id)
+
+		// Keep track of when user was subscribed (mainly for v2 -> v3 migration)
+		user.Stats.SubscribedSince = time.Now().Unix()
+
 		result = db.Conn.Create(&user)
 	default:
 		// Other error: log
