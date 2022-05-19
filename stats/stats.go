@@ -50,10 +50,11 @@ func (stats *Statistics) String(subscribers int) string {
 
 	// Db size; humanize it
 	dbSize := humanize.Bytes(uint64(stats.DbSize))
+	rateLimitSI := humanize.SIWithDigits(float64(stats.LimitsAverage)*10e-9, 0, "s")
 
 	text := fmt.Sprintf(
 		"📊 *LaunchBot global statistics*\n"+
-			"Notification delivered: %d\n"+
+			"Notifications delivered: %d\n"+
 			"Commands parsed: %d\n"+
 			"Active subscribers: %d\n\n"+
 
@@ -64,11 +65,11 @@ func (stats *Statistics) String(subscribers int) string {
 
 			"🌍 *Server information*\n"+
 			"Bot started %s\n"+
-			"Average limit %s\n"+
+			"Average rate-limit %s\n"+
 			"GITHUBLINK",
 
 		stats.Notifications, stats.Commands+stats.Callbacks, subscribers,
-		dbLastUpdated, nextUpdate, dbSize, sinceStartup, durafmt.Parse(time.Duration(stats.LimitsAverage)).LimitFirstN(1),
+		dbLastUpdated, nextUpdate, dbSize, sinceStartup, rateLimitSI,
 	)
 
 	text = utils.PrepareInputForMarkdown(text, "text")

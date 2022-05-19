@@ -67,7 +67,7 @@ func (spam *Spam) UserLimiter(chat *users.User, stats *stats.Statistics, tokens 
 	err := spam.Chats[chat].Limiter.WaitN(context.Background(), tokens)
 
 	// Track enforced limits
-	duration := int64(time.Since(start))
+	duration := time.Since(start).Nanoseconds()
 	stats.LimitsEnforced++
 
 	if stats.LimitsEnforced == 1 {
