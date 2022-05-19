@@ -17,11 +17,11 @@ import (
 // Notify creates and queues a notification
 func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 	// Pull the notification type we are sending (could be e.g. cached)
-	thisNotif := launch.NextNotification(database)
+	notification := launch.NextNotification(database)
 
 	// Text content of the notification
-	text := launch.NotificationMessage(thisNotif.Type, false)
-	kb := launch.TelegramNotificationKeyboard(thisNotif.Type)
+	text := launch.NotificationMessage(notification.Type, false)
+	kb := launch.TelegramNotificationKeyboard(notification.Type)
 
 	// FUTURE make launch.NotificationMessage produce sendables for multiple platforms
 	// V3.1+
@@ -46,13 +46,14 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 	// Get list of recipients
 	platform := "tg"
 	log.Debug().Msgf("Calling NotificationRecipients from scheduler.Notify()")
-	recipients := launch.NotificationRecipients(database, thisNotif.Type, platform)
+	recipients := launch.NotificationRecipients(database, notification.Type, platform)
 
 	// Create sendable
 	sendable := sendables.Sendable{
-		Type: "notification", NotificationType: thisNotif.Type,
-		LaunchId: launch.Id,
-		Message:  &msg, Recipients: recipients,
+		Type:             "notification",
+		NotificationType: notification.Type,
+		LaunchId:         launch.Id,
+		Message:          &msg, Recipients: recipients,
 	}
 
 	/*
@@ -78,7 +79,7 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 		// Get the notification type that should have been sent before this one
 		previousType, ok := iterMap[notificationType]
 
-		if !passed && notificationType == thisNotif.Type {
+		if !passed && notificationType == notification.Type {
 			// This notification was sent: set state, sprintf to correct format.
 			launch.NotificationState.Map[fmt.Sprintf("Sent%s", notificationType)] = true
 			passed = true
@@ -124,6 +125,9 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 		log.Debug().Msg("Not refreshing data before notification scheduling...")
 	}
 
+	// Track if a 5-minute notification is sent
+	queuePostLaunchUpdate := false
+
 	for i, launchId := range launchIds {
 		// Pull launch from the cache
 		launch, error := session.Cache.FindLaunchById(launchId)
@@ -136,11 +140,19 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 		log.Info().Msgf("[%d] Creating sendable for launch with name=%s", i+1, launch.Name)
 
 		sendable := Notify(launch, session.Db)
+
+		if sendable.NotificationType == "5min" {
+			log.Debug().Msgf("Sendable has NotificationType==5min, setting queuePostLaunchUpdate=true")
+			queuePostLaunchUpdate = true
+		}
+
 		session.Telegram.Queue.Enqueue(sendable, false)
 	}
 
 	log.Debug().Msgf("notificationWrapper exiting normally: running scheduler...")
-	Scheduler(session, false)
+
+	// Notifications processed: queue post-launch check if this is a 5-minute notification
+	Scheduler(session, false, queuePostLaunchUpdate)
 
 	return true
 }
@@ -196,7 +208,7 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification, 
 
 // Schedules the next API call through Chrono, and delegates calls to
 // the notification scheduler.
-func Scheduler(session *config.Session, startup bool) bool {
+func Scheduler(session *config.Session, startup bool, postLaunchCheck bool) bool {
 	// Get interval until next API update and the next upcoming notification
 	untilNextUpdate, notification := session.Cache.NextScheduledUpdateIn()
 
@@ -217,6 +229,19 @@ func Scheduler(session *config.Session, startup bool) bool {
 	// Time of next scheduled API update and time until next notification
 	autoUpdateTime := time.Now().Add(untilNextUpdate)
 	untilSendTime := time.Until(time.Unix(notification.SendTime, 0))
+
+	if postLaunchCheck {
+		// If a post-launch check, try scheduling for 10 minutes after launch's NET
+		if notification.LaunchNET != 0 {
+			autoUpdateTime = time.Unix(notification.LaunchNET, 0).Add(time.Duration(10) * time.Minute)
+		} else {
+			// If notifiation has LaunchNET set to zero, schedule for 15 minutes from now
+			log.Warn().Msgf("Notification has LaunchNET set to zero, notification=%#v", notification)
+			autoUpdateTime = time.Now().Add(time.Duration(15) * time.Minute)
+		}
+
+		log.Debug().Msgf("postLaunchCheck==true, set autoUpdateTime at 10 minutes from now")
+	}
 
 	/* Compare the scheduled update to the notification send-time, and use
 	whichever comes first.
@@ -259,9 +284,10 @@ func Scheduler(session *config.Session, startup bool) bool {
 	session.Telegram.Stats.NextApiUpdate = autoUpdateTime
 
 	// Clean user cache: no notifications coming up, so it should be safe
-	if time.Until(autoUpdateTime) > time.Duration(1)*time.Hour {
+	if (time.Until(autoUpdateTime) > time.Duration(1)*time.Hour) && !startup {
 		log.Debug().Msg("More than an hour until next update, cleaning user-cache")
 		session.Cache.CleanUserCache(session.Db, false)
+		log.Debug().Msg("User-cache cleaned")
 	}
 
 	return true

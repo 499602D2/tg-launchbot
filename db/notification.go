@@ -21,6 +21,7 @@ type Notification struct {
 	AllSent    bool     // All notifications sent already?
 	LaunchId   string   // Launch ID associated
 	LaunchName string   // Name of launch
+	LaunchNET  int64    // NET of launch
 	Count      int      // If more than one, list their count
 	IDs        []string // If more than one, include their IDs here
 }

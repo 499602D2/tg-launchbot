@@ -164,7 +164,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 
 	// Schedule next API update, if configured
 	if scheduleNext {
-		return Scheduler(session, false)
+		return Scheduler(session, false, false)
 	}
 
 	return true
