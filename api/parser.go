@@ -64,6 +64,7 @@ func netParser(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
 
 		// Check if this postponement resets any notification states
 		anyReset, resetStates := cacheLaunch.AnyStatesResetByNetSlip(netSlip)
+
 		if anyReset {
 			// Launch had one or more notification states reset: all handled behind the scenes.
 			log.Debug().Msgf("Launch NET moved, and a notification state was reset")
@@ -77,7 +78,7 @@ func netParser(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
 }
 
 // Process a single launch; function is run concurrently.
-func processLaunch(launch *db.Launch, launchUpdate *db.LaunchUpdate, idx int, cache *db.Cache, wg *sync.WaitGroup) {
+func processLaunch(launch *db.Launch, update *db.LaunchUpdate, idx int, cache *db.Cache, wg *sync.WaitGroup) {
 	// Parse the datetime string as RFC3339 into a time.Time object in UTC
 	utcTime, err := time.ParseInLocation(time.RFC3339, launch.NET, time.UTC)
 
@@ -134,16 +135,16 @@ func processLaunch(launch *db.Launch, launchUpdate *db.LaunchUpdate, idx int, ca
 	wasPostponed, postponeStatus := netParser(cache, launch)
 
 	// Lock mutex so we can save the launch
-	launchUpdate.Mutex.Lock()
-	defer launchUpdate.Mutex.Unlock()
+	update.Mutex.Lock()
+	defer update.Mutex.Unlock()
 
 	if wasPostponed {
 		// If launch was postponed, add it to the update
-		launchUpdate.Postponed[launch] = postponeStatus
+		update.Postponed[launch] = postponeStatus
 	}
 
 	// Update launch in launchUpdate (Mutex is locked so this is thread-safe)
-	launchUpdate.Launches[idx] = launch
+	update.Launches[idx] = launch
 
 	// Worker done
 	wg.Done()
