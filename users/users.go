@@ -112,6 +112,12 @@ func (user *User) HasMutedLaunch(id string) bool {
 	return false
 }
 
+// Return a bool indicating if user has any notification subscription times enabled
+func (user *User) AnyNotificationTimesEnabled() bool {
+	// Beautiful and concise at only 105 characters 8)
+	return (user.Enabled24h || user.Enabled12h || user.Enabled1h || user.Enabled5min || user.EnabledPostpone)
+}
+
 // Returns a list of integers for all enabled and disabled launch provider IDs
 func (user *User) GetNotificationStates() ([]int, []int) {
 	var (

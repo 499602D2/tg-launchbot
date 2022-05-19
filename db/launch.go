@@ -470,10 +470,67 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 	return utils.PrepareInputForMarkdown(message, "italictext")
 }
 
+// Load the launch at index=i from launches the user has subscribed to.
+// Returns the launch at index, length of cache, and if user is subscribed to this launch (does not indicate notification states)
+func (cache *Cache) LaunchUserHasSubscribedToAtIndex(user *users.User, index int) (*Launch, int, bool) {
+	if user.SubscribedAll && user.UnsubscribedFrom == "" {
+		// If user has subscribed to all launches, and unsubscribed from none
+		return cache.Launches[index], len(cache.Launches), true
+	}
+
+	if user.SubscribedTo == "" && user.UnsubscribedFrom == "" {
+		// user has subscribed to nothing, and unsubscribed from nothing
+		return cache.Launches[index], len(cache.Launches), false
+	}
+
+	// Load user states
+	userNotifStates := user.GetNotificationStateMap()
+
+	// Track what launches user has subscribed to
+	subscribedTo := []*Launch{}
+
+	// If user has all enabled notifications, verify this ID is not in disabled IDs
+	var (
+		ok     bool
+		status bool
+	)
+
+	for _, launch := range cache.Launches {
+		// Load launch from notification states
+		status, ok = userNotifStates[launch.LaunchProvider.Id]
+
+		if user.SubscribedAll && !ok {
+			// If user has subscribed to all, and launch is not found, then it has not been disabled
+			subscribedTo = append(subscribedTo, launch)
+		} else if !user.SubscribedAll && status == true {
+			// If user has not subscribed to all launches and state is enabled, add
+			subscribedTo = append(subscribedTo, launch)
+		}
+	}
+
+	if len(subscribedTo) == 0 {
+		// If zero launches that user has subscribed to are coming up, show all launches
+		// FUTURE make the first message a "No launches coming up with your settings..."
+		return cache.Launches[index], len(cache.Launches), false
+	}
+
+	if index >= len(subscribedTo) {
+		log.Warn().Msgf("Index=%d greater than length of subscribedTo (=%d)", index, len(subscribedTo))
+		return subscribedTo[len(subscribedTo)-1], len(subscribedTo), true
+	}
+
+	return subscribedTo[index], len(subscribedTo), true
+}
+
 // Creates the text content and Telegram reply keyboard for the /next command.
-func (cache *Cache) NextLaunchMessage(user *users.User, index int) string {
+func (cache *Cache) NextLaunchMessage(user *users.User, index int) (string, int) {
+	// Ensure index doesn't go over the max index
+	if index >= len(cache.Launches) {
+		index = len(cache.Launches) - 1
+	}
+
 	// Pull launch from cache at index
-	launch := cache.Launches[index]
+	launch, userSubLaunchCount, subscribedTo := cache.LaunchUserHasSubscribedToAtIndex(user, index)
 
 	// If cache has old launches, refresh it
 	if launch.NETUnix < time.Now().Unix() {
@@ -488,8 +545,26 @@ func (cache *Cache) NextLaunchMessage(user *users.User, index int) string {
 		"🚀 *Next launch* %s\n"+
 			"%s",
 
-		utils.Monospaced(name), launch.MessageBodyText(true, false),
+		utils.Monospaced(name),
+		launch.MessageBodyText(true, false),
 	)
+
+	if subscribedTo && user.AnyNotificationTimesEnabled() {
+		// Check if user has muted this launch, or has any notifications at all enabled
+		if !user.HasMutedLaunch(launch.Id) {
+			text += "🔔 You are subscribed to this launch"
+		} else {
+			text += "🔇 You have muted this launch"
+		}
+	} else {
+		if !user.AnyNotificationTimesEnabled() {
+			// If user has not enabled any notifications
+			text += "🔕 You have disabled all notifications"
+		} else {
+			// If user is not subscribed to this launch
+			text += "🔕 You are not subscribed to this launch"
+		}
+	}
 
 	// Check if the launch date is TBD, and we should use the low-accuracy NET date
 	dateOnly := false
@@ -500,7 +575,7 @@ func (cache *Cache) NextLaunchMessage(user *users.User, index int) string {
 	// Set user's time
 	text = sendables.SetTime(text, user, launch.NETUnix, false, true, dateOnly)
 
-	return utils.PrepareInputForMarkdown(text, "text")
+	return utils.PrepareInputForMarkdown(text, "text"), userSubLaunchCount
 }
 
 // Constructs the message for a postpone notification
@@ -679,8 +754,9 @@ func (launch *Launch) NextNotification(db *Database) Notification {
 					sendTime = time.Now().Unix() + 10
 
 					notifType = strings.ReplaceAll(notifType, "Sent", "")
-					return Notification{Type: notifType, SendTime: sendTime,
-						LaunchId: launch.Id, LaunchName: launch.Name, Count: 1}
+					return Notification{
+						Type: notifType, SendTime: sendTime, LaunchId: launch.Id,
+						LaunchName: launch.Name, LaunchNET: launch.NETUnix, Count: 1}
 				}
 			}
 
@@ -689,13 +765,15 @@ func (launch *Launch) NextNotification(db *Database) Notification {
 
 			return Notification{
 				Type: notifType, SendTime: sendTime, LaunchId: launch.Id,
-				LaunchName: launch.Name, Count: 1,
+				LaunchName: launch.Name, LaunchNET: launch.NETUnix, Count: 1,
 			}
 		}
 	}
 
 	// No unsent notifications: return with AllSent=true
-	return Notification{AllSent: true, LaunchId: launch.Id, LaunchName: launch.Name, Count: 0}
+	return Notification{
+		AllSent: true, LaunchId: launch.Id, LaunchName: launch.Name,
+		LaunchNET: launch.NETUnix, Count: 0}
 }
 
 // Return a list of all provider IDs associated with a country-code

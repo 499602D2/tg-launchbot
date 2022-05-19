@@ -216,8 +216,8 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 	}
 
 	// Get text, send-options for the message
-	textContent := tg.Cache.NextLaunchMessage(chat, index)
-	sendOptions, _ := tg.Template.Keyboard.Command.Next(index, len(tg.Cache.Launches))
+	textContent, cacheLength := tg.Cache.NextLaunchMessage(chat, index)
+	sendOptions, _ := tg.Template.Keyboard.Command.Next(index, cacheLength)
 
 	if interaction.IsCommand {
 		// Construct message
