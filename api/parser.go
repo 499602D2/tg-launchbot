@@ -42,11 +42,12 @@ func netParser(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
 
 	if !ok {
 		// Typically, a launch is not cached if it has slipped outside of range, or has already launched.
-		// This also frequently occurs when switching back and forth between the main- and dev-endpoint of LL2.
+		// This also frequently occurs when switching back and forth between the main- and dev-endpoint of LL2,
+		// or if a launch is simply new and seen for the first time.
 		if time.Now().Unix() > freshLaunch.NETUnix {
 			log.Debug().Msgf("(OK) Launch is in the past, and not found in cache slug=%s", freshLaunch.Slug)
 		} else {
-			log.Warn().Msgf("Launch with slug=%s not found in cache, but NET in the future", freshLaunch.Slug)
+			log.Warn().Msgf("(Probably OK) Launch with slug=%s not found in cache, but NET in the future", freshLaunch.Slug)
 		}
 
 		return false, db.Postpone{}
