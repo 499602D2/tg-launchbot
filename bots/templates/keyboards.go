@@ -420,18 +420,22 @@ func (command *CommandKeyboard) Next(index int, cacheLength int) (tb.SendOptions
 
 	switch index {
 	case 0: // Case: first index
+		if cacheLength > 1 {
+			// Only add the next button if cache is longer than 1
+			nextBtn := tb.InlineButton{
+				Unique: "next",
+				Text:   "Next launch ➡️", Data: "nxt/n/1/+",
+			}
+
+			kb = [][]tb.InlineButton{{nextBtn}}
+		}
+
 		refreshBtn := tb.InlineButton{
 			Unique: "next",
 			Text:   "Refresh 🔄", Data: "nxt/r/0",
 		}
 
-		nextBtn := tb.InlineButton{
-			Unique: "next",
-			Text:   "Next launch ➡️", Data: "nxt/n/1/+",
-		}
-
-		// Construct the keyboard
-		kb = [][]tb.InlineButton{{nextBtn}, {refreshBtn}}
+		kb = append(kb, []tb.InlineButton{refreshBtn})
 
 	case cacheLength - 1: // Case: last index
 		refreshBtn := tb.InlineButton{
