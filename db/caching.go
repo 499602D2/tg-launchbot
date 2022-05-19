@@ -15,8 +15,8 @@ type Cache struct {
 	Launches  []*Launch          // An ordered list of launches
 	LaunchMap map[string]*Launch // Maps the launch ID to the launch object
 	Updated   time.Time          // Time the cache was last updated
-	Users     *users.UserCache
-	Database  *Database
+	Users     *users.UserCache   // Cached users
+	Database  *Database          // Database associated with this cache
 	Mutex     sync.Mutex
 }
 
@@ -45,7 +45,7 @@ func (cache *Cache) Update(launches []*Launch) {
 	// Re-insert all launches into the launch list and launch map
 	for _, launch := range launches {
 		// If launch has launched, ignore
-		if launch.NETUnix < time.Now().Unix() {
+		if launch.Launched {
 			log.Warn().Msgf("Ignoring launch with launched=1 or NETUnix < now in cache.Update(), slug=%s", launch.Slug)
 			continue
 		}

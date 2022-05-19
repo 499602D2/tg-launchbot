@@ -507,6 +507,7 @@ func (cache *Cache) NextLaunchMessage(user *users.User, index int) string {
 func (launch *Launch) PostponeNotificationMessage(postponedBy int64) (string, tb.SendOptions) {
 	// New T- until launch
 	untilLaunch := time.Until(time.Now().Add(time.Duration(postponedBy) * time.Second))
+	log.Debug().Msgf("Generating postpone message, postponedBy=%d", postponedBy)
 
 	// Text for the postpone notification
 	text := fmt.Sprintf(
