@@ -244,6 +244,8 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 		- [ ] Edge-case: preserve behavior of only showing subscribed launches?
 			- [ ] Allow to be configured in settings...? (Pretty easy to do)
 				- [ ] "Command settings"? Under "Other settings"?
+		- [ ] Reuse information
+		- [ ] Re-add "you will be notified of this launch"?
 	- [x] /schedule
 	- [x] /stats
 	- [x] /feedback + response script
@@ -260,7 +262,9 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 		- [x] Notifications
 			- [x] Mute
 				- [x] Only allow admins to mute a launch
-			- [x] Expand description
+			- [ ] Expand description
+				- [x] Implement for description
+				- [ ] Implement for re-use information
 				- [x] Remove button from notifications if no description 
 		- [x] Commands
 	- [x] Use a dual-limiter
