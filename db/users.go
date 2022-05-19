@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Clean any users from the cache that have not been active in a while
@@ -166,6 +167,19 @@ func (db *Database) SaveUser(user *users.User) {
 
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msgf("Failed to save chat id=%s:%s", user.Id, user.Platform)
+	}
+}
+
+// Save a batch of users to disk
+func (db *Database) SaveUserBatch(users []*users.User) {
+	// Do a single batch upsert (Update all columns, except primary keys, to new value on conflict)
+	// https://gorm.io/docs/create.html#Upsert-x2F-On-Conflict
+	result := db.Conn.Clauses(clause.OnConflict{
+		UpdateAll: true,
+	}).Create(&users)
+
+	if result.Error != nil {
+		log.Error().Err(result.Error).Msg("Batch insert of users failed in SaveUserBatch")
 	}
 }
 

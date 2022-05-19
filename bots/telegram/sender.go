@@ -171,25 +171,25 @@ func Sender(tg *Bot) {
 				}
 
 				// Loop over users this sendable is meant for
-				for i, user := range sendable.Recipients {
+				for i, chat := range sendable.Recipients {
 					// Rate-limiter: check if we have tokens to proceed
 					tg.Spam.GlobalLimiter(sendable.Tokens)
 
 					// Run a light user-limiter: max tokens is 2
-					tg.Spam.UserLimiter(user, tg.Stats, 1)
+					tg.Spam.UserLimiter(chat, tg.Stats, 1)
 
 					// Switch-case the sendable's type
 					switch sendable.Type {
 					case "notification":
-						log.Debug().Msgf("Sending notification to user=%s", user.Id)
-						sentIdPair, success := SendNotification(tg, sendable, user)
+						log.Debug().Msgf("Sending notification to user=%s", chat.Id)
+						sentIdPair, success := SendNotification(tg, sendable, chat)
 
 						if success {
 							sentIds = append(sentIds, sentIdPair)
-							user.Stats.ReceivedNotifications++
+							chat.Stats.ReceivedNotifications++
 						}
 					case "delete":
-						DeleteNotificationMessage(tg, sendable, user)
+						DeleteNotificationMessage(tg, sendable, chat)
 					}
 
 					/* Periodically, during long sends, check if the TelegramBot.PriorityQueued is set.
@@ -219,6 +219,9 @@ func Sender(tg *Bot) {
 					// Update statistics, save to disk
 					tg.Stats.Notifications += len(sentIds)
 					tg.Db.SaveStatsToDisk(tg.Stats)
+
+					// Save stats for all users in recipients (so we can track received notification count)
+					tg.Db.SaveUserBatch(sendable.Recipients)
 
 					// Load launch from cache so we can save the IDs
 					launch, err := tg.Cache.FindLaunchById(sendable.LaunchId)
