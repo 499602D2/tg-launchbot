@@ -38,12 +38,13 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 	// Set userCache ptr
 	userCache := cache.Users
 
-	log.Debug().Msgf("Finding user=%s from cache", id)
+	// log.Debug().Msgf("Finding user=%s from cache", id)
 
 	// Checks if the chat ID already exists
 	i := sort.SearchStrings(userCache.InCache, id)
 
-	log.Debug().Msgf("Got index: %d", i)
+	// log.Debug().Msgf("Got index: %d", i)
+
 	if len(userCache.InCache) > 0 {
 		if i < len(userCache.InCache) && userCache.Users[i].Id == id {
 			// User is in cache, return
@@ -58,7 +59,7 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 	userCache.Mutex.Lock()
 	defer userCache.Mutex.Unlock()
 
-	log.Debug().Msgf("User not in cache: inserting...")
+	// log.Debug().Msgf("User not in cache: inserting...")
 
 	// Add user to cache so that the cache stays ordered
 	if len(userCache.InCache) == i {
@@ -78,7 +79,7 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 		userCache.InCache[i] = user.Id
 	}
 
-	log.Debug().Msgf("User inserted")
+	// log.Debug().Msgf("User inserted")
 
 	// log.Debug().Msgf("Added chat=%s:%s to cache", userCache.Users[i].Id, userCache.Users[i].Platform)
 	return user

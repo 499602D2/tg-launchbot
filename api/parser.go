@@ -34,16 +34,15 @@ func getHighestPriorityVideoLink(links []db.ContentURL) *db.ContentURL {
 // Checks if the NET of a launch slipped from one update to another.
 // Returns a bool indicating if this happened, and a Postpone{} characterizing the NET slip.
 func netParser(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
-	/* Launch not found in cache, check on disk
-
-	The launch could have e.g. launched between the two checks, and might thus
-	have disappeared from the /upcoming endpoint */
+	// Load the cached launch (effectively the old version)
 	cacheLaunch, ok := cache.LaunchMap[freshLaunch.Id]
 
 	if !ok {
-		// Typically, a launch is not cached if it has slipped outside of range, or has already launched.
-		// This also frequently occurs when switching back and forth between the main- and dev-endpoint of LL2,
-		// or if a launch is simply new and seen for the first time.
+		/*
+			Typically, a launch is not cached if it has slipped outside of range, or has already launched.
+			This also frequently occurs when switching back and forth between the main- and dev-endpoint of LL2,
+			or if a launch is simply new and seen for the first time.
+		*/
 		if time.Now().Unix() > freshLaunch.NETUnix {
 			log.Debug().Msgf("(OK) Launch is in the past, and not found in cache slug=%s", freshLaunch.Slug)
 		} else {
@@ -59,7 +58,10 @@ func netParser(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
 
 		// If no notifications have been sent, the postponement does not matter
 		if !cacheLaunch.NotificationState.AnyNotificationsSent() {
-			log.Debug().Msgf("Launch NETs don't match, but no notifications have been sent: returning false")
+			log.Debug().Msgf("Launch NETs don't match (by %d sec), but no notifications sent. Returning false (%s)",
+				netSlip, cacheLaunch.Slug,
+			)
+
 			return false, db.Postpone{}
 		}
 
@@ -69,6 +71,7 @@ func netParser(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
 		if anyReset {
 			// Launch had one or more notification states reset: all handled behind the scenes.
 			log.Debug().Msgf("Launch NET moved, and a notification state was reset")
+
 			return true, db.Postpone{PostponedBy: netSlip, ResetStates: resetStates}
 		}
 
@@ -164,7 +167,7 @@ func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, 
 		go processLaunch(launch, update, idx, cache, &wg)
 	}
 
-	// Wait for all processes to finish
+	// Wait for all workers to finish
 	wg.Wait()
 
 	// Sort launches so they are ordered by NET
