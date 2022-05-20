@@ -136,19 +136,18 @@ func main() {
 		// If debugging, output to console
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC822Z})
 		asciiArt := `
-			888                                          888      888888b.            888          .d8888b.
-			888                                          888      888  "88b           888         d88P  Y88b
-			888                                          888      888  .88P           888         888    888
-			888       8888b.  888  888 88888b.   .d8888b 88888b.  8888888K.   .d88b.  888888      888         .d88b.
-			888          "88b 888  888 888 "88b d88P"    888 "88b 888  "Y88b d88""88b 888         888  88888 d88""88b
-			888      .d888888 888  888 888  888 888      888  888 888    888 888  888 888  888888 888    888 888  888
-			888      888  888 Y88b 888 888  888 Y88b.    888  888 888   d88P Y88..88P Y88b.       Y88b  d88P Y88..88P
-			88888888 "Y888888  "Y88888 888  888  "Y8888P 888  888 8888888P"   "Y88P"   "Y888       "Y8888P88  "Y88P"`
-
+		888                                          888      888888b.            888    
+		888                                          888      888  "88b           888    
+		888                                          888      888  .88P           888    
+		888       8888b.  888  888 88888b.   .d8888b 88888b.  8888888K.   .d88b.  888888 
+		888          "88b 888  888 888 "88b d88P"    888 "88b 888  "Y88b d88""88b 888    
+		888      .d888888 888  888 888  888 888      888  888 888    888 888  888 888    
+		888      888  888 Y88b 888 888  888 Y88b.    888  888 888   d88P Y88..88P Y88b.  
+		88888888 "Y888888  "Y88888 888  888  "Y8888P 888  888 8888888P"   "Y88P"   "Y888`
 		log.Info().Msg(strings.Replace(asciiArt, "	", "", -1))
 	}
 
-	log.Info().Msgf("🤖 LaunchBot-Go %s started", version)
+	log.Info().Msgf("🤖 LaunchBot %s started", version)
 
 	// Create session
 	session := initSession(version)
@@ -167,7 +166,7 @@ func main() {
 			go api.Updater(session, true)
 		} else {
 			// Start scheduler normally, but use the startup flag
-			go api.Scheduler(session, true, false)
+			go api.Scheduler(session, true, nil)
 		}
 	} else {
 		log.Warn().Msg("API updates disabled")
