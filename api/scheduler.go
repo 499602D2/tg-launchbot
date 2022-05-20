@@ -14,6 +14,12 @@ import (
 	tb "gopkg.in/telebot.v3"
 )
 
+type PostLaunch struct {
+	Do       bool
+	NET      int64
+	LaunchId string
+}
+
 // Notify creates and queues a notification
 func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 	// Pull the notification type we are sending (could be e.g. cached)
@@ -53,7 +59,8 @@ func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
 		Type:             "notification",
 		NotificationType: notification.Type,
 		LaunchId:         launch.Id,
-		Message:          &msg, Recipients: recipients,
+		Message:          &msg,
+		Recipients:       recipients,
 	}
 
 	/*
@@ -125,34 +132,37 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 		log.Debug().Msg("Not refreshing data before notification scheduling...")
 	}
 
-	// Track if a 5-minute notification is sent
-	queuePostLaunchUpdate := false
+	// If we schedule a 5-min notification, schedule a post-launch API update
+	var postLaunchUpdate *PostLaunch
 
 	for i, launchId := range launchIds {
 		// Pull launch from the cache
 		launch, error := session.Cache.FindLaunchById(launchId)
 
 		if error != nil {
-			log.Error().Msgf("[notificationWrapper] Launch with id=%s not found in cache", launchId)
+			log.Error().Err(error).Msgf("[notificationWrapper] Launch with id=%s not found in cache", launchId)
 			continue
 		}
 
 		log.Info().Msgf("[%d] Creating sendable for launch with name=%s", i+1, launch.Name)
 
+		// Create the sendable for this notification
 		sendable := Notify(launch, session.Db)
 
 		if sendable.NotificationType == "5min" {
+			// If we're sending a 5-min notification, schedule a post-launch update
 			log.Debug().Msgf("Sendable has NotificationType==5min, setting queuePostLaunchUpdate=true")
-			queuePostLaunchUpdate = true
+			postLaunchUpdate = &PostLaunch{NET: launch.NETUnix, LaunchId: launch.Id}
 		}
 
+		// Enqueue the sendable
 		session.Telegram.Queue.Enqueue(sendable, false)
 	}
 
 	log.Debug().Msgf("notificationWrapper exiting normally: running scheduler...")
 
 	// Notifications processed: queue post-launch check if this is a 5-minute notification
-	Scheduler(session, false, queuePostLaunchUpdate)
+	Scheduler(session, false, postLaunchUpdate)
 
 	return true
 }
@@ -208,7 +218,7 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification, 
 
 // Schedules the next API call through Chrono, and delegates calls to
 // the notification scheduler.
-func Scheduler(session *config.Session, startup bool, postLaunchCheck bool) bool {
+func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunch) bool {
 	// Get interval until next API update and the next upcoming notification
 	untilNextUpdate, notification := session.Cache.NextScheduledUpdateIn()
 
@@ -228,37 +238,41 @@ func Scheduler(session *config.Session, startup bool, postLaunchCheck bool) bool
 
 	// Time of next scheduled API update and time until next notification
 	autoUpdateTime := time.Now().Add(untilNextUpdate)
-	untilSendTime := time.Until(time.Unix(notification.SendTime, 0))
+	untilNotification := time.Until(time.Unix(notification.SendTime, 0))
 
-	if postLaunchCheck {
+	if postLaunchCheck != nil {
 		// If a post-launch check, try scheduling for 10 minutes after launch's NET
-		if notification.LaunchNET != 0 {
-			autoUpdateTime = time.Unix(notification.LaunchNET, 0).Add(time.Duration(10) * time.Minute)
+		if postLaunchCheck.NET != 0 {
+			autoUpdateTime = time.Unix(postLaunchCheck.NET, 0).Add(time.Duration(10) * time.Minute)
+			log.Debug().Msgf("postLaunchCheck's NET != 0, scheduling for 10 minutes after NET=%d", postLaunchCheck.NET)
 		} else {
 			// If notifiation has LaunchNET set to zero, schedule for 15 minutes from now
-			log.Warn().Msgf("Notification has LaunchNET set to zero, notification=%#v", notification)
 			autoUpdateTime = time.Now().Add(time.Duration(15) * time.Minute)
+			log.Warn().Msgf("postLaunchCheck has NET set to zero, postLaunchCheck=%#v", postLaunchCheck)
 		}
 
-		log.Debug().Msgf("postLaunchCheck==true, set autoUpdateTime at 10 minutes from now")
+		log.Debug().Msgf("postLaunchCheck==true, set autoUpdateTime to %s",
+			durafmt.Parse(time.Until(autoUpdateTime)).LimitFirstN(2))
 	}
 
-	/* Compare the scheduled update to the notification send-time, and use
-	whichever comes first.
+	/*
+		Compare the scheduled update to the notification send-time, and use
+		whichever comes first.
 
-	Basically, if there's a notification coming up before the next API update,
-	we don't need to schedule an API update at all, as the notification handler
-	will perform that for us.
+		Basically, if there's a notification coming up before the next API update,
+		we don't need to schedule an API update at all, as the notification handler
+		will perform that for us.
 
-	This is due to the fact that the notification sender needs to check that the
-	data is still up to date, and has not changed from the last update. */
-	if (time.Until(autoUpdateTime) > untilSendTime) && (untilSendTime.Minutes() > -5.0) {
+		This is due to the fact that the notification sender needs to check that the
+		data is still up to date, and has not changed from the last update.
+	*/
+	if (time.Until(autoUpdateTime) > untilNotification) && (untilNotification.Minutes() > -5.0) {
 		log.Info().Msgf("A notification (type=%s) is coming up before next API update, scheduling...",
 			notification.Type,
 		)
 
 		// Save stats
-		session.Telegram.Stats.NextApiUpdate = time.Now().Add(untilSendTime)
+		session.Telegram.Stats.NextApiUpdate = time.Now().Add(untilNotification)
 		return NotificationScheduler(session, notification, true)
 	}
 
@@ -277,8 +291,9 @@ func Scheduler(session *config.Session, startup bool, postLaunchCheck bool) bool
 	session.Tasks = append(session.Tasks, &task)
 	session.Mutex.Unlock()
 
-	untilAutoUpdate := durafmt.Parse(time.Until(autoUpdateTime)).LimitFirstN(2)
-	log.Info().Msgf("Next auto-update in %s (%s)", untilAutoUpdate, autoUpdateTime.Format(time.RFC1123))
+	log.Info().Msgf("Next auto-update in %s (%s)",
+		durafmt.Parse(time.Until(autoUpdateTime)).LimitFirstN(2),
+		autoUpdateTime.Format(time.RFC1123))
 
 	// Save stats
 	session.Telegram.Stats.NextApiUpdate = autoUpdateTime
