@@ -59,7 +59,7 @@ https://github.com/go-telebot/telebot/blob/v3.0.0/errors.go#L33
 */
 
 // On unhandled errors, send a notification to the administrator
-func errorMonitor(tg *Bot, err error, wasGeneric bool) {
+func notifyAdminOfError(tg *Bot, err error, wasGeneric bool) {
 	// Create a simple error message
 	var errMsg string
 	if wasGeneric {
@@ -90,7 +90,8 @@ func warnUnhandled(tg *Bot, err error, wasGeneric bool) {
 	} else {
 		log.Error().Err(err).Msg("Unhandled Telegram error")
 	}
-	errorMonitor(tg, err, wasGeneric)
+
+	notifyAdminOfError(tg, err, wasGeneric)
 }
 
 // A generic error handler
@@ -159,6 +160,7 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 			}
 		}
 
+		notifyAdminOfError(tg, err, false)
 		return false
 	}
 
