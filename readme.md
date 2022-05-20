@@ -170,7 +170,7 @@ TODO
 
 	- ✅ Reuse proven Python logic where possible with direct translation
 
-	- ✅ Improve performance with improved caching and Go's performance upside
+	- ✅ Improve performance with better caching and Go's performance upside
 
 	- ✅ Dance around API limits by sending incomplete messages, where the rest of the message can be later expanded
 
@@ -204,6 +204,19 @@ TODO
 </details>
 
 ## To-do before 3.0.0
+
+
+### Short to-do list
+
+- [ ] Pre-send notifications, with the help of recipient count + message token count
+
+- [ ] Re-use information in description expansion
+
+- [ ] Retry message send if rate-limited
+
+- [ ] Fancier postpone notifications (low urgency)
+
+- [ ] Migrate v2 database to v3
 
 ### Readme
 
