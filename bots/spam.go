@@ -70,6 +70,7 @@ func (spam *Spam) UserLimiter(chat *users.User, stats *stats.Statistics, tokens 
 	duration := time.Since(start).Nanoseconds()
 	stats.LimitsEnforced++
 
+	// FUTURE track means with a fixed-length set of rate-limit durations (average same-index insertions)
 	if stats.LimitsEnforced == 1 {
 		stats.LimitsAverage = duration
 	} else {
