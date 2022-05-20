@@ -1,7 +1,6 @@
 package telegram
 
 import (
-	"errors"
 	"fmt"
 	"launchbot/bots"
 	"launchbot/bots/templates"
@@ -165,7 +164,7 @@ func (tg *Bot) tryRemovingMessage(ctx tb.Context) error {
 	if err != nil {
 		log.Error().Msg("Loading bot's permissions in chat failed")
 		tg.handleError(ctx, nil, err, ctx.Chat().ID)
-		return err
+		return nil
 	}
 
 	if bot.CanDeleteMessages {
@@ -174,14 +173,14 @@ func (tg *Bot) tryRemovingMessage(ctx tb.Context) error {
 	} else {
 		// If the bot is not allowed to delete messages, return
 		log.Error().Msgf("Cannot delete messages in chat=%d", ctx.Chat().ID)
-		return errors.New("Cannot delete messages in chat")
+		return nil
 	}
 
 	// Check errors
 	if err != nil {
 		log.Error().Msg("Deleting message sent by a non-admin failed")
 		tg.handleError(ctx, nil, err, ctx.Chat().ID)
-		return errors.New("Deleting message sent by a non-admin failed")
+		return nil
 	}
 
 	log.Debug().Msgf("Deleted message by non-admin in chat=%d", ctx.Chat().ID)
