@@ -1,5 +1,5 @@
 # LaunchBot – a rocket launch information and notifications bot for Telegram 🚀
-LaunchBot keeps you up to date with what's going up, around the clock, since 2019. Over 800'000 notifications delivered to thousands of chats and groups!
+LaunchBot keeps you up to date with what's going up, around the clock, since 2019. Over 900'000 notifications delivered to thousands of chats and groups!
 
 Reachable as [@rocketrybot](https://t.me/rocketrybot) on Telegram.
 
@@ -19,7 +19,13 @@ Other features include...
 - spam management for groups (removes requests the bot won't respond to)
 
 ## Basic instructions
-Clone the repository and install all dependencies with `go get all`. Then, `cd` into `/cmd` with `cd /cmd`, and build the program with `./build.sh`. This may require you to allow executing the script: this can be done with `chmod +x build.sh`. Once done, `cd` back into the main folder with `cd ..`.
+1. Clone the repository and install all dependencies with `go get all`.
+
+2. `cd` into `/cmd` with `cd cmd`.
+
+3. Build the program with `./build.sh`. This may require you to allow executing the script: this can be done with `chmod +x build.sh`.
+
+4. `cd` back into the main folder with `cd ..`.
 
 Now, you can run the program: to start, open a new terminal window, and run `./launchbot`. The bot will ask you for a Telegram bot API key: you can get one from BotFather on Telegram.
 
@@ -34,9 +40,15 @@ You can specify your personal account's Telegram user ID in `config.json` in the
 
 ## Privacy
 
-Only information stored by the bot is the chat ID, which may or may not be your user ID, depending on whether the chat is a one-on-one or a group chat. The chat ID is used to deliver notifications, manage spam, and keep statistics. Users can optionally store their time zone as a time zone database entry (e.g. Europe/Berlin), which can be removed at any time.
+In order to operate, LaunchBot must save a chat ID. This may or may not be your user ID, depending on whether the chat is a one-on-one or a group chat. The chat ID is used to deliver notifications, manage spam, and keep statistics. Users can optionally store their time zone as a time zone database entry (e.g. Europe/Berlin), which can be removed at any time.
+
+When LaunchBot is added to a new group, it looks up the number of users the group has. Apart from the chat ID, this is the only extra information saved, and is only used to get an idea of the reach of the bot.
 
 The above only applies on a per-bot-instance basis. The creator of the bot chooses whether to configure the bot to be able to read all text messages, not just ones directed at the bot. Telegram bots are, by nature, extremely privacy invasive: don't add unknown bots to group chats, unless it's hosted by you or someone you trust.
+
+## Dependencies
+
+TODO
 
 ## Roadmap and historical changelog
 
@@ -215,6 +227,9 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 - [x] Add database functions
 	- [x] Create database, auto-migrations
 	- [x] Launch inserts
+		- [ ] Notification send-states don't seem to be preserved after a launch has launched: investigate
+			- Could be caused by the fact that when a launch is not found in cache,
+			the states aren't re-used. Avoid doing full-on overwrites (how? load from DB if not in cache, but don't insert into cache?)
 	- [x] Stats updates
 	- [x] User functions
 		- [x] Statistics
@@ -245,6 +260,7 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 		- [x] Edge-case: preserve behavior of only showing subscribed launches?
 			- [ ] Allow to be configured in settings...? (Pretty easy to do)
 				- [ ] "Command settings"? Under "Other settings"?
+		- [x] Warn users if they have no notification times enables
 		- [ ] Reuse information
 		- [x] Re-add "you will be notified of this launch"
 	- [x] /schedule
