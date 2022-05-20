@@ -78,6 +78,7 @@ func (settings *SettingsKeyboard) Main(isGroup bool) (tb.SendOptions, [][]tb.Inl
 		ParseMode:             "MarkdownV2",
 		DisableWebPagePreview: true,
 		ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+		Protected:             true,
 	}
 
 	return sendOptions, kb
@@ -158,6 +159,7 @@ func (settings *SettingsKeyboard) Notifications(chat *users.User) (tb.SendOption
 		ParseMode:             "MarkdownV2",
 		DisableWebPagePreview: true,
 		ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+		Protected:             true,
 	}
 
 	return sendOptions, kb
@@ -189,6 +191,7 @@ func (tz *TimeZoneKeyboard) Main() (tb.SendOptions, [][]tb.InlineButton) {
 		ParseMode:             "MarkdownV2",
 		DisableWebPagePreview: true,
 		ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+		Protected:             true,
 	}
 
 	return sendOptions, kb
@@ -226,6 +229,7 @@ func (tz *TimeZoneKeyboard) Deleted() (tb.SendOptions, [][]tb.InlineButton) {
 		ParseMode:             "MarkdownV2",
 		DisableWebPagePreview: true,
 		ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+		Protected:             true,
 	}
 
 	return sendOptions, kb
@@ -279,6 +283,7 @@ func (subscription *SubscriptionKeyboard) Main(chat *users.User) (tb.SendOptions
 		ParseMode:             "MarkdownV2",
 		DisableWebPagePreview: true,
 		ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+		Protected:             true,
 	}
 
 	return sendOptions, kb
@@ -337,6 +342,7 @@ func (subscription *SubscriptionKeyboard) ByCountryCode(chat *users.User, cc str
 		ParseMode:             "MarkdownV2",
 		DisableWebPagePreview: true,
 		ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+		Protected:             true,
 	}
 
 	return sendOptions, kb
