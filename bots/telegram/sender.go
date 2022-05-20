@@ -153,6 +153,9 @@ func Sender(tg *Bot) {
 			// Lock queue while processing
 			tg.Queue.Mutex.Lock()
 
+			// Flip switch to indicate that we are sending notifications
+			tg.Spam.NotificationSendUnderway = true
+
 			for hash, sendable := range tg.Queue.Sendables {
 				// Processing time
 				processStartTime = time.Now()
@@ -259,6 +262,7 @@ func Sender(tg *Bot) {
 			}
 
 			// Unlock mutex after each sendable
+			tg.Spam.NotificationSendUnderway = false
 			tg.Queue.Mutex.Unlock()
 		}
 

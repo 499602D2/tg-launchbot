@@ -13,10 +13,11 @@ import (
 
 // In-memory struct keeping track of banned chats and per-chat activity
 type Spam struct {
-	Chats   map[*users.User]Chat // Map chat ID to a per-chat spam struct
-	Rules   map[string]int64     // Arbitrary rules for code flexibility
-	Limiter *rate.Limiter        // Main rate-limiter
-	Mutex   sync.Mutex           // Mutex to avoid concurrent map writes
+	Chats                    map[*users.User]Chat // Map chat ID to a per-chat spam struct
+	Rules                    map[string]int64     // Arbitrary rules for code flexibility
+	Limiter                  *rate.Limiter        // Main rate-limiter
+	NotificationSendUnderway bool                 // True if notifications are currently being sent
+	Mutex                    sync.Mutex           // Mutex to avoid concurrent map writes
 }
 
 // Per-chat struct keeping track of activity for spam management
@@ -108,8 +109,17 @@ func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *
 			// Admin-only interaction, or group doesn't allow users to interact with the bot
 			if !interaction.CallerIsAdmin {
 				if interaction.IsCommand {
-					// Run the global limiter for message deletions, as they're trivial to spam.
-					// Callbacks show an alert, which slows users down enough.
+					/* Run the global limiter for message deletions, as they're trivial to spam.
+					Callbacks show an alert, which slows users down enough. */
+					if spam.NotificationSendUnderway {
+						/* If notifications are being sent, rate-limit removals more heavily.
+						This helps us avoid a scenario where notifications are being sent, but the
+						token pool is being drained by non-admins spamming messages that are being
+						removed. */
+						log.Warn().Msg("Notification send underway: rate-limiting message removal")
+						spam.UserLimiter(chat, stats, 1)
+					}
+
 					spam.GlobalLimiter(1)
 				}
 
