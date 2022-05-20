@@ -19,13 +19,13 @@ Other features include...
 - spam management for groups (removes requests the bot won't respond to)
 
 ## Basic instructions
-1. Clone the repository and install all dependencies with `go get all`.
+1. Clone the repository and install all dependencies with `go get all`
 
-2. `cd` into `/cmd` with `cd cmd`.
+2. `cd` into `/cmd` with `cd cmd`
 
-3. Build the program with `./build.sh`. This may require you to allow executing the script: this can be done with `chmod +x build.sh`.
+3. Build the program with `./build.sh`. This may require you to allow executing the script: this can be done with `chmod +x build.sh`
 
-4. `cd` back into the main folder with `cd ..`.
+4. `cd` back into the main folder with `cd ..`
 
 Now, you can run the program: to start, open a new terminal window, and run `./launchbot`. The bot will ask you for a Telegram bot API key: you can get one from BotFather on Telegram.
 
@@ -36,7 +36,7 @@ SQLite: `data/launchbot.db`: houses all data the bot needs to operate, including
 
 JSON: `data/config.json`: used to configure the bot by setting the Telegram bot API key, alongside with some other configuration information.
 
-You can specify your personal account's Telegram user ID in `config.json` in the form `owner: your_integer_user_id`. This disables the logging of commands sent by you.
+You can specify your personal account's Telegram user ID in `config.json` in the form `owner: 12345`. This disables the logging of commands sent by you.
 
 ## Privacy
 
@@ -210,9 +210,13 @@ TODO
 
 - [ ] Pre-send notifications, with the help of recipient count + message token count
 
-- [ ] Re-use information in description expansion
+- [ ] Booster re-use information in description expansion
 
 - [ ] Retry message send if rate-limited
+
+- [ ] launch.UpdateUncachedLaunch(freshLaunch) method
+	- if the launch is uncached (e.g. launched/NET in the past), all info gets replaced in the database
+	- OR, de-populate old launches from the cache after parsing (or just ignore them in /next, /schedule)
 
 - [ ] Fancier postpone notifications (low urgency)
 
