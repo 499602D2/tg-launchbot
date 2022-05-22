@@ -99,11 +99,34 @@ type Rocket struct {
 	Id     int                 `json:"id"`
 	Config RocketConfiguration `json:"configuration" gorm:"embedded;embeddedPrefix:config_"`
 
-	/*
-		TODO: add missing properties
-		- add launcher_stage
-		- add spacecraft_stage
-	*/
+	// Unparsed and parsed launcher info: JSON is unpacked into the unparsed struct
+	UnparsedLauncherInfo []FirstStage `json:"launcher_stage" gorm:"-:all"`
+	Launchers            Launchers    `gorm:"embedded;embeddedPrefix:launcher_"`
+
+	// TODO
+	// Spacecraft SpacecraftStage     `json:"spacecraft_stage"`
+}
+
+// Contains multiple launchers packed into one (e.g. Falcon 9 vs. Falcon Heavy).
+// A launcher is e.g. a Falcon 9 first stage.
+type Launchers struct {
+	Count    int
+	Core     Launcher `gorm:"embedded;embeddedPrefix:core_"`
+	Boosters Launcher `gorm:"embedded;embeddedPrefix:boosters_"` // Comma-separated values
+}
+
+// A parsed launcher info struct
+type Launcher struct {
+	Serial          string
+	Reused          bool
+	FlightNumber    int
+	Flights         int
+	FirstLaunchDate string
+	LastLaunchData  string
+	LandingAttempt  bool
+	LandingSuccess  bool
+	LandingLocation LandingLocation `gorm:"embedded;embeddedPrefix:landing_location_"`
+	LandingType     LandingType     `gorm:"embedded;embeddedPrefix:landing_type_"`
 }
 
 type RocketConfiguration struct {
@@ -112,11 +135,54 @@ type RocketConfiguration struct {
 	FullName string `json:"full_name"`
 	Variant  string `json:"variant"`
 
-	/* Optional:
-	- add total_launch_count
-	- add consecutive_successful_launches
-	*/
+	TotalLaunchCount int `json:"total_launch_count"`
 }
+
+// Unparsed information straight from the API: parsed later into one struct
+type FirstStage struct {
+	Type         string           `json:"type"`
+	Reused       bool             `json:"reused"`
+	FlightNumber int              `json:"launcher_flight_number"`
+	Detailed     LauncherDetailed `json:"launcher"`
+	Landing      Landing          `json:"landing"`
+}
+
+// More unparsed information
+type LauncherDetailed struct {
+	FlightProven    bool   `json:"flight_proven"`
+	Serial          string `json:"serial_number"`
+	Flights         int    `json:"flights"`
+	LastLaunchDate  string `json:"last_launch_date"`
+	FirstLaunchDate string `json:"first_launch_date"`
+}
+
+type Landing struct {
+	Attempt  bool            `json:"attempt"`
+	Success  bool            `json:"success"`
+	Location LandingLocation `json:"location"`
+	Type     LandingType     `json:"type"`
+}
+
+type LandingLocation struct {
+	Name     string   `json:"name"`
+	Abbrev   string   `json:"abbrev"`
+	Location Location `json:"location" gorm:"embedded;embeddedPrefix:location_"`
+}
+
+type Location struct {
+	Name        string `json:"name"`
+	CountryCode string `json:"country_code"`
+}
+
+type LandingType struct {
+	Name        string `json:"name"`
+	Abbrev      string `json:"abbrev"`
+	Description string `json:"description"`
+}
+
+// type SpacecraftStage struct {
+// 	// TODO add
+// }
 
 type Mission struct {
 	Name        string `json:"name"`
@@ -148,6 +214,105 @@ type ContentURL struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Url         string `json:"url"`
+}
+
+// Map isReused to an emoji indicating re-use status
+var reuseIcon = map[bool]string{
+	true: "♻️", false: "🌟",
+}
+
+var landingLocIcon = map[string]string{
+	"ATL": " 🌊", "PAC": " 🌊", "CR": " 🤠",
+}
+
+var landingLocName = map[string]string{
+	"CR": "Corn Ranch", "ATL": "Atlantic Ocean", "PAC": "Pacific Ocean",
+	"N/A": "Unknown",
+}
+
+func (launch *Launch) BoosterInformation() string {
+	var (
+		boosterText         string
+		landingLocationName string
+		landingString       string
+		reuseSymbol         string
+	)
+
+	if launch.Rocket.Launchers.Count == 1 {
+		var boosterNamePrefix string
+		core := &launch.Rocket.Launchers.Core
+
+		if launch.LaunchProvider.Name == "SpaceX" && !strings.Contains(core.Serial, "Unknown F9") {
+			// For SpaceX launches, add a booster prefix (e.g. B1060.1)
+			boosterNamePrefix = fmt.Sprintf(".%d", core.FlightNumber)
+		}
+
+		// Get a nice icon for the landing type
+		landingIcon, ok := landingLocIcon[core.LandingLocation.Abbrev]
+
+		if !ok {
+			if core.LandingType.Abbrev == "ASDS" {
+				landingIcon = " 🌊"
+			}
+		}
+
+		// Check if there's a friendlier name for the landing location
+		landingLocationName, ok = landingLocName[core.LandingLocation.Abbrev]
+
+		if !ok {
+			landingLocationName = core.LandingLocation.Abbrev
+		}
+
+		// Symbol to indicate reuse: also check for potentially errenous data
+		reuseSymbol = reuseIcon[core.Reused]
+
+		if core.Reused == false && core.FlightNumber > 1 {
+			reuseSymbol = "♻️"
+		}
+
+		// E.g. (7th flight ♻️)
+		flightCountString := fmt.Sprintf("(%s flight %s)", humanize.Ordinal(core.FlightNumber), reuseSymbol)
+
+		// E.g. (Pacific Ocean 🌊)
+		landingNameString := fmt.Sprintf("(%s%s)", core.LandingType.Abbrev, landingIcon)
+
+		if core.LandingType.Abbrev == "" {
+			// Unknown landing type, avoid an empty string
+			landingString = "Unknown"
+		} else if core.LandingAttempt == false {
+			// No landing attempt: core being expended
+			landingString = "Expend 💥"
+		} else {
+			// All good: build a string
+			landingString = fmt.Sprintf("%s %s", landingLocationName, landingNameString)
+		}
+
+		boosterText = fmt.Sprintf(
+			"🚀 *Booster information*\n"+
+				"*Core* %s %s\n"+
+				"*Landing* %s\n\n",
+
+			// Core
+			utils.Monospaced(core.Serial+boosterNamePrefix), utils.Monospaced(flightCountString),
+
+			// Landing
+			utils.Monospaced(landingString),
+		)
+	}
+
+	return boosterText
+}
+
+func (launch *Launch) DescriptionText() string {
+	var description string
+
+	if launch.Mission.Description == "" {
+		description = "ℹ️ No information available\n\n"
+	} else {
+		description = fmt.Sprintf("ℹ️ %s\n\n", launch.Mission.Description)
+	}
+
+	return description
 }
 
 // Generates the message content used by both notifications and /next
@@ -218,11 +383,11 @@ func (launch *Launch) MessageBodyText(expanded bool, isNotification bool) string
 	}
 
 	if expanded {
-		// If this is an expanded message, add a description
-		if launch.Mission.Description == "" {
-			description = "ℹ️ No information available\n\n"
+		// Add re-use information, if it exists
+		if launch.Rocket.Launchers.Count != 0 {
+			description = launch.BoosterInformation() + launch.DescriptionText()
 		} else {
-			description = fmt.Sprintf("ℹ️ %s\n\n", launch.Mission.Description)
+			description = launch.DescriptionText()
 		}
 	}
 
@@ -253,7 +418,7 @@ func (launch *Launch) MessageBodyText(expanded bool, isNotification bool) string
 }
 
 // Produces a launch notification message
-func (launch *Launch) NotificationMessage(notifType string, expanded bool) string {
+func (launch *Launch) NotificationMessage(notifType string, expanded bool, botUsername string) string {
 	// Map notification type to a header
 	header, ok := map[string]string{
 		"24h": "T-24 hours", "12h": "T-12 hours",
@@ -309,17 +474,16 @@ func (launch *Launch) NotificationMessage(notifType string, expanded bool) strin
 	// Load message body
 	messageBody := launch.MessageBodyText(expanded, true)
 
-	// TODO add bot username dynamically
 	text := fmt.Sprintf(
 		"🚀 *%s*: *%s*\n"+
 			"%s"+
 
 			"🕙 *$USERDATE*\n"+
 			"LAUNCHLINKHERE"+
-			"🔕 *Stop with /settings@tglaunchbot*",
+			"🔕 *Stop with /settings@%s*",
 
 		// Name, launching-in, provider, rocket, launch pad
-		header, utils.Monospaced(name), messageBody,
+		header, utils.Monospaced(name), messageBody, botUsername,
 	)
 
 	// Prepare message for Telegram's MarkdownV2 parser
@@ -363,7 +527,7 @@ func (launch *Launch) TelegramNotificationKeyboard(notificationType string) [][]
 }
 
 // Creates a schedule message from the launch cache
-func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string {
+func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool, botUsername string) string {
 	// List of launch-lists, one list per launch date
 	schedule := [][]*Launch{}
 
@@ -404,10 +568,9 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool) string 
 	}
 
 	// User message
-	// TODO add bot username dynamically to the command
 	message := "📅 *5-day flight schedule*\n" +
 		fmt.Sprintf("_Dates are relative to %s. ", user.Time.UtcOffset) +
-		"For detailed flight information, use /next._\n\n"
+		fmt.Sprintf("For detailed flight information, use /next@%s._\n\n", botUsername)
 
 	// Loop over the created map and create the message
 	for listIterCount, launchList := range schedule {
@@ -702,8 +865,11 @@ func (launch *Launch) NextNotification(db *Database) Notification {
 		"Sent24h", "Sent12h", "Sent1h", "Sent5min",
 	}
 
+	// Configure time to pre-send notifications by
+	preSendBy := time.Duration(1) * time.Minute
+
 	// Minutes the send-time is allowed to slip by
-	allowedSlipMins := 5
+	allowedSlip := time.Duration(5)*time.Minute + preSendBy
 
 	// Update map before parsing
 	launch.NotificationState.UpdateMap(launch)
@@ -721,17 +887,15 @@ func (launch *Launch) NextNotification(db *Database) Notification {
 				continue
 			}
 
-			// Calculate send-time from NET
-			// log.Debug().Msgf("type: %s, secBeforeNet: %s", notifType, secBeforeNet.String())
-			// log.Debug().Msgf("NET time: %s", time.Unix(launch.NETUnix, 0).String())
-			sendTime := launch.NETUnix - int64(secBeforeNet.Seconds())
+			// Calculate send-time from NET, and deduct the pre-send time
+			sendTime := launch.NETUnix - int64(secBeforeNet.Seconds()) - int64(preSendBy.Seconds())
 
 			if sendTime-time.Now().Unix() < 0 {
 				// Calculate how many minutes the notification was missed by
 				missedBy := time.Duration(math.Abs(float64(time.Now().Unix()-sendTime))) * time.Second
 
 				// TODO implement launch.ClearMissedNotifications + database update
-				if missedBy > time.Minute*time.Duration(allowedSlipMins) {
+				if missedBy > allowedSlip {
 					log.Warn().Msgf("Missed type=%s notification by %.2f minutes, id=%s; marking as sent...",
 						notifType, missedBy.Minutes(), launch.Slug)
 
@@ -747,8 +911,8 @@ func (launch *Launch) NextNotification(db *Database) Notification {
 
 					continue
 				} else {
-					log.Info().Msgf("[launch.NextNotification] [%s] Missed type=%s by under %d min (%.2f min): modifying send-time",
-						launch.Slug, notifType, allowedSlipMins, missedBy.Minutes())
+					log.Info().Msgf("[launch.NextNotification] [%s] Missed type=%s by under %.1f min (%.2f min): modifying send-time",
+						launch.Slug, notifType, allowedSlip.Minutes(), missedBy.Minutes())
 
 					// Modify to send in 10 seconds
 					sendTime = time.Now().Unix() + 10
