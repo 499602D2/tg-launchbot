@@ -22,6 +22,7 @@ var LSPShorthands = map[int]LSP{
 	141: {Name: "Blue Origin", Flag: "🇺🇸", Cc: "USA"},
 	147: {Name: "Rocket Lab", Flag: "🇺🇸", Cc: "USA"},
 	190: {Name: "Antrix Corp.", Flag: "🇮🇳", Cc: "IND"},
+	193: {Name: "RUS Space Forces", Flag: "🇷🇺", Cc: "RUS"},
 	194: {Name: "ExPace", Flag: "🇨🇳", Cc: "CHN"},
 	199: {Name: "Virgin Orbit", Flag: "🇺🇸", Cc: "USA"},
 	257: {Name: "Northrop Grumman", Flag: "🇺🇸", Cc: "USA"},
