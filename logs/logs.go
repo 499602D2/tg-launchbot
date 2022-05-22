@@ -36,7 +36,6 @@ func GetLogSize(filepath string) int64 {
 	fileInfo, err := os.Stat(filepath)
 
 	if err != nil {
-		log.Error().Err(err).Msg("Getting log-file stats failed")
 		return 0
 	}
 
