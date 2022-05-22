@@ -31,6 +31,33 @@ func getHighestPriorityVideoLink(links []db.ContentURL) *db.ContentURL {
 	return &links[highestPriorityIndex]
 }
 
+// Parses the launcher info we receive from the API into something more digestible
+func parseLauncherInfo(launch *db.Launch) {
+	launch.Rocket.Launchers.Count = len(launch.Rocket.UnparsedLauncherInfo)
+	launch.Rocket.Launchers.Core = db.Launcher{}
+	launch.Rocket.Launchers.Boosters = db.Launcher{}
+
+	for _, launcher := range launch.Rocket.UnparsedLauncherInfo {
+		if strings.ToLower(launcher.Type) == "core" {
+			launch.Rocket.Launchers.Core = db.Launcher{
+				Serial:          launcher.Detailed.Serial,
+				Reused:          launcher.Reused,
+				FlightNumber:    launcher.FlightNumber,
+				Flights:         launcher.Detailed.Flights,
+				FirstLaunchDate: launcher.Detailed.FirstLaunchDate,
+				LastLaunchData:  launcher.Detailed.LastLaunchDate,
+				LandingAttempt:  launcher.Landing.Attempt,
+				LandingSuccess:  launcher.Landing.Success,
+				LandingLocation: launcher.Landing.Location,
+				LandingType:     launcher.Landing.Type,
+			}
+		} else {
+			log.Warn().Msgf("TODO: not parsing a launcher that is not a core (type=%s)",
+				launcher.Type)
+		}
+	}
+}
+
 // Checks if the NET of a launch slipped from one update to another.
 // Returns a bool indicating if this happened, and a Postpone{} characterizing the NET slip.
 func netParser(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
@@ -106,22 +133,20 @@ func processLaunch(launch *db.Launch, update *db.LaunchUpdate, idx int, cache *d
 	if err != nil {
 		log.Error().Err(err).Msgf("Processing description for launch=%s failed", launch.Id)
 	} else {
-		if len(document.Sentences()) > 2 {
-			// Prepare the array
-			sentences := make([]string, 2)
+		// Prepare the array
+		sentences := make([]string, 2)
 
-			// More than two sentences: move their text content to an array
-			for i, sentence := range document.Sentences() {
-				sentences[i] = sentence.Text
+		// More than two sentences: move their text content to an array
+		for i, sentence := range document.Sentences() {
+			sentences[i] = sentence.Text
 
-				if i == 1 {
-					break
-				}
+			if i == 1 {
+				break
 			}
-
-			// Join first two sentences
-			launch.Mission.Description = strings.Join(sentences[:2], " ")
 		}
+
+		// Join first two sentences
+		launch.Mission.Description = strings.Join(sentences[:2], " ")
 	}
 
 	// Shorten launch pad names
@@ -133,7 +158,13 @@ func processLaunch(launch *db.Launch, update *db.LaunchUpdate, idx int, cache *d
 	highestPriorityUrl := getHighestPriorityVideoLink(launch.VidURL)
 	launch.WebcastLink = highestPriorityUrl.Url
 
-	// TODO If reused stage information, parse...
+	// If booster/launcher information, parse it
+	// TODO implement for multiple boosters (e.g. Falcon Heavy)
+	if len(launch.Rocket.UnparsedLauncherInfo) != 0 {
+		parseLauncherInfo(launch)
+	} else {
+		launch.Rocket.Launchers = db.Launchers{Count: 0}
+	}
 
 	// If launch slipped enough to reset a notification state, save it
 	wasPostponed, postponeStatus := netParser(cache, launch)
