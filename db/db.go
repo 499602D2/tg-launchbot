@@ -139,8 +139,19 @@ func (db *Database) Update(launches []*Launch, apiUpdate bool, useCacheNotifStat
 				// Copy notification states if old launch exists
 				launch.NotificationState = cacheLaunch.NotificationState
 			} else {
-				// If states don't exist, initialize from struct's values
-				launch.NotificationState.UpdateMap(launch)
+				// If the launch is not cached, check if launch exists on the disk
+				dbLaunch, err := db.Cache.FindLaunchById(launch.Id)
+
+				if err != nil {
+					// If launch does not exist on the disk, initialize the states (probably a new launch)
+					log.Error().Err(err).Msgf("Unable to find launch=%s from disk when searching for notif states", launch.Slug)
+					launch.NotificationState.UpdateMap(launch)
+					continue
+				}
+
+				// If states exist, use the on-disk states
+				launch.NotificationState = dbLaunch.NotificationState
+				log.Debug().Msgf("Successfully utilized on-db launch's notification states on update (id=%s)", launch.Slug)
 			}
 		}
 	}
