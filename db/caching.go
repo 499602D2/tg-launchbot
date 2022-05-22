@@ -118,19 +118,23 @@ func (cache *Cache) Populate() {
 // IDs associated with this send-time.
 func (cache *Cache) FindNextNotification() *Notification {
 	// Find first send-time from the launch cache
-	earliestTime := int64(0)
-	tbdLaunchCount := 0
+	var (
+		earliestTime   int64
+		tbdLaunchCount int
+	)
 
 	// Returns a list of notification times
 	// (only more than one if two+ notifs share the same send time)
 	notificationTimes := make(map[int64][]Notification)
 
-	// How much the send time is allowed to slip, in minutes
+	/* How much the send time is allowed to slip, in minutes. This can come in
+	handy, if the launch comes in out of the blue, or the scheduled api update
+	is otherwise done in an inadvantegous way. */
 	allowedNetSlip := time.Duration(-5) * time.Minute
 
 	for _, launch := range cache.Launches {
 		// If launch time is TBD or in the past, don't notify
-		if launch.Status.Abbrev == "Go" || launch.Status.Abbrev == "TBC" {
+		if (launch.Status.Abbrev == "Go") || (launch.Status.Abbrev == "TBC") {
 			// Calculate the next upcoming send time for this launch
 			next := launch.NextNotification(cache.Database)
 
@@ -144,6 +148,7 @@ func (cache *Cache) FindNextNotification() *Notification {
 			if allowedNetSlip.Seconds() > time.Until(time.Unix(next.SendTime, 0)).Seconds() {
 				log.Warn().Msgf("[cache.findNext()] Launch %s is more than 5 minutes into the past",
 					next.LaunchName)
+
 				continue
 			}
 
@@ -237,10 +242,16 @@ func (cache *Cache) FindNextNotification() *Notification {
 	return &onlyNotif
 }
 
-// Computes the time interval until next scheduled API update
+// Computes the time interval until next scheduled API update, also returning
+// the next notification that will be sent.
 func (cache *Cache) NextScheduledUpdateIn() (time.Duration, *Notification) {
 	// Get next notification
 	notification := cache.FindNextNotification()
+
+	/* Time until the configured send-time of the notification.
+	This is not the same thing as the launch's NET, as the notifications
+	are configured to be pre-sent with enough time to allow them to be received
+	in time by each recipient. */
 	timeUntil := time.Until(time.Unix(notification.SendTime, 0))
 
 	// The time interval to wait until next API update
