@@ -69,7 +69,7 @@ func (stats *Statistics) String(subscribers int) string {
 			"Average rate-limit %s\n"+
 			"GITHUBLINK",
 
-		stats.Notifications, stats.Commands+stats.Callbacks, subscribers,
+		stats.Notifications, stats.Commands+stats.Callbacks+stats.V2Commands, subscribers,
 		dbLastUpdated, nextUpdate, dbSize, sinceStartup, rateLimitSI,
 	)
 
