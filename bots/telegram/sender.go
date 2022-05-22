@@ -100,7 +100,7 @@ func DeleteNotificationMessage(tg *Bot, sendable *sendables.Sendable, user *user
 }
 
 // Send a notification
-func SendNotification(tg *Bot, sendable *sendables.Sendable, user *users.User) (string, bool) {
+func SendNotification(tg *Bot, sendable *sendables.Sendable, user *users.User, retryCount int) (string, bool) {
 	// Convert id to an integer
 	id, _ := strconv.Atoi(user.Id)
 
@@ -127,13 +127,19 @@ func SendNotification(tg *Bot, sendable *sendables.Sendable, user *users.User) (
 			}
 		}
 
+		// If a non-recoverable error, continue
 		if !tg.handleError(nil, sent, err, int64(id)) {
 			log.Warn().Msg("Non-recoverable error in sender, continuing loop")
 			return "", false
 		}
 
-		// TODO Error is recoverable: try sending again SendNotification(...)
-		log.Error().Err(err).Msg("Not implemented: message re-try after recoverable error")
+		// Error is recoverable: try sending again twice
+		log.Warn().Msgf("Recoverable error in sender (re-try count = %d", retryCount)
+		if retryCount < 3 {
+			log.Debug().Msgf("Trying to send again...")
+			return SendNotification(tg, sendable, user, retryCount+1)
+		}
+
 		return "", false
 	}
 
@@ -185,11 +191,13 @@ func Sender(tg *Bot) {
 					switch sendable.Type {
 					case "notification":
 						log.Debug().Msgf("Sending notification to user=%s", chat.Id)
-						sentIdPair, success := SendNotification(tg, sendable, chat)
+						sentIdPair, success := SendNotification(tg, sendable, chat, 0)
 
 						if success {
 							sentIds = append(sentIds, sentIdPair)
 							chat.Stats.ReceivedNotifications++
+						} else {
+
 						}
 					case "delete":
 						DeleteNotificationMessage(tg, sendable, chat)

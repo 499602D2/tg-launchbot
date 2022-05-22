@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"launchbot/sendables"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	tb "gopkg.in/telebot.v3"
@@ -120,7 +121,8 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 
 	// Check if error is a rate-limit
 	if errors.As(err, &floodErr) {
-		log.Warn().Err(err).Msgf("Received a tb.FloodError (retryAfter=%d)", floodErr.RetryAfter)
+		log.Warn().Err(err).Msgf("Received a tb.FloodError (retryAfter=%d): sleeping for 5 seconds...", floodErr.RetryAfter)
+		time.Sleep(time.Duration(5) * time.Second)
 		return true
 	}
 
@@ -226,7 +228,7 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 
 	case tb.ErrNotFoundToDelete:
 		// Not really an error, as a user may have manually deleted a mesage
-		log.Warn().Err(err).Msg("Message not found for deletion")
+		return false
 
 	case tb.ErrTooLongMarkup:
 		warnUnhandled(tg, err, false)
