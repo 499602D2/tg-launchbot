@@ -4,15 +4,62 @@ import (
 	"errors"
 	"fmt"
 	"launchbot/db"
+	"launchbot/logs"
 	"launchbot/sendables"
 	"launchbot/utils"
 	"strconv"
 	"strings"
 
 	"github.com/bradfitz/latlong"
+	"github.com/dustin/go-humanize"
 	"github.com/rs/zerolog/log"
 	tb "gopkg.in/telebot.v3"
 )
+
+// Admin-only command to e.g. dump logs and database remotely
+func (tg *Bot) adminCommand(ctx tb.Context) error {
+	// Owner-only function
+	if !tg.senderIsOwner(ctx) {
+		log.Error().Msgf("/admin called by non-owner (%d in %d)", ctx.Sender().ID, ctx.Chat().ID)
+		return nil
+	}
+
+	text := fmt.Sprintf("🤖 *LaunchBot admin-panel*\n"+
+		"Cached launches: %d\n"+
+		"Cached users: %d\n\n"+
+		"Send in progress: %v\n"+
+		"Log-file size: %s",
+		len(tg.Cache.Launches),
+		len(tg.Cache.Users.InCache),
+		tg.Spam.NotificationSendUnderway,
+		humanize.Bytes(uint64(logs.GetLogSize(""))),
+	)
+
+	text = utils.PrepareInputForMarkdown(text, "text")
+	sendOptions, _ := tg.Template.Keyboard.Command.Admin()
+
+	if ctx.Callback() != nil {
+		tg.editCbMessage(ctx.Callback(), text, sendOptions)
+		return tg.respondToCallback(ctx, "🔄 Data refreshed", false)
+	}
+
+	// Wrap into a sendable
+	sendable := sendables.Sendable{
+		Type: "command",
+		Message: &sendables.Message{
+			TextContent: text,
+			SendOptions: sendOptions,
+		},
+	}
+
+	// Add the user
+	sendable.AddRecipient(tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg"), false)
+
+	// Add to queue as a high-priority message
+	go tg.Queue.Enqueue(&sendable, true)
+
+	return nil
+}
 
 // Handle the /start command and events where the bot is added to a new chat
 func (tg *Bot) startHandler(ctx tb.Context) error {
@@ -153,12 +200,11 @@ func (tg *Bot) scheduleHandler(ctx tb.Context) error {
 		mode = "v"
 	} else {
 		// Otherwise, we're doing a callback: get the requested mode
-		cbData := strings.Split(ctx.Callback().Data, "/")
-		mode = cbData[2]
+		mode = strings.Split(ctx.Callback().Data, "/")[1]
 	}
 
 	// Get text for the message
-	scheduleMsg := tg.Cache.ScheduleMessage(chat, mode == "m")
+	scheduleMsg := tg.Cache.ScheduleMessage(chat, mode == "m", tg.Username)
 	sendOptions, _ := tg.Template.Keyboard.Command.Schedule(mode)
 
 	if interaction.IsCommand {
@@ -200,7 +246,7 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 		return tg.interactionNotAllowed(ctx, true)
 	}
 
-	// Index we're loading the launch at
+	// Index we're loading the launch at: defaults to 0 for commands
 	index := 0
 	cbData := []string{}
 
@@ -208,7 +254,7 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 		// For callbacks, load the index the user is requesting
 		var err error
 		cbData = strings.Split(ctx.Callback().Data, "/")
-		index, err = strconv.Atoi(cbData[2])
+		index, err = strconv.Atoi(cbData[1])
 
 		if err != nil {
 			log.Error().Err(err).Msgf("Could not convert %s to int in /next", ctx.Callback().Data)
@@ -244,12 +290,12 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 	// Create callback response text
 	var cbResponse string
 
-	switch cbData[1] {
+	switch cbData[0] {
 	case "r":
 		cbResponse = "🔄 Data refreshed"
 	case "n":
-		// Create callback response text
-		switch cbData[3] {
+		// Create callback response text, depending on the direction
+		switch cbData[2] {
 		case "+":
 			cbResponse = "Next launch ➡️"
 		case "-":
@@ -257,7 +303,7 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 		case "0":
 			cbResponse = "↩️ Returned to beginning"
 		default:
-			log.Error().Msgf("Undefined behavior for callbackData in nxt/n (cbd[3]=%s)", cbData[3])
+			log.Error().Msgf("Undefined behavior for callbackData in nxt/n (cbd[2]=%s)", cbData[2])
 			cbResponse = "⚠️ Please do not send arbitrary data to the bot"
 		}
 	}
@@ -422,6 +468,7 @@ func (tg *Bot) notificationToggleCallback(ctx tb.Context) error {
 	var (
 		cbText          string
 		updatedKeyboard [][]tb.InlineButton
+		showAlert       bool
 	)
 
 	switch data[0] {
@@ -435,6 +482,7 @@ func (tg *Bot) notificationToggleCallback(ctx tb.Context) error {
 
 		// Callback response
 		cbText = fmt.Sprintf("%s all notifications", utils.NotificationToggleCallbackString(toggleTo))
+		showAlert = true
 
 	case "id":
 		// Toggle subscription for this ID
@@ -463,6 +511,7 @@ func (tg *Bot) notificationToggleCallback(ctx tb.Context) error {
 
 		// Callback response
 		cbText = fmt.Sprintf("%s all for %s", utils.NotificationToggleCallbackString(toggleTo), db.CountryCodeToName[data[1]])
+		showAlert = true
 
 	case "time":
 		if len(data) < 3 {
@@ -495,6 +544,7 @@ func (tg *Bot) notificationToggleCallback(ctx tb.Context) error {
 
 		// Callback response
 		cbText = fmt.Sprintf("%s permission status", utils.NotificationToggleCallbackString(toggleTo))
+		showAlert = true
 
 	default:
 		log.Warn().Msgf("Received arbitrary data in notificationToggle: %s", ctx.Callback().Data)
@@ -514,7 +564,7 @@ func (tg *Bot) notificationToggleCallback(ctx tb.Context) error {
 	}
 
 	// Respond to callback
-	return tg.respondToCallback(ctx, cbText, false)
+	return tg.respondToCallback(ctx, cbText, showAlert)
 }
 
 // Handle launch mute/unmute callbacks
@@ -607,7 +657,7 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 	cb := ctx.Callback()
 	callbackData := strings.Split(cb.Data, "/")
 
-	switch callbackData[1] {
+	switch callbackData[0] {
 	case "main": // User requested main settings menu
 		// Load text based on the chat being a group or not
 		isGroup := isGroup(cb.Message.Chat.Type)
@@ -619,7 +669,7 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 		message := tg.Template.Messages.Settings.Main(isGroup)
 		message = utils.PrepareInputForMarkdown(message, "text")
 
-		if len(callbackData) == 3 && callbackData[2] == "newMessage" {
+		if len(callbackData) == 2 && callbackData[1] == "newMessage" {
 			// Remove the keyboard button from the start message
 			modified, err := tg.Bot.EditReplyMarkup(ctx.Message(), &tb.ReplyMarkup{})
 
@@ -650,7 +700,7 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 		return tg.respondToCallback(ctx, "⚙️ Loaded settings", false)
 
 	case "tz":
-		switch callbackData[2] {
+		switch callbackData[1] {
 		case "main":
 			// Message text
 			message := tg.Template.Messages.Settings.TimeZone.Main(chat.SavedTimeZoneInfo())
@@ -691,7 +741,7 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 
 	case "sub":
 		// User requested subscription settings
-		switch callbackData[2] {
+		switch callbackData[1] {
 		case "times":
 			// Send-options with the keyboard
 			sendOptions, _ := tg.Template.Keyboard.Settings.Notifications(chat)
@@ -761,7 +811,7 @@ func (tg *Bot) expandMessageContent(ctx tb.Context) error {
 	}
 
 	// Get text for this launch
-	newText := launch.NotificationMessage(notification, true)
+	newText := launch.NotificationMessage(notification, true, tg.Username)
 	newText = sendables.SetTime(newText, chat, launch.NETUnix, true, false, false)
 
 	// Load mute status
@@ -893,9 +943,9 @@ func (tg *Bot) locationReplyHandler(ctx tb.Context) error {
 
 // Test notification sends
 func (tg *Bot) fauxNotification(ctx tb.Context) error {
-	// Admin-only function
+	// Owner-only function
 	if ctx.Message().Sender.ID != tg.Owner {
-		log.Error().Msgf("/test called by non-admin (%d)", ctx.Message().Sender.ID)
+		log.Error().Msgf("/send called by non-owner (%d)", ctx.Message().Sender.ID)
 		return nil
 	}
 
@@ -920,7 +970,7 @@ func (tg *Bot) fauxNotification(ctx tb.Context) error {
 
 	notifType := "1h"
 
-	text := launch.NotificationMessage(notifType, false)
+	text := launch.NotificationMessage(notifType, false, tg.Username)
 	kb := launch.TelegramNotificationKeyboard(notifType)
 
 	// Message

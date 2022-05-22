@@ -43,19 +43,19 @@ func (settings *SettingsKeyboard) Main(isGroup bool) (tb.SendOptions, [][]tb.Inl
 	subscribeBtn := tb.InlineButton{
 		Unique: "settings",
 		Text:   "🚀 Subscribe to launches",
-		Data:   "set/sub/bycountry",
+		Data:   "sub/bycountry",
 	}
 
 	timesBtn := tb.InlineButton{
 		Unique: "settings",
 		Text:   "⏰ Adjust notifications",
-		Data:   "set/sub/times",
+		Data:   "sub/times",
 	}
 
 	tzBtn := tb.InlineButton{
 		Unique: "settings",
 		Text:   "🌍 Time zone settings",
-		Data:   "set/tz/main",
+		Data:   "tz/main",
 	}
 
 	// Construct the keyboard and send-options
@@ -66,7 +66,7 @@ func (settings *SettingsKeyboard) Main(isGroup bool) (tb.SendOptions, [][]tb.Inl
 		groupSettingsBtn := tb.InlineButton{
 			Unique: "settings",
 			Text:   "👷 Group settings",
-			Data:   "set/group/main",
+			Data:   "group/main",
 		}
 
 		// Add the extra key and the extra text
@@ -100,7 +100,7 @@ func (settings *SettingsKeyboard) Group(chat *users.User) (tb.SendOptions, [][]t
 	retBtn := tb.InlineButton{
 		Unique: "settings",
 		Text:   "⬅️ Back to settings",
-		Data:   "set/main",
+		Data:   "main",
 	}
 
 	kb := [][]tb.InlineButton{{toggleAllCmdAccessBtn}, {retBtn}}
@@ -149,7 +149,7 @@ func (settings *SettingsKeyboard) Notifications(chat *users.User) (tb.SendOption
 	retBtn := tb.InlineButton{
 		Unique: "settings",
 		Text:   "⬅️ Return",
-		Data:   "set/main",
+		Data:   "main",
 	}
 
 	// Keyboard
@@ -170,19 +170,19 @@ func (tz *TimeZoneKeyboard) Main() (tb.SendOptions, [][]tb.InlineButton) {
 	setBtn := tb.InlineButton{
 		Unique: "settings",
 		Text:   "🌍 Begin time zone set-up",
-		Data:   "set/tz/begin",
+		Data:   "tz/begin",
 	}
 
 	delBtn := tb.InlineButton{
 		Unique: "settings",
 		Text:   "❌ Delete your time zone",
-		Data:   "set/tz/del",
+		Data:   "tz/del",
 	}
 
 	retBtn := tb.InlineButton{
 		Unique: "settings",
 		Text:   "⬅️ Back to settings",
-		Data:   "set/main",
+		Data:   "main",
 	}
 
 	kb := [][]tb.InlineButton{{setBtn}, {delBtn}, {retBtn}}
@@ -202,7 +202,7 @@ func (tz *TimeZoneKeyboard) Setup() (tb.SendOptions, [][]tb.InlineButton) {
 		tb.InlineButton{
 			Unique: "settings",
 			Text:   "⬅️ Cancel set-up",
-			Data:   "set/tz/main",
+			Data:   "tz/main",
 		}},
 	}
 
@@ -220,7 +220,7 @@ func (tz *TimeZoneKeyboard) Deleted() (tb.SendOptions, [][]tb.InlineButton) {
 	retBtn := tb.InlineButton{
 		Unique: "settings",
 		Text:   "⬅️ Back to settings",
-		Data:   "set/main",
+		Data:   "main",
 	}
 
 	kb := [][]tb.InlineButton{{retBtn}}
@@ -276,7 +276,7 @@ func (subscription *SubscriptionKeyboard) Main(chat *users.User) (tb.SendOptions
 	kb = append(kb, []tb.InlineButton{{
 		Unique: "settings",
 		Text:   "⬅️ Return",
-		Data:   "set/main",
+		Data:   "main",
 	}})
 
 	sendOptions := tb.SendOptions{
@@ -323,7 +323,7 @@ func (subscription *SubscriptionKeyboard) ByCountryCode(chat *users.User, cc str
 	kb = append(kb, []tb.InlineButton{{
 		Unique: "settings",
 		Text:   "⬅️ Return",
-		Data:   "set/sub/bycountry",
+		Data:   "sub/bycountry",
 	}})
 
 	ccFlag := utils.CountryCodeFlag(cc)
@@ -354,7 +354,6 @@ func (command *CommandKeyboard) Statistics() (tb.SendOptions, [][]tb.InlineButto
 		tb.InlineButton{
 			Unique: "stats",
 			Text:   "🔄 Refresh data",
-			Data:   "stats/r",
 		}},
 	}
 
@@ -371,7 +370,7 @@ func (command *CommandKeyboard) Start() (tb.SendOptions, [][]tb.InlineButton) {
 	settingsBtn := tb.InlineButton{
 		Unique: "settings",
 		Text:   "⚙️ Go to LaunchBot settings",
-		Data:   "set/main/newMessage",
+		Data:   "main/newMessage",
 	}
 
 	kb := [][]tb.InlineButton{{settingsBtn}}
@@ -385,11 +384,11 @@ func (command *CommandKeyboard) Start() (tb.SendOptions, [][]tb.InlineButton) {
 }
 
 func (command *CommandKeyboard) Schedule(mode string) (tb.SendOptions, [][]tb.InlineButton) {
-	// Refresh button (schedule/refresh/mode)
+	// Refresh button (refresh/$mode)
 	updateBtn := tb.InlineButton{
 		Unique: "schedule",
 		Text:   "🔄 Refresh",
-		Data:   fmt.Sprintf("sch/r/%s", mode),
+		Data:   fmt.Sprintf("r/%s", mode),
 	}
 
 	// Init the mode-switch button
@@ -398,14 +397,14 @@ func (command *CommandKeyboard) Schedule(mode string) (tb.SendOptions, [][]tb.In
 	switch mode {
 	case "v":
 		modeBtn.Text = "🛰️ Show missions"
-		modeBtn.Data = "sch/m/m"
+		modeBtn.Data = "m/m"
 	case "m":
 		modeBtn.Text = "🚀 Show vehicles"
-		modeBtn.Data = "sch/m/v"
+		modeBtn.Data = "m/v"
 	default:
 		log.Warn().Msgf("Mode defaulted in schedule keyboard generation, mode=%s", mode)
 		modeBtn.Text = "🛰️ Show missions"
-		modeBtn.Data = "sch/m/m"
+		modeBtn.Data = "m/m"
 	}
 
 	// Construct the keyboard
@@ -430,7 +429,7 @@ func (command *CommandKeyboard) Next(index int, cacheLength int) (tb.SendOptions
 			// Only add the next button if cache is longer than 1
 			nextBtn := tb.InlineButton{
 				Unique: "next",
-				Text:   "Next launch ➡️", Data: "nxt/n/1/+",
+				Text:   "Next launch ➡️", Data: "n/1/+",
 			}
 
 			kb = [][]tb.InlineButton{{nextBtn}}
@@ -438,7 +437,7 @@ func (command *CommandKeyboard) Next(index int, cacheLength int) (tb.SendOptions
 
 		refreshBtn := tb.InlineButton{
 			Unique: "next",
-			Text:   "Refresh 🔄", Data: "nxt/r/0",
+			Text:   "Refresh 🔄", Data: "r/0",
 		}
 
 		kb = append(kb, []tb.InlineButton{refreshBtn})
@@ -446,17 +445,17 @@ func (command *CommandKeyboard) Next(index int, cacheLength int) (tb.SendOptions
 	case cacheLength - 1: // Case: last index
 		refreshBtn := tb.InlineButton{
 			Unique: "next",
-			Text:   "Refresh 🔄", Data: fmt.Sprintf("nxt/r/%d", index),
+			Text:   "Refresh 🔄", Data: fmt.Sprintf("r/%d", index),
 		}
 
 		returnBtn := tb.InlineButton{
 			Unique: "next",
-			Text:   "↩️ Back to first", Data: fmt.Sprintf("nxt/n/0/0"),
+			Text:   "↩️ Back to first", Data: fmt.Sprintf("n/0/0"),
 		}
 
 		prevBtn := tb.InlineButton{
 			Unique: "next",
-			Text:   "⬅️ Previous launch", Data: fmt.Sprintf("nxt/n/%d/-", index-1),
+			Text:   "⬅️ Previous launch", Data: fmt.Sprintf("n/%d/-", index-1),
 		}
 
 		// Construct the keyboard
@@ -470,22 +469,22 @@ func (command *CommandKeyboard) Next(index int, cacheLength int) (tb.SendOptions
 
 		refreshBtn := tb.InlineButton{
 			Unique: "next",
-			Text:   "Refresh 🔄", Data: fmt.Sprintf("nxt/r/%d", index),
+			Text:   "Refresh 🔄", Data: fmt.Sprintf("r/%d", index),
 		}
 
 		returnBtn := tb.InlineButton{
 			Unique: "next",
-			Text:   "↩️ Back to first", Data: fmt.Sprintf("nxt/n/0/0"),
+			Text:   "↩️ Back to first", Data: fmt.Sprintf("n/0/0"),
 		}
 
 		nextBtn := tb.InlineButton{
 			Unique: "next",
-			Text:   "Next ➡️", Data: fmt.Sprintf("nxt/n/%d/+", index+1),
+			Text:   "Next ➡️", Data: fmt.Sprintf("n/%d/+", index+1),
 		}
 
 		prevBtn := tb.InlineButton{
 			Unique: "next",
-			Text:   "⬅️ Previous", Data: fmt.Sprintf("nxt/n/%d/-", index-1),
+			Text:   "⬅️ Previous", Data: fmt.Sprintf("n/%d/-", index-1),
 		}
 
 		// Construct the keyboard
@@ -509,6 +508,23 @@ func (command *CommandKeyboard) Expand(id string, notification string, muted boo
 
 	// Construct the keyboard and send-options
 	kb := [][]tb.InlineButton{{muteBtn}}
+
+	sendOptions := tb.SendOptions{
+		ParseMode:   "MarkdownV2",
+		ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
+	}
+
+	return sendOptions, kb
+}
+
+func (command *CommandKeyboard) Admin() (tb.SendOptions, [][]tb.InlineButton) {
+	// Construct the keyboard and send-options
+	kb := [][]tb.InlineButton{{
+		tb.InlineButton{
+			Unique: "admin",
+			Text:   "🔄 Refresh data",
+		}},
+	}
 
 	sendOptions := tb.SendOptions{
 		ParseMode:   "MarkdownV2",

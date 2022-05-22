@@ -23,6 +23,7 @@ type Bot struct {
 	Spam     *bots.Spam
 	Stats    *stats.Statistics
 	Template templates.Telegram
+	Username string
 	Owner    int64
 }
 
@@ -50,6 +51,9 @@ func (tg *Bot) Initialize(token string) {
 		log.Fatal().Err(err).Msg("Error creating Telegram bot")
 	}
 
+	// Set bot's username
+	tg.Username = tg.Bot.Me.Username
+
 	// Set-up command handlers
 	tg.Bot.Handle("/start", tg.startHandler)
 	tg.Bot.Handle("/next", tg.nextHandler)
@@ -57,6 +61,7 @@ func (tg *Bot) Initialize(token string) {
 	tg.Bot.Handle("/statistics", tg.statsHandler)
 	tg.Bot.Handle("/settings", tg.settingsHandler)
 	tg.Bot.Handle("/feedback", tg.feedbackHandler)
+	tg.Bot.Handle("/admin", tg.adminCommand)
 
 	// Handler for fake notification requests
 	// TODO remove before production, or limit to only sending to the owner
@@ -71,6 +76,10 @@ func (tg *Bot) Initialize(token string) {
 	tg.Bot.Handle(&tb.InlineButton{Unique: "notificationToggle"}, tg.notificationToggleCallback)
 	tg.Bot.Handle(&tb.InlineButton{Unique: "muteToggle"}, tg.muteCallback)
 	tg.Bot.Handle(&tb.InlineButton{Unique: "expand"}, tg.expandMessageContent)
+	tg.Bot.Handle(&tb.InlineButton{Unique: "admin"}, tg.adminCommand)
+
+	// A generic callback handler to help with migrations/callback data changes
+	tg.Bot.Handle(tb.OnCallback, tg.genericCallbackHandler)
 
 	// Handle incoming locations for time zone setup messages
 	tg.Bot.Handle(tb.OnLocation, tg.locationReplyHandler)
@@ -81,6 +90,34 @@ func (tg *Bot) Initialize(token string) {
 	tg.Bot.Handle(tb.OnGroupCreated, tg.startHandler)
 	tg.Bot.Handle(tb.OnSuperGroupCreated, tg.startHandler)
 	tg.Bot.Handle(tb.OnMyChatMember, tg.botMemberChangeHandler)
+}
+
+// A generic callback handler, to notify users of the bot having been migrated/upgraded
+func (tg *Bot) genericCallbackHandler(ctx tb.Context) error {
+	// Load chat and generate the interaction
+	chat, interaction, err := tg.buildInteraction(ctx, true, "generic")
+
+	if err != nil {
+		log.Warn().Msg("Running generic callback handler failed")
+		return nil
+	}
+
+	// Extract data for logging purposes
+	cbData := ctx.Callback().Data
+
+	// Run permission and spam management
+	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
+		log.Debug().Msgf("User in chat=%s attempted to use a generic callback, ignoring (data=%s)",
+			chat.Id, cbData)
+
+		return tg.interactionNotAllowed(ctx, true)
+	}
+
+	log.Debug().Msgf(
+		"Chat=%s attempted to use a generic callback, responding with migration warning (data=%s)",
+		chat.Id, cbData)
+
+	return tg.respondToCallback(ctx, tg.Template.Messages.Migrated(), true)
 }
 
 // Responds to a callback with text, show alert if configured. Always returns a nil.
@@ -247,4 +284,13 @@ func (tg *Bot) senderIsAdmin(ctx tb.Context) (bool, error) {
 // TODO determine whether this works in channels or not
 func isGroup(chatType tb.ChatType) bool {
 	return chatType == tb.ChatGroup || chatType == tb.ChatSuperGroup
+}
+
+// Is the sender the owner of the bot?
+func (tg *Bot) senderIsOwner(ctx tb.Context) bool {
+	if ctx.Callback() == nil {
+		return ctx.Message().Sender.ID == tg.Owner
+	}
+
+	return ctx.Callback().Sender.ID == tg.Owner
 }

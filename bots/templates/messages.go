@@ -24,6 +24,11 @@ type SubscriptionMessage struct{}
 type CommandMessage struct{}
 type ServiceMessage struct{}
 
+func (messages *Messages) Migrated() string {
+	return "⚠️ LaunchBot has been upgraded. Please send the command again, instead of " +
+		"using the buttons."
+}
+
 // Settings.Main
 func (settings *SettingsMessage) Main(isGroup bool) string {
 	base := "*LaunchBot* | *User settings*\n" +

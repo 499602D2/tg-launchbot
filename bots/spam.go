@@ -129,7 +129,7 @@ func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *
 	}
 
 	// Ensure command counter cannot be iterated by spamming the stats refresh button
-	if interaction.Name != "stats" || interaction.IsCommand {
+	if (interaction.Name != "stats" && interaction.Name != "generic") || (interaction.IsCommand) {
 		// Processing allowed: save statistics (global stats + user's stats)
 		stats.Update(interaction.IsCommand)
 		chat.Stats.Update(interaction.IsCommand)
