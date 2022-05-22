@@ -21,12 +21,12 @@ type PostLaunch struct {
 }
 
 // Notify creates and queues a notification
-func Notify(launch *db.Launch, database *db.Database) *sendables.Sendable {
+func Notify(launch *db.Launch, database *db.Database, username string) *sendables.Sendable {
 	// Pull the notification type we are sending (could be e.g. cached)
 	notification := launch.NextNotification(database)
 
 	// Text content of the notification
-	text := launch.NotificationMessage(notification.Type, false)
+	text := launch.NotificationMessage(notification.Type, false, username)
 	kb := launch.TelegramNotificationKeyboard(notification.Type)
 
 	// FUTURE make launch.NotificationMessage produce sendables for multiple platforms
@@ -147,7 +147,7 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 		log.Info().Msgf("[%d] Creating sendable for launch with name=%s", i+1, launch.Name)
 
 		// Create the sendable for this notification
-		sendable := Notify(launch, session.Db)
+		sendable := Notify(launch, session.Db, session.Telegram.Username)
 
 		if sendable.NotificationType == "5min" {
 			// If we're sending a 5-min notification, schedule a post-launch update
