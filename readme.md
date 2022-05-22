@@ -208,17 +208,22 @@ TODO
 
 ### Short to-do list
 
-- [ ] Pre-send notifications, with the help of recipient count + message token count
+- [x] Pre-send notifications
+	- [ ] Optional: use recipient count + message token count
+		- Configure max tokens/sec in bot instance...? (default 25, max 30)
 
-- [ ] Booster re-use information in description expansion
+- [x] Booster re-use information in description expansion
 
-- [ ] Retry message send if rate-limited
+- [x] Retry message send if rate-limited
 
-- [ ] launch.UpdateUncachedLaunch(freshLaunch) method
+- [x] launch.UpdateUncachedLaunch(freshLaunch) method
 	- if the launch is uncached (e.g. launched/NET in the past), all info gets replaced in the database
 	- OR, de-populate old launches from the cache after parsing (or just ignore them in /next, /schedule)
+	- maybe fixed
 
 - [ ] Fancier postpone notifications (low urgency)
+
+- [x] Track API call count stats
 
 - [ ] Migrate v2 database to v3
 
@@ -234,17 +239,17 @@ TODO
 		- [x] Catch-all type handlers
 		- [x] Chat migrations
 		- [ ] Odd edge-case handlers (check launchbot.py)
-	- [ ] Telegram message sender
+	- [x] Telegram message sender
 		- [x] Catch rate-limits
 		- [x] Modify message token-count if rate-limited
-		- [ ] Try sending again after recoverable errors, e.g. rate-limits
+		- [x] Try sending again after recoverable errors, e.g. rate-limits
 
 ### Caching, database
 
 - [x] Add database functions
 	- [x] Create database, auto-migrations
 	- [x] Launch inserts
-		- [ ] Notification send-states don't seem to be preserved after a launch has launched: investigate
+		- [x] Notification send-states don't seem to be preserved after a launch has launched: investigate
 			- Could be caused by the fact that when a launch is not found in cache,
 			the states aren't re-used. Avoid doing full-on overwrites (how? load from DB if not in cache, but don't insert into cache?)
 	- [x] Stats updates
@@ -283,7 +288,7 @@ TODO
 	- [x] /schedule
 	- [x] /stats
 	- [x] /feedback + response script
-	- [ ] Admin functions (/admin)
+	- [x] Admin functions (/admin)
 		- [ ] Functions through an inline keyboard
 			- [ ] Run an API update immediately
 			- [ ] Dump logs to chat
@@ -296,9 +301,9 @@ TODO
 		- [x] Notifications
 			- [x] Mute
 				- [x] Only allow admins to mute a launch
-			- [ ] Expand description
+			- [x] Expand description
 				- [x] Implement for description
-				- [ ] Implement for re-use information
+				- [x] Implement for re-use information
 				- [x] Remove button from notifications if no description 
 		- [x] Commands
 	- [x] Use a dual-limiter
@@ -327,8 +332,8 @@ TODO
 - [x] "Compress" messages to improve send-rates
 	- [x] Add "More info" button
 		- [x] Implement for description
-		- [ ] Implement for reuse information
-			- [ ] F9, etc.
+		- [x] Implement for reuse information
+			- [x] F9, etc.
 			- [ ] Multi-core vehicles like FH
 		- [ ] Astronaut count (can be in mission info)
 		- [ ] Spacecraft type (capsule serials)
