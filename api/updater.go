@@ -161,6 +161,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 
 	// Save stats
 	session.Telegram.Stats.LastApiUpdate = time.Now()
+	session.Telegram.Stats.ApiRequests++
 
 	// Schedule next API update, if configured
 	if scheduleNext {
