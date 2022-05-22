@@ -113,6 +113,7 @@ func main() {
 		noUpdates      bool
 		updateNow      bool
 		useDevEndpoint bool
+		verboseSpamLog bool
 	)
 
 	// Command line arguments
@@ -120,6 +121,8 @@ func main() {
 	flag.BoolVar(&noUpdates, "no-api-updates", false, "Specify to disable API updates")
 	flag.BoolVar(&updateNow, "update-now", false, "Specify to run an API update now")
 	flag.BoolVar(&useDevEndpoint, "dev-endpoint", false, "Specify to use LL2's dev endpoint")
+	flag.BoolVar(&verboseSpamLog, "verbose-spam-log", false, "Specify to enable verbose spam and permission logging ")
+
 	flag.Parse()
 
 	// Enable stack traces
@@ -151,6 +154,7 @@ func main() {
 
 	// Create session
 	session := initSession(version)
+	session.Spam.VerboseLog = verboseSpamLog
 	session.UseDevEndpoint = useDevEndpoint
 
 	if !noUpdates {

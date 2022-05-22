@@ -17,6 +17,7 @@ type Spam struct {
 	Rules                    map[string]int64     // Arbitrary rules for code flexibility
 	Limiter                  *rate.Limiter        // Main rate-limiter
 	NotificationSendUnderway bool                 // True if notifications are currently being sent
+	VerboseLog               bool                 // Toggle to enable verbose permission logging
 	Mutex                    sync.Mutex           // Mutex to avoid concurrent map writes
 }
 
@@ -123,6 +124,10 @@ func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *
 					spam.GlobalLimiter(1)
 				}
 
+				if spam.VerboseLog {
+					log.Debug().Msgf("[pre-handler] Not allowing interaction=%s in chat=%s", interaction.Name, chat.Id)
+				}
+
 				return false
 			}
 		}
@@ -137,6 +142,10 @@ func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *
 
 	// Run both limiters for successful requests
 	spam.RunBothLimiters(chat, interaction.Tokens, stats)
+
+	if spam.VerboseLog {
+		log.Debug().Msgf("[pre-handler] Allowed interaction=%s in chat=%s", interaction.Name, chat.Id)
+	}
 
 	return true
 }
