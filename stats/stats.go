@@ -23,6 +23,7 @@ type Statistics struct {
 	Notifications  int
 	Commands       int
 	Callbacks      int
+	V2Commands     int // Combined commands + callbacks for pre-v3
 	ApiRequests    int
 	LimitsAverage  int64 // Track average enforced limit duration
 	LimitsEnforced int64 // Track count of enforced limits
