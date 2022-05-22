@@ -984,16 +984,17 @@ func (tg *Bot) fauxNotification(ctx tb.Context) error {
 		},
 	}
 
-	// Add recipients
-	platform := "tg"
-	subscribers := launch.NotificationRecipients(tg.Db, notifType, platform)
-
 	// Create sendable
 	sendable := sendables.Sendable{
-		Type: "notification", NotificationType: notifType,
-		LaunchId: launch.Id,
-		Message:  &msg, Recipients: subscribers,
+		Platform:         "tg",
+		Type:             "notification",
+		NotificationType: notifType,
+		LaunchId:         launch.Id,
+		Message:          &msg,
 	}
+
+	// Add only the owner as the recipient
+	sendable.AddRecipient(chat, false)
 
 	// Add to send queue as a normal notification
 	go tg.Queue.Enqueue(&sendable, false)
