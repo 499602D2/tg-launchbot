@@ -63,7 +63,7 @@ func DumpConfig(config *Config) {
 		log.Fatal().Err(err).Msg("Error getting working directory")
 	}
 
-	configf := filepath.Join(wd, "config", "bot-config.json")
+	configf := filepath.Join(wd, "data", "config.json")
 
 	file, err := os.Create(configf)
 	if err != nil {
@@ -85,6 +85,7 @@ func LoadConfig() *Config {
 	wd, _ := os.Getwd()
 
 	configPath := filepath.Join(wd, "data")
+
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		_ = os.Mkdir(configPath, os.ModePerm)
 	}
@@ -101,7 +102,7 @@ func LoadConfig() *Config {
 		// Create, marshal
 		config := Config{
 			Token:    Tokens{Telegram: botToken},
-			DbFolder: "data/launchbot.db",
+			DbFolder: "data",
 		}
 
 		fmt.Println("Success! Starting bot...")
