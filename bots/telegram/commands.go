@@ -61,8 +61,8 @@ func (tg *Bot) adminCommand(ctx tb.Context) error {
 	return nil
 }
 
-// Handle the /start command and events where the bot is added to a new chat
-func (tg *Bot) startHandler(ctx tb.Context) error {
+// Handles the /start command when called directly
+func (tg *Bot) permissionedStart(ctx tb.Context) error {
 	// Load chat and generate the interaction
 	chat, interaction, err := tg.buildInteraction(ctx, true, "start")
 
@@ -75,6 +75,15 @@ func (tg *Bot) startHandler(ctx tb.Context) error {
 	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
 		return tg.interactionNotAllowed(ctx, true)
 	}
+
+	return tg.unpermissionedStart(ctx)
+}
+
+// Handle events where the bot is added to a new chat, i.e. cases where the
+// command does not require permissions to be interacted with
+func (tg *Bot) unpermissionedStart(ctx tb.Context) error {
+	// Load chat
+	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
 	// Get text for message
 	textContent := tg.Template.Messages.Command.Start(isGroup(ctx.Chat().Type))

@@ -55,7 +55,7 @@ func (tg *Bot) Initialize(token string) {
 	tg.Username = tg.Bot.Me.Username
 
 	// Set-up command handlers
-	tg.Bot.Handle("/start", tg.startHandler)
+	tg.Bot.Handle("/start", tg.permissionedStart)
 	tg.Bot.Handle("/next", tg.nextHandler)
 	tg.Bot.Handle("/schedule", tg.scheduleHandler)
 	tg.Bot.Handle("/statistics", tg.statsHandler)
@@ -85,9 +85,9 @@ func (tg *Bot) Initialize(token string) {
 
 	// Catch service messages as they happen
 	tg.Bot.Handle(tb.OnMigration, tg.migrationHandler)
-	tg.Bot.Handle(tb.OnAddedToGroup, tg.startHandler)
-	tg.Bot.Handle(tb.OnGroupCreated, tg.startHandler)
-	tg.Bot.Handle(tb.OnSuperGroupCreated, tg.startHandler)
+	tg.Bot.Handle(tb.OnAddedToGroup, tg.unpermissionedStart)
+	tg.Bot.Handle(tb.OnGroupCreated, tg.unpermissionedStart)
+	tg.Bot.Handle(tb.OnSuperGroupCreated, tg.unpermissionedStart)
 	tg.Bot.Handle(tb.OnMyChatMember, tg.botMemberChangeHandler)
 }
 
