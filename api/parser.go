@@ -2,6 +2,7 @@ package api
 
 import (
 	"launchbot/db"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/jdkato/prose/v2"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sys/cpu"
 )
 
 // Finds the highest-priority link for the launch
@@ -127,8 +129,11 @@ func processLaunch(launch *db.Launch, update *db.LaunchUpdate, idx int, cache *d
 	}
 
 	// Shorten description, by keeping the first two sentences
-	// Extremely slow, approx. 300 ms per launch.
-	document, err := prose.NewDocument(launch.Mission.Description)
+	// Disable all heavy NLP functions, except for sentence-splitting
+	document, err := prose.NewDocument(
+		launch.Mission.Description, prose.WithExtraction(false),
+		prose.WithTagging(false), prose.WithTokenization(false),
+	)
 
 	if err != nil {
 		log.Error().Err(err).Msgf("Processing description for launch=%s failed", launch.Id)
@@ -187,19 +192,50 @@ func processLaunch(launch *db.Launch, update *db.LaunchUpdate, idx int, cache *d
 
 // Parses the LL2 launch update, returning the parsed launches and any launches that were postponed
 func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, map[*db.Launch]db.Postpone, error) {
-	// Process launches concurrently
-	var wg sync.WaitGroup
+	var (
+		activeRoutines int
+		wg             sync.WaitGroup
+	)
+
+	// Maximum workers, based on core-count and CPU architecture
+	maxConcurrentThreads := runtime.NumCPU()
+
+	if cpu.X86.HasAVX {
+		// Allow more threads on x86 chips + avoid choking narrow arm-chips
+		maxConcurrentThreads *= 2
+	}
+
+	// Avoid spawning too many routines
+	if maxConcurrentThreads > len(update.Launches) {
+		maxConcurrentThreads = len(update.Launches)
+	}
 
 	// Add concurrent workers (results in a +300 % speed-up compared to synchronous)
-	wg.Add(len(update.Launches))
+	wg.Add(maxConcurrentThreads)
 
 	// Loop over launches and spawn go-routines
 	for idx, launch := range update.Launches {
 		go processLaunch(launch, update, idx, cache, &wg)
-	}
+		activeRoutines++
 
-	// Wait for all workers to finish
-	wg.Wait()
+		// If enough workers spawned, wait for them to finish
+		if activeRoutines == maxConcurrentThreads {
+			wg.Wait()
+			activeRoutines = 0
+		}
+
+		// Add workers depending on index
+		if activeRoutines == 0 && (idx < len(update.Launches)-1) {
+			if len(update.Launches)-(idx+1) >= maxConcurrentThreads {
+				// Enough indices left to add max amount of routines
+				wg.Add(maxConcurrentThreads)
+			} else {
+				// If almost done, only add enough routines to get to the last index
+				maxConcurrentThreads = len(update.Launches) - idx - 1
+				wg.Add(maxConcurrentThreads)
+			}
+		}
+	}
 
 	// Sort launches so they are ordered by NET
 	sort.Slice(update.Launches, func(i, j int) bool {
