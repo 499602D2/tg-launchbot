@@ -41,6 +41,7 @@ func parseLauncherInfo(launch *db.Launch) {
 
 	for _, launcher := range launch.Rocket.UnparsedLauncherInfo {
 		if strings.ToLower(launcher.Type) == "core" {
+			// This init is ugly, but we can't use same types due to JSON/Gorm funkiness
 			launch.Rocket.Launchers.Core = db.Launcher{
 				Serial:          launcher.Detailed.Serial,
 				Reused:          launcher.Reused,
@@ -67,16 +68,9 @@ func netParser(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
 	cacheLaunch, ok := cache.LaunchMap[freshLaunch.Id]
 
 	if !ok {
-		/*
-			Typically, a launch is not cached if it has slipped outside of range, or has already launched.
-			This also frequently occurs when switching back and forth between the main- and dev-endpoint of LL2,
-			or if a launch is simply new and seen for the first time.
-		*/
-		if time.Now().Unix() > freshLaunch.NETUnix {
-			log.Debug().Msgf("(OK) Launch is in the past, and not found in cache slug=%s", freshLaunch.Slug)
-		} else {
-			log.Warn().Msgf("(Probably OK) Launch with slug=%s not found in cache, but NET in the future", freshLaunch.Slug)
-		}
+		/* A launch is uncached if it has slipped outside of range, or has already launched.
+		This also frequently occurs when switching back and forth between the main- and dev-endpoint of LL2,
+		or if a launch is simply new and seen for the first time. */
 
 		return false, db.Postpone{}
 	}
@@ -201,7 +195,7 @@ func parseLaunchUpdate(cache *db.Cache, update *db.LaunchUpdate) ([]*db.Launch, 
 	maxConcurrentThreads := runtime.NumCPU()
 
 	if cpu.X86.HasAVX {
-		// Allow more threads on x86 chips + avoid choking narrow arm-chips
+		// Allow more threads on x86 chips, and avoid choking narrow arm-chips
 		maxConcurrentThreads *= 2
 	}
 
