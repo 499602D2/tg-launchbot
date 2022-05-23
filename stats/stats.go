@@ -23,8 +23,8 @@ type Statistics struct {
 	Callbacks      int
 	V2Commands     int // Combined commands + callbacks for pre-v3
 	ApiRequests    int
-	LimitsAverage  int64 // Track average enforced limit duration
-	LimitsEnforced int64 // Track count of enforced limits
+	LimitsAverage  float64 // Track average enforced limit duration
+	LimitsEnforced int64   // Track count of enforced limits
 	LastApiUpdate  time.Time
 	NextApiUpdate  time.Time
 	StartedAt      time.Time
@@ -50,7 +50,7 @@ func (stats *Statistics) String() string {
 
 	// Db size; humanize it
 	dbSize := humanize.Bytes(uint64(stats.DbSize))
-	rateLimitSI := humanize.SIWithDigits(float64(stats.LimitsAverage)*10e-9, 0, "s")
+	rateLimitSI := humanize.SIWithDigits(stats.LimitsAverage, 0, "s")
 
 	text := fmt.Sprintf(
 		"📊 *LaunchBot global statistics*\n"+

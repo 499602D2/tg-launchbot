@@ -69,14 +69,14 @@ func (spam *Spam) UserLimiter(chat *users.User, stats *stats.Statistics, tokens 
 	err := spam.Chats[chat].Limiter.WaitN(context.Background(), tokens)
 
 	// Track enforced limits
-	duration := time.Since(start).Nanoseconds()
+	duration := float64(time.Since(start).Nanoseconds()) * float64(10e-9)
 	stats.LimitsEnforced++
 
 	// FUTURE track means with a fixed-length set of rate-limit durations (average same-index insertions)
 	if stats.LimitsEnforced == 1 {
 		stats.LimitsAverage = duration
 	} else {
-		stats.LimitsAverage = (stats.LimitsAverage) + (duration-stats.LimitsAverage)/stats.LimitsEnforced
+		stats.LimitsAverage = stats.LimitsAverage + (duration-stats.LimitsAverage)/float64(stats.LimitsEnforced)
 	}
 
 	if err != nil {
