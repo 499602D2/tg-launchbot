@@ -11,10 +11,8 @@ import (
 )
 
 /* TODO
-- add a "next API update in..." field
 - add a next notification type, and the launch it's for
 - add a trailing-day set of stats (commands, notifications, callbacks)
-- add ratelimits enforced statistic (if limiter returns false)
 */
 
 // Global statistics, per-platform
@@ -30,6 +28,7 @@ type Statistics struct {
 	LastApiUpdate  time.Time
 	NextApiUpdate  time.Time
 	StartedAt      time.Time
+	Subscribers    int64  `gorm:"-:all"`
 	DbSize         int64  `gorm:"-:all"`
 	RunningVersion string `gorm:"-:all"`
 }
@@ -43,7 +42,7 @@ type User struct {
 	SubscribedSince       int64
 }
 
-func (stats *Statistics) String(subscribers int) string {
+func (stats *Statistics) String() string {
 	// Time-related stats
 	dbLastUpdated := durafmt.Parse(time.Since(stats.LastApiUpdate)).LimitFirstN(2)
 	nextUpdate := durafmt.Parse(time.Until(stats.NextApiUpdate)).LimitFirstN(2)
@@ -71,7 +70,7 @@ func (stats *Statistics) String(subscribers int) string {
 
 		humanize.Comma(int64(stats.Notifications)),
 		humanize.Comma(int64(stats.Commands+stats.Callbacks+stats.V2Commands)),
-		humanize.Comma(int64(subscribers)),
+		humanize.Comma(stats.Subscribers),
 		dbLastUpdated, nextUpdate, dbSize, sinceStartup, rateLimitSI,
 	)
 

@@ -38,12 +38,8 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 	// Set userCache ptr
 	userCache := cache.Users
 
-	// log.Debug().Msgf("Finding user=%s from cache", id)
-
 	// Checks if the chat ID already exists
 	i := sort.SearchStrings(userCache.InCache, id)
-
-	// log.Debug().Msgf("Got index: %d", i)
 
 	if len(userCache.InCache) > 0 {
 		if i < len(userCache.InCache) && userCache.Users[i].Id == id {
@@ -58,8 +54,6 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 	// Lock mutex for insert
 	userCache.Mutex.Lock()
 	defer userCache.Mutex.Unlock()
-
-	// log.Debug().Msgf("User not in cache: inserting...")
 
 	// Add user to cache so that the cache stays ordered
 	if len(userCache.InCache) == i {
@@ -79,9 +73,6 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 		userCache.InCache[i] = user.Id
 	}
 
-	// log.Debug().Msgf("User inserted")
-
-	// log.Debug().Msgf("Added chat=%s:%s to cache", userCache.Users[i].Id, userCache.Users[i].Platform)
 	return user
 }
 
@@ -97,7 +88,6 @@ func (cache *Cache) FlushUser(id string, platform string) {
 	// Checks if the chat ID already exists
 	i := sort.SearchStrings(userCache.InCache, id)
 
-	log.Debug().Msgf("Flushing user=%s at idx=%d", id, i)
 	if len(userCache.InCache) > 0 {
 		if i < len(userCache.InCache) && userCache.Users[i].Id == id {
 			// User is in cache: flush from list of user pointers
@@ -125,7 +115,6 @@ func (db *Database) LoadUser(id string, platform string) *users.User {
 	switch result.Error {
 	case nil:
 		// No errors: return loaded user
-		// log.Info().Msgf("Loaded chat=%s:%s from db", id, platform)
 		return &user
 	case gorm.ErrRecordNotFound:
 		// Record doesn't exist: insert as new
@@ -242,15 +231,4 @@ func (db *Database) MigrateGroup(fromId int64, toId int64, platform string) {
 	db.SaveUser(&chat)
 
 	log.Info().Msgf("Migrated chat from id=%s to id=%s", chat.MigratedFromId, chat.Id)
-}
-
-// Load how many users have subscribed to any notifications
-func (db *Database) GetSubscriberCount() int {
-	// Select all chats with any notifications enabled, and at least one notification time enabled
-	result := db.Conn.Where(
-		"(subscribed_all = ? OR subscribed_to != ?) AND "+
-			"(enabled24h != ? OR enabled12h != ? OR enabled1h != ? OR enabled5min != ?)",
-		1, "", 0, 0, 0, 0).Find(&[]users.User{})
-
-	return int(result.RowsAffected)
 }

@@ -330,10 +330,10 @@ func (tg *Bot) statsHandler(ctx tb.Context) error {
 
 	// Reload some statistics
 	tg.Stats.DbSize = tg.Db.Size
-	subscribers := tg.Db.GetSubscriberCount()
+	tg.Stats.Subscribers = tg.Db.Subscribers
 
 	// Get text content
-	textContent := tg.Stats.String(subscribers)
+	textContent := tg.Stats.String()
 
 	// Get keyboard
 	sendOptions, _ := tg.Template.Keyboard.Command.Statistics()
