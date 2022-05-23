@@ -55,9 +55,9 @@ func (stats *Statistics) String(subscribers int) string {
 
 	text := fmt.Sprintf(
 		"📊 *LaunchBot global statistics*\n"+
-			"Notifications delivered: %d\n"+
-			"Commands parsed: %d\n"+
-			"Active subscribers: %d\n\n"+
+			"Notifications delivered: %s\n"+
+			"Commands parsed: %s\n"+
+			"Active subscribers: %s\n\n"+
 
 			"💾 *Database information*\n"+
 			"Updated: %s ago\n"+
@@ -69,7 +69,9 @@ func (stats *Statistics) String(subscribers int) string {
 			"Average rate-limit %s\n"+
 			"GITHUBLINK",
 
-		stats.Notifications, stats.Commands+stats.Callbacks+stats.V2Commands, subscribers,
+		humanize.Comma(int64(stats.Notifications)),
+		humanize.Comma(int64(stats.Commands+stats.Callbacks+stats.V2Commands)),
+		humanize.Comma(int64(subscribers)),
 		dbLastUpdated, nextUpdate, dbSize, sinceStartup, rateLimitSI,
 	)
 

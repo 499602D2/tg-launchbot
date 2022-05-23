@@ -27,6 +27,8 @@ import (
 // Variables injected at build-time
 var GitSHA = "0000000000"
 
+const version = "3.0.1"
+
 // Listens for incoming interrupt signals
 func setupSignalHandler(session *config.Session) {
 	channel := make(chan os.Signal, 1)
@@ -105,8 +107,6 @@ func initSession(version string) *config.Session {
 }
 
 func main() {
-	const version = "3.0.0"
-
 	// CLI flags
 	var (
 		debug          bool
