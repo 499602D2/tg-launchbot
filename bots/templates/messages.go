@@ -113,7 +113,7 @@ func (command *CommandMessage) Start(isGroup bool) string {
 	base := "🌟 *Welcome to LaunchBot!* LaunchBot is your one-stop shop into the world of rocket launches. Subscribe to the launches of your favorite " +
 		"space agency, or follow that one rocket company you're a fan of.\n\n" +
 		"🐙 *LaunchBot is open-source, 100 % free, and respects your privacy.* If you're a developer and want to see a new feature, " +
-		"you can open a pull request in GITHUBLINK.\n\n" +
+		"you can open a pull request in GITHUBLINK\n\n" +
 		"🌠 *To get started, you can subscribe to some notifications, or try out the commands.* If you have any feedback, or a request for improvement, " +
 		"you can use the feedback command."
 

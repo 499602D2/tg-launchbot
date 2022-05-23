@@ -91,7 +91,7 @@ func (tg *Bot) unpermissionedStart(ctx tb.Context) error {
 
 	// Set the Github link
 	link := utils.PrepareInputForMarkdown("https://github.com/499602D2/tg-launchbot", "link")
-	linkText := utils.PrepareInputForMarkdown("LaunchBot's GitHub repository", "text")
+	linkText := utils.PrepareInputForMarkdown("LaunchBot's GitHub repository.", "text")
 	textContent = strings.ReplaceAll(textContent, "GITHUBLINK", fmt.Sprintf("[*%s*](%s)", linkText, link))
 
 	// Load send-options
