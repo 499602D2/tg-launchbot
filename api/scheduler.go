@@ -170,8 +170,6 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 // Schedules a chrono job for when the notification should be sent, with some
 // margin for one extra API update before the sending process starts.
 func NotificationScheduler(session *config.Session, notifTime *db.Notification, refresh bool) bool {
-	// TODO update job queue with tags (e.g. "notification", "api") for removal
-	// TODO when sending a 5-minute notification, schedule a post-launch check
 	// TODO explore issues caused by using sendTime = time.Now()
 
 	log.Debug().Msgf("Creating scheduled jobs for %d launch(es)", len(notifTime.IDs))
@@ -190,11 +188,7 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification, 
 	task, err := session.Scheduler.Schedule(func(ctx context.Context) {
 		// Run notification sender
 		success := notificationWrapper(session, notifTime.IDs, refresh)
-
 		log.Debug().Msgf("NotificationScheduler task: notificationWrapper returned %v", success)
-
-		// Schedule next API update with some margin for an API call
-		// Scheduler(session, false)
 	}, chrono.WithTime(scheduledTime))
 
 	if err != nil {
@@ -205,7 +199,6 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification, 
 	// Lock session, add task to list of scheduled tasks
 	session.Mutex.Lock()
 
-	// TODO keep tasks in database, reload on startup (?)
 	session.NotificationTasks[scheduledTime] = &task
 
 	session.Mutex.Unlock()

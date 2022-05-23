@@ -64,7 +64,6 @@ func (tg *Bot) Initialize(token string) {
 	tg.Bot.Handle("/admin", tg.adminCommand)
 
 	// Handler for fake notification requests
-	// TODO remove before production, or limit to only sending to the owner
 	tg.Bot.Handle("/send", tg.fauxNotification)
 
 	// Handle callbacks by button-type

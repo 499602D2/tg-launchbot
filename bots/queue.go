@@ -10,7 +10,7 @@ import (
 
 // A queue of sendables to be sent
 type Queue struct {
-	Sendables    map[string]*sendables.Sendable // Queue of sendables (uniqueHash:sendable)
+	Sendables    map[string]*sendables.Sendable // Sendable queue (maps make removals easy)
 	HighPriority *HighPriorityQueue             // High-priority queue
 	Mutex        sync.Mutex                     // Mutex to avoid concurrent writes
 }
@@ -18,23 +18,19 @@ type Queue struct {
 // A high-priority queue, meant for individual messages, that is cleared periodically
 type HighPriorityQueue struct {
 	HasItemsInQueue bool
-	Queue           []*sendables.Sendable
+	Queue           []*sendables.Sendable // A slice is adequate here, as it's always emptied completely
 	Mutex           sync.Mutex
 }
 
 // Enqueues a message into a queue
 func (queue *Queue) Enqueue(sendable *sendables.Sendable, highPriority bool) {
-	// Unique ID for this sendable
-	uuid := uuid.NewV4().String()
-
 	// Calculate size and set token count
 	sendable.Size = sendable.PerceivedByteSize()
+	sendable.Tokens = 1
 
 	if sendable.Size >= 512 && !highPriority {
 		sendable.Tokens = 6
 		log.Debug().Msgf("Reserved %d token(s) for sendable, size=%d", sendable.Tokens, sendable.Size)
-	} else {
-		sendable.Tokens = 1
 	}
 
 	// If sendable is high-priority, add it to the high-priority queue
@@ -51,6 +47,6 @@ func (queue *Queue) Enqueue(sendable *sendables.Sendable, highPriority bool) {
 
 	// Assign a random hash to the sendable, enqueue it
 	queue.Mutex.Lock()
-	queue.Sendables[uuid] = sendable
+	queue.Sendables[uuid.NewV4().String()] = sendable
 	queue.Mutex.Unlock()
 }

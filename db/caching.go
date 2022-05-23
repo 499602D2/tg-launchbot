@@ -80,7 +80,6 @@ func (cache *Cache) Populate() {
 	// Find all launches that have not launched
 	result := cache.Database.Conn.Model(&Launch{}).Where("launched = ? AND net_unix > ?", 0, time.Now().Unix()).Find(&launches)
 
-	// TODO handle other database errors
 	switch result.Error {
 	case nil:
 		break
@@ -172,7 +171,7 @@ func (cache *Cache) FindNextNotification() *Notification {
 	if earliestTime != 0 {
 		// Calculate time until notification(s)
 		toNext := durafmt.Parse(time.Until(time.Unix(earliestTime, 0))).LimitFirstN(2)
-		log.Debug().Msgf("Got next notification send time, %s from now (%d launch(es))",
+		log.Info().Msgf("Got next notification send time, %s from now (%d launch(es))",
 			toNext, len(notificationTimes[earliestTime]))
 
 		// Print launch names in logs

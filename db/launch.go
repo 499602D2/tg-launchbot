@@ -180,9 +180,7 @@ type LandingType struct {
 	Description string `json:"description"`
 }
 
-// type SpacecraftStage struct {
-// 	// TODO add
-// }
+// type SpacecraftStage struct {}
 
 type Mission struct {
 	Name        string `json:"name"`
