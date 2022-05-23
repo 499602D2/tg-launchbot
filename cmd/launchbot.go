@@ -192,7 +192,7 @@ func main() {
 
 	// Start the bot in a go-routine
 	go session.Telegram.Bot.Start()
-	log.Debug().Msg("Telegram bot started")
+	log.Debug().Msgf("Telegram bot started (@%s)", session.Telegram.Username)
 
 	for {
 		time.Sleep(time.Second * 60)
