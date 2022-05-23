@@ -312,7 +312,7 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 		case "0":
 			cbResponse = "↩️ Returned to beginning"
 		default:
-			log.Error().Msgf("Undefined behavior for callbackData in nxt/n (cbd[2]=%s)", cbData[2])
+			log.Error().Msgf("Undefined behavior for callbackData in /next (cbd[2]=%s)", cbData[2])
 			cbResponse = "⚠️ Please do not send arbitrary data to the bot"
 		}
 	}
@@ -913,7 +913,7 @@ func (tg *Bot) locationReplyHandler(ctx tb.Context) error {
 	retBtn := tb.InlineButton{
 		Unique: "settings",
 		Text:   "⬅️ Back to settings",
-		Data:   "set/main",
+		Data:   "main",
 	}
 
 	kb := [][]tb.InlineButton{{retBtn}}
