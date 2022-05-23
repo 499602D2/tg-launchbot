@@ -19,11 +19,12 @@ import (
 
 // Performs an LL2 API call
 func apiCall(client *resty.Client, useDevEndpoint bool) (*db.LaunchUpdate, error) {
-	const apiVersion = "2.2.0"
-	const requestPath = "launch/upcoming"
-	const apiParams = "mode=detailed&limit=30"
+	const (
+		apiVersion  = "2.2.0"
+		requestPath = "launch/upcoming"
+		apiParams   = "mode=detailed&limit=30"
+	)
 
-	// Set to true to use the ratelimited production end-point
 	var endpoint string
 
 	if useDevEndpoint {
@@ -38,8 +39,6 @@ func apiCall(client *resty.Client, useDevEndpoint bool) (*db.LaunchUpdate, error
 
 	// Do request
 	resp, err := client.R().Get(url)
-
-	// TODO resp.IsError() -> handle
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error performing GET request")
@@ -74,7 +73,7 @@ func updateWrapper(session *config.Session, scheduleNext bool) {
 		success := Updater(session, scheduleNext)
 
 		if !success {
-			// If updater failed, do exponential back-off
+			// If updater failed, do exponential back-off (1 min -> 2 min -> 4 min...)
 			retryAfter := 60*2 ^ i
 
 			log.Warn().Msgf("Re-try number %d failed, trying again in %d minutes", i, retryAfter)
@@ -99,13 +98,14 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	// Create http-client
 	client := resty.New()
 	client.SetTimeout(time.Duration(1 * time.Minute))
-	client.SetHeader("user-agent", "github.com/499602D2/launchbot-go")
+	client.SetHeader(
+		"user-agent", fmt.Sprintf("%s (telegram @%s)", session.Github, session.Telegram.Username),
+	)
 
 	// Do API call
 	log.Info().Msg("Running LL2 API updater...")
 	update, err := apiCall(client, session.UseDevEndpoint)
 
-	// TODO use api.errors
 	if err != nil || len(update.Launches) == 0 {
 		apiErrorHandler(err)
 		return false
@@ -129,7 +129,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 
 	// Update on-disk database
 	err = session.Db.Update(launches, true, true)
-	log.Info().Msg("➙ Launch database updated")
+	log.Debug().Msg("➙ Launch database updated")
 
 	if err != nil {
 		log.Error().Err(err).Msg("➙ Error inserting launches to database")
