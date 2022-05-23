@@ -306,7 +306,7 @@ func (launch *Launch) BoosterInformation() string {
 func (launch *Launch) DescriptionText() string {
 	var description string
 
-	if launch.Mission.Description == "" {
+	if strings.TrimSpace(launch.Mission.Description) == "" {
 		description = "ℹ️ No information available\n\n"
 	} else {
 		description = fmt.Sprintf("ℹ️ %s\n\n", launch.Mission.Description)
@@ -385,10 +385,10 @@ func (launch *Launch) MessageBodyText(expanded bool, isNotification bool) string
 	if expanded {
 		// Add re-use information, if it exists
 		if launch.Rocket.Launchers.Count != 0 {
-			description = launch.BoosterInformation() + launch.DescriptionText()
-		} else {
-			description = launch.DescriptionText()
+			description = launch.BoosterInformation()
 		}
+
+		description += launch.DescriptionText()
 	}
 
 	text := fmt.Sprintf(
