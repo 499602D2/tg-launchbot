@@ -83,7 +83,7 @@ func (tz *TimeZoneMessage) Main(userTz string) string {
 func (tz *TimeZoneMessage) Setup() string {
 	return "🌍 *LaunchBot* | *Time zone set-up*\n" +
 		"To complete the time zone setup, follow the instructions below using your phone:\n\n" +
-		"*1.* Make sure you are *replying* to *this message!*\n\n" +
+		"*1.* Make sure you are *replying to this message!* *(*`↩️ Reply`*)*\n\n" +
 		"*2.* Tap 📎 next to the text field, then choose `📍` `Location`.\n\n" +
 		"*3.* As a reply, send the bot a location that is in your time zone. This can be a different city, or even a different country!" +
 		"\n\n*Note:* location sharing is not supported in Telegram Desktop, so use your phone or tablet!"
