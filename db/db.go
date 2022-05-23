@@ -24,6 +24,7 @@ type Database struct {
 	Size        int64     // Db size in bytes
 	Path        string    // Path on disk
 	Owner       int64     // Telegram admin ID
+	Subscribers int64
 	Mutex       sync.Mutex
 }
 
@@ -227,8 +228,8 @@ func (db *Database) LoadStatisticsFromDisk(platform string) *stats.Statistics {
 
 	switch result.Error {
 	case nil:
-		// No errors: return loaded user
-		log.Info().Msg("Loaded stats from database")
+		// No errors: load subscriber count, return loaded stats
+		db.Subscribers = db.GetSubscriberCount()
 		return &stats
 	case gorm.ErrRecordNotFound:
 		// Record doesn't exist: insert as new
@@ -265,4 +266,18 @@ func (db *Database) SaveStatsToDisk(statistics *stats.Statistics) {
 	if result.Error != nil {
 		log.Error().Err(result.Error).Msg("Saving stats to disk failed")
 	}
+
+	// On save, get subscriber count (so it's refreshed occasionally)
+	db.Subscribers = db.GetSubscriberCount()
+}
+
+// Load how many users have subscribed to any notifications
+func (db *Database) GetSubscriberCount() int64 {
+	// Select all chats with any notifications enabled, and at least one notification time enabled
+	result := db.Conn.Where(
+		"(subscribed_all = ? OR subscribed_to != ?) AND "+
+			"(enabled24h != ? OR enabled12h != ? OR enabled1h != ? OR enabled5min != ?)",
+		1, "", 0, 0, 0, 0).Find(&[]users.User{})
+
+	return result.RowsAffected
 }
