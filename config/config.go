@@ -9,6 +9,7 @@ import (
 	"launchbot/bots/discord"
 	"launchbot/bots/telegram"
 	"launchbot/db"
+	"launchbot/users"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,6 +35,7 @@ type Session struct {
 	Version           string                              // Version number
 	Started           time.Time                           // Unix timestamp of startup time
 	UseDevEndpoint    bool                                // Configure to use LL2's development endpoint
+	Github            string                              // Github link
 	Mutex             sync.Mutex                          // Avoid concurrent writes
 }
 
@@ -49,6 +51,46 @@ type Config struct {
 type Tokens struct {
 	Telegram string
 	Discord  string
+}
+
+func (session *Session) Initialize() {
+	// Load config
+	session.Config = LoadConfig()
+
+	// Init notification task map
+	session.NotificationTasks = make(map[time.Time]*chrono.ScheduledTask)
+
+	// Initialize cache
+	session.Cache = &db.Cache{
+		Launches:  []*db.Launch{},
+		LaunchMap: make(map[string]*db.Launch),
+		Users:     &users.UserCache{},
+	}
+
+	// Open database (TODO remove owner tag)
+	session.Db = &db.Database{Owner: session.Config.Owner, Cache: session.Cache}
+	session.Db.Open(session.Config.DbFolder)
+	session.Cache.Database = session.Db
+
+	// Create and initialize the anti-spam system
+	session.Spam = &bots.Spam{}
+	session.Spam.Initialize()
+
+	// Initialize the Telegram bot
+	session.Telegram = &telegram.Bot{
+		Owner: session.Config.Owner,
+		Spam:  session.Spam,
+		Cache: session.Cache,
+		Db:    session.Db,
+	}
+
+	// Init stats
+	session.Telegram.Stats = session.Db.LoadStatisticsFromDisk("tg")
+	session.Telegram.Stats.RunningVersion = session.Version
+	session.Telegram.Stats.StartedAt = session.Started
+
+	// Initialize Telegram bot
+	session.Telegram.Initialize(session.Config.Token.Telegram)
 }
 
 // DumpConfig dumps the config to disk

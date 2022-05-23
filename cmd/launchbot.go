@@ -4,12 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"launchbot/api"
-	"launchbot/bots"
 	"launchbot/bots/telegram"
 	"launchbot/config"
-	"launchbot/db"
 	"launchbot/logs"
-	"launchbot/users"
 	"os"
 	"os/signal"
 	"strings"
@@ -27,7 +24,7 @@ import (
 // Variables injected at build-time
 var GitSHA = "0000000000"
 
-const version = "3.0.4"
+const version = "3.0.5"
 
 // Listens for incoming interrupt signals
 func setupSignalHandler(session *config.Session) {
@@ -57,53 +54,6 @@ func setupSignalHandler(session *config.Session) {
 		// Exit
 		os.Exit(0)
 	}()
-}
-
-func initSession(version string) *config.Session {
-	// Create session
-	session := config.Session{
-		Started:           time.Now(),
-		Version:           fmt.Sprintf("%s (%s)", version, GitSHA[0:7]),
-		NotificationTasks: make(map[time.Time]*chrono.ScheduledTask),
-	}
-
-	// Signal handler (ctrl+c, etc.)
-	setupSignalHandler(&session)
-
-	// Load config
-	session.Config = config.LoadConfig()
-
-	// Initialize cache
-	session.Cache = &db.Cache{
-		Launches:  []*db.Launch{},
-		LaunchMap: make(map[string]*db.Launch)}
-
-	session.Cache.Users = &users.UserCache{}
-
-	// Open database (TODO remove owner tag)
-	session.Db = &db.Database{Owner: session.Config.Owner, Cache: session.Cache}
-	session.Db.Open(session.Config.DbFolder)
-	session.Cache.Database = session.Db
-
-	// Create and initialize the anti-spam system
-	session.Spam = &bots.Spam{}
-	session.Spam.Initialize()
-
-	// Initialize the Telegram bot
-	session.Telegram = &telegram.Bot{}
-	session.Telegram.Owner = session.Config.Owner
-	session.Telegram.Spam = session.Spam
-	session.Telegram.Cache = session.Cache
-	session.Telegram.Db = session.Db
-
-	// Init stats
-	session.Telegram.Stats = session.Db.LoadStatisticsFromDisk("tg")
-	session.Telegram.Stats.RunningVersion = session.Version
-	session.Telegram.Stats.StartedAt = session.Started
-
-	session.Telegram.Initialize(session.Config.Token.Telegram)
-
-	return &session
 }
 
 func main() {
@@ -153,9 +103,22 @@ func main() {
 	log.Info().Msgf("🤖 LaunchBot %s started", version)
 
 	// Create session
-	session := initSession(version)
+	// Create session
+	session := &config.Session{
+		Started:        time.Now(),
+		Version:        fmt.Sprintf("%s (%s)", version, GitSHA[0:7]),
+		Github:         "github.com/499602D2/tg-launchbot",
+		UseDevEndpoint: useDevEndpoint,
+	}
+
+	// Signal handler (ctrl+c, etc.)
+	setupSignalHandler(session)
+
+	// Initialize session
+	session.Initialize()
+
+	// Assign remaining CLI flags
 	session.Spam.VerboseLog = verboseSpamLog
-	session.UseDevEndpoint = useDevEndpoint
 
 	if !noUpdates {
 		// Create a new task scheduler, assign to session
@@ -192,7 +155,7 @@ func main() {
 
 	// Start the bot in a go-routine
 	go session.Telegram.Bot.Start()
-	log.Debug().Msgf("Telegram bot started (@%s)", session.Telegram.Username)
+	log.Info().Msgf("Telegram bot started (@%s)", session.Telegram.Username)
 
 	for {
 		time.Sleep(time.Second * 60)
