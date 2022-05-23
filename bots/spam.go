@@ -76,6 +76,8 @@ func (spam *Spam) UserLimiter(chat *users.User, stats *stats.Statistics, tokens 
 	if stats.LimitsEnforced == 1 {
 		stats.LimitsAverage = duration
 	} else {
+		/* If duration is lower than the average, the average drops. And, if
+		the duration is greater than the average, the average increases. */
 		stats.LimitsAverage = stats.LimitsAverage + (duration-stats.LimitsAverage)/float64(stats.LimitsEnforced)
 	}
 
