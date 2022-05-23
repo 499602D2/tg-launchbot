@@ -95,11 +95,16 @@ func (tg *Bot) Initialize(token string) {
 // A generic callback handler, to notify users of the bot having been migrated/upgraded
 func (tg *Bot) genericCallbackHandler(ctx tb.Context) error {
 	// Load chat and generate the interaction
-	chat, interaction, err := tg.buildInteraction(ctx, true, "generic")
+	chat, interaction, err := tg.buildInteraction(ctx, false, "generic")
 
 	if err != nil {
 		log.Warn().Msg("Running generic callback handler failed")
 		return nil
+	}
+
+	// Run permission and spam management
+	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
+		return tg.interactionNotAllowed(ctx, false)
 	}
 
 	// Extract data for logging purposes
