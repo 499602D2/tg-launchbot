@@ -208,12 +208,12 @@ func (tg *Bot) tryRemovingMessage(ctx tb.Context) error {
 		return nil
 	}
 
-	if bot.CanDeleteMessages {
+	if bot.CanDeleteMessages || !isGroup(ctx.Chat().Type) {
 		// If we have permission to delete messages, delete the command message
 		err = tg.Bot.Delete(ctx.Message())
 	} else {
 		// If the bot is not allowed to delete messages, return
-		log.Error().Msgf("Cannot delete messages in chat=%d", ctx.Chat().ID)
+		log.Error().Err(err).Msgf("Cannot delete messages in chat=%d", ctx.Chat().ID)
 		return nil
 	}
 
