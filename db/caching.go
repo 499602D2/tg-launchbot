@@ -171,12 +171,12 @@ func (cache *Cache) FindNextNotification() *Notification {
 	if earliestTime != 0 {
 		// Calculate time until notification(s)
 		toNext := durafmt.Parse(time.Until(time.Unix(earliestTime, 0))).LimitFirstN(2)
-		log.Info().Msgf("Got next notification send time, %s from now (%d launch(es))",
+		log.Info().Msgf("Next notification send time %s from now, %d launch(es)",
 			toNext, len(notificationTimes[earliestTime]))
 
 		// Print launch names in logs
 		for _, notif := range notificationTimes[earliestTime] {
-			log.Debug().Msgf("➙ %s (%s)", notif.LaunchName, notif.LaunchId)
+			log.Debug().Msgf("➙ %s", notif.LaunchName)
 		}
 	} else {
 		log.Warn().Msgf("Could not find next notification send time. No-Go launches: %d out of %d",
