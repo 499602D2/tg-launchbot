@@ -185,7 +185,7 @@ func Sender(tg *Bot) {
 					tg.Spam.GlobalLimiter(sendable.Tokens)
 
 					// Run a light user-limiter: max tokens is 2
-					tg.Spam.UserLimiter(chat, tg.Stats, 1)
+					// tg.Spam.UserLimiter(chat, tg.Stats, 1)
 
 					// Switch-case the sendable's type
 					switch sendable.Type {
@@ -197,7 +197,7 @@ func Sender(tg *Bot) {
 							sentIds = append(sentIds, sentIdPair)
 							chat.Stats.ReceivedNotifications++
 						} else {
-
+							log.Warn().Msgf("➙ Sending notification to user=%s failed", chat.Id)
 						}
 					case "delete":
 						DeleteNotificationMessage(tg, sendable, chat)
@@ -213,13 +213,16 @@ func Sender(tg *Bot) {
 					the issue of messages sitting in the queue for ages, sacrificing the send time of
 					mass-notifications and mass-removals for timely responses to commands. */
 					if (tg.Queue.HighPriority.HasItemsInQueue) && (i%priorityQueueClearInterval == 0) {
-						log.Debug().Msg("High-priority messages in queue during long send")
+						log.Debug().Msgf("High-priority messages in queue during long send (count=%d)",
+							len(tg.Queue.HighPriority.Queue))
+
+						// Clear the queue
 						clearPriorityQueue(tg)
 					}
 				}
 
 				// Log time spent processing
-				timeSpent := durafmt.Parse(time.Since(processStartTime)).LimitFirstN(1)
+				timeSpent := durafmt.Parse(time.Since(processStartTime)).LimitFirstN(2)
 
 				// All done: do post-processing
 				switch sendable.Type {
