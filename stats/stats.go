@@ -90,7 +90,7 @@ func (stats *Statistics) String() string {
 
 		// Server information
 		humanize.Time(stats.StartedAt),
-		humanize.SIWithDigits(stats.LimitsAverage, 0, "s"),
+		humanize.SIWithDigits(stats.LimitsAverage, 1, "s"),
 	)
 
 	text = utils.PrepareInputForMarkdown(text, "text")
