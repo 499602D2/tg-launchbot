@@ -218,7 +218,7 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 		warnUnhandled(tg, err, false)
 
 	case tb.ErrGroupMigrated:
-		log.Error().Msg("Caught a tb.ErrGroupMigrated in the switch-case?")
+		log.Error().Err(err).Msg("Caught a tb.ErrGroupMigrated in the switch-case?")
 
 	case tb.ErrNoRightsToDelete:
 		warnUnhandled(tg, err, false)

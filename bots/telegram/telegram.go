@@ -214,7 +214,7 @@ func (tg *Bot) tryRemovingMessage(ctx tb.Context) error {
 
 	// Check errors
 	if err != nil {
-		log.Error().Msg("Deleting message sent by a non-admin failed")
+		log.Debug().Msg("Deleting message sent by a non-admin failed")
 		tg.handleError(ctx, nil, err, ctx.Chat().ID)
 		return nil
 	}

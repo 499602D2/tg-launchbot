@@ -312,7 +312,7 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 		case "0":
 			cbResponse = "↩️ Returned to beginning"
 		default:
-			log.Error().Msgf("Undefined behavior for callbackData in /next (cbd[2]=%s)", cbData[2])
+			log.Warn().Msgf("Undefined behavior for callbackData in /next (cbd[2]=%s)", cbData[2])
 			cbResponse = "⚠️ Please do not send arbitrary data to the bot"
 		}
 	}
@@ -424,7 +424,7 @@ func (tg *Bot) countryCodeListCallback(ctx tb.Context) error {
 	data := strings.Split(ctx.Callback().Data, "/")
 
 	if len(data) != 2 {
-		log.Error().Msgf("Got arbitrary data at cc/.. endpoint with length=%d", len(data))
+		log.Warn().Msgf("Got arbitrary data at cc/.. endpoint with length=%d", len(data))
 		return nil
 	}
 
@@ -954,7 +954,7 @@ func (tg *Bot) locationReplyHandler(ctx tb.Context) error {
 func (tg *Bot) fauxNotification(ctx tb.Context) error {
 	// Owner-only function
 	if ctx.Message().Sender.ID != tg.Owner {
-		log.Error().Msgf("/send called by non-owner (%d)", ctx.Message().Sender.ID)
+		log.Warn().Msgf("/send called by non-owner (%d)", ctx.Message().Sender.ID)
 		return nil
 	}
 

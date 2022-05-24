@@ -74,6 +74,7 @@ func Notify(launch *db.Launch, database *db.Database, username string) *sendable
 		as sent, as they are no-longer relevant. This is done below.
 	*/
 	times := []string{"5min", "1h", "12h", "24h"}
+
 	iterMap := map[string]string{
 		"5min": "1h",
 		"1h":   "12h",

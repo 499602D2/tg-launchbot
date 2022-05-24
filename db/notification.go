@@ -101,8 +101,8 @@ func (launch *Launch) AnyStatesResetByNetSlip(slip int64) (bool, map[string]bool
 		}
 	}
 
-	// Save updated states
 	if stateAltered {
+		// Save updated states
 		launch.NotificationState.UpdateFlags(launch)
 		return true, resetStates
 	}
@@ -143,18 +143,18 @@ func (launch *Launch) NotificationRecipients(db *Database, notificationType stri
 	for _, user := range usersWithNotificationEnabled {
 		// Check if user is subscribed to this provider
 		if !user.GetNotificationStatusById(launch.LaunchProvider.Id) {
-			log.Debug().Msgf("User=%s is not subscribed to provider with id=%d", user.Id, launch.LaunchProvider.Id)
+			log.Debug().Msgf("➙ User=%s is not subscribed to provider with id=%d", user.Id, launch.LaunchProvider.Id)
 			continue
 		}
 
 		// Check if user has this specific launch muted
 		if user.HasMutedLaunch(launch.Id) {
-			log.Debug().Msgf("User=%s has muted launch with id=%s", user.Id, launch.Id)
+			log.Debug().Msgf("➙ User=%s has muted launch with id=%s", user.Id, launch.Id)
 			continue
 		}
 
 		// User has subscribed to this launch, and has not muted it: add to recipients
-		log.Debug().Msgf("Adding user=%s to recipients", user.Id)
+		log.Debug().Msgf("➙ Adding user=%s to recipients", user.Id)
 		recipients = append(recipients, user)
 	}
 
@@ -162,7 +162,7 @@ func (launch *Launch) NotificationRecipients(db *Database, notificationType stri
 	return recipients
 }
 
-// Load IDs into a map
+// Load IDs of sent notifications into a map
 func (launch *Launch) LoadSentNotificationIdMap() map[string]string {
 	sentIds := map[string]string{}
 
