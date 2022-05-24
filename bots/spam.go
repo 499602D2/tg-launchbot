@@ -106,6 +106,9 @@ func (spam *Spam) RunBothLimiters(user *users.User, tokens int, stats *stats.Sta
 
 // When an interaction is received, ensure the sender is qualified for it
 func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *stats.Statistics) bool {
+	// Update time chat was last active
+	chat.LastActive = time.Now()
+
 	if interaction.IsGroup {
 		// In groups, we need to ensure that regular users cannot do funny things
 		if interaction.IsAdminOnly || !chat.AnyoneCanSendCommands {

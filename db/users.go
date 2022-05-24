@@ -17,7 +17,7 @@ func (cache *Cache) CleanUserCache(db *Database, force bool) {
 	usersToBeCleaned := []*users.User{}
 
 	for _, user := range cache.Users.Users {
-		if time.Since(user.LastActive) > time.Duration(30)*time.Minute || force {
+		if time.Since(user.LastActive) > time.Duration(1)*time.Hour || force {
 			usersToBeCleaned = append(usersToBeCleaned, user)
 		}
 	}
@@ -29,7 +29,8 @@ func (cache *Cache) CleanUserCache(db *Database, force bool) {
 	}
 
 	if len(usersToBeCleaned) > 0 {
-		log.Debug().Msgf("Flushed %d user(s) from the cache", len(usersToBeCleaned))
+		log.Debug().Msgf("Flushed %d user(s) from the cache, %d still cached",
+			len(usersToBeCleaned), len(cache.Users.Users))
 	}
 }
 
@@ -97,14 +98,15 @@ func (cache *Cache) FlushUser(id string, platform string) {
 			userCache.InCache = append(userCache.InCache[:i], userCache.InCache[i+1:]...)
 		}
 	}
-	log.Debug().Msgf("Flushed user=%s", id)
+
+	// log.Debug().Msgf("Flushed user=%s", id)
 }
 
 // Load a user from the database. If the user is not found, initialize it in
 // the database, and return the new entry.
 func (db *Database) LoadUser(id string, platform string) *users.User {
 	// Temporary user-struct
-	user := users.User{Id: id, Platform: platform, LastActive: time.Now()}
+	user := users.User{Id: id, Platform: platform}
 
 	// Check if user exists
 	result := db.Conn.First(&user, "Id = ? AND platform = ?", id, platform)
