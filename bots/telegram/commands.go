@@ -67,7 +67,7 @@ func (tg *Bot) permissionedStart(ctx tb.Context) error {
 	chat, interaction, err := tg.buildInteraction(ctx, true, "start")
 
 	if err != nil {
-		log.Warn().Msg("Running startHandler failed")
+		log.Warn().Msg("Running permissionedStart failed")
 		return nil
 	}
 
@@ -792,7 +792,7 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 // Handle notification message expansions
 func (tg *Bot) expandMessageContent(ctx tb.Context) error {
 	// Load chat and generate the interaction
-	chat, interaction, err := tg.buildInteraction(ctx, true, "settings")
+	chat, interaction, err := tg.buildInteraction(ctx, true, "expandMessage")
 
 	if err != nil {
 		log.Warn().Msg("Running expandMessageContent failed")
