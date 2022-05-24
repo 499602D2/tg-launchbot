@@ -801,7 +801,7 @@ func (tg *Bot) expandMessageContent(ctx tb.Context) error {
 
 	// Run permission and spam management
 	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
-		return tg.interactionNotAllowed(ctx, true)
+		return tg.interactionNotAllowed(ctx, false)
 	}
 
 	// Split data field
