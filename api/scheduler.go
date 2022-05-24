@@ -230,15 +230,20 @@ func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunc
 		untilNextUpdate = untilNextUpdate - sinceLast
 	}
 
-	// Time of next scheduled API update and time until next notification
+	// Time of next scheduled API update, based on the next notification's type
 	autoUpdateTime := time.Now().Add(untilNextUpdate)
+
+	// Time until next notification must be sent
 	untilNotification := time.Until(time.Unix(notification.SendTime, 0))
+
+	// Save time of next notification
+	session.Telegram.Stats.NextNotification = time.Unix(notification.SendTime, 0)
 
 	if postLaunchCheck != nil {
 		// If a post-launch check, try scheduling for 10 minutes after launch's NET
 		if postLaunchCheck.NET != 0 {
 			autoUpdateTime = time.Unix(postLaunchCheck.NET, 0).Add(time.Duration(10) * time.Minute)
-			log.Debug().Msgf("postLaunchCheck's NET != 0, scheduling for 10 minutes after NET=%d", postLaunchCheck.NET)
+			log.Debug().Msgf("postLaunchCheck set properly, scheduling 10 minutes after NET=%d", postLaunchCheck.NET)
 		} else {
 			// If notifiation has LaunchNET set to zero, schedule for 15 minutes from now
 			autoUpdateTime = time.Now().Add(time.Duration(15) * time.Minute)

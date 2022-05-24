@@ -17,20 +17,21 @@ import (
 
 // Global statistics, per-platform
 type Statistics struct {
-	Platform       string `gorm:"primaryKey;uniqueIndex"`
-	Notifications  int
-	Commands       int
-	Callbacks      int
-	V2Commands     int // Combined commands + callbacks for pre-v3
-	ApiRequests    int
-	LimitsAverage  float64 // Track average enforced limit duration
-	LimitsEnforced int64   // Track count of enforced limits
-	LastApiUpdate  time.Time
-	NextApiUpdate  time.Time
-	StartedAt      time.Time
-	Subscribers    int64  `gorm:"-:all"`
-	DbSize         int64  `gorm:"-:all"`
-	RunningVersion string `gorm:"-:all"`
+	Platform         string `gorm:"primaryKey;uniqueIndex"`
+	Notifications    int
+	Commands         int
+	Callbacks        int
+	V2Commands       int // Combined commands + callbacks for pre-v3
+	ApiRequests      int
+	LimitsAverage    float64 // Track average enforced limit duration
+	LimitsEnforced   int64   // Track count of enforced limits
+	LastApiUpdate    time.Time
+	NextApiUpdate    time.Time
+	NextNotification time.Time
+	StartedAt        time.Time
+	Subscribers      int64  `gorm:"-:all"`
+	DbSize           int64  `gorm:"-:all"`
+	RunningVersion   string `gorm:"-:all"`
 }
 
 // Embedded chat-level statistics
@@ -43,14 +44,25 @@ type User struct {
 }
 
 func (stats *Statistics) String() string {
+	var (
+		// nextUpdate       string
+		nextNotification string
+	)
+
 	// Time-related stats
 	dbLastUpdated := durafmt.Parse(time.Since(stats.LastApiUpdate)).LimitFirstN(2)
-	nextUpdate := durafmt.Parse(time.Until(stats.NextApiUpdate)).LimitFirstN(2)
-	sinceStartup := humanize.Time(stats.StartedAt)
 
-	// Db size; humanize it
-	dbSize := humanize.Bytes(uint64(stats.DbSize))
-	rateLimitSI := humanize.SIWithDigits(stats.LimitsAverage, 0, "s")
+	// if time.Until(stats.NextApiUpdate) <= 0 {
+	// 	nextUpdate = "now"
+	// } else {
+	// 	nextUpdate = "in: " + durafmt.Parse(time.Until(stats.NextApiUpdate)).LimitFirstN(2).String()
+	// }
+
+	if time.Until(stats.NextNotification) <= 0 {
+		nextNotification = "being sent..."
+	} else {
+		nextNotification = "in " + durafmt.Parse(time.Until(stats.NextNotification)).LimitFirstN(2).String()
+	}
 
 	text := fmt.Sprintf(
 		"📊 *LaunchBot global statistics*\n"+
@@ -58,9 +70,9 @@ func (stats *Statistics) String() string {
 			"Commands parsed: %s\n"+
 			"Active subscribers: %s\n\n"+
 
-			"💾 *Database information*\n"+
-			"Updated: %s ago\n"+
-			"Next update in: %s\n"+
+			"🛰️ *Database information*\n"+
+			"Updated %s ago\n"+
+			"Notification %s\n"+
 			"Storage used: %s\n\n"+
 
 			"🌍 *Server information*\n"+
@@ -68,10 +80,17 @@ func (stats *Statistics) String() string {
 			"Average rate-limit %s\n"+
 			"GITHUBLINK",
 
+		// General statistics
 		humanize.Comma(int64(stats.Notifications)),
 		humanize.Comma(int64(stats.Commands+stats.Callbacks+stats.V2Commands)),
 		humanize.Comma(stats.Subscribers),
-		dbLastUpdated, nextUpdate, dbSize, sinceStartup, rateLimitSI,
+
+		// API update information
+		dbLastUpdated, nextNotification, humanize.Bytes(uint64(stats.DbSize)),
+
+		// Server information
+		humanize.Time(stats.StartedAt),
+		humanize.SIWithDigits(stats.LimitsAverage, 0, "s"),
 	)
 
 	text = utils.PrepareInputForMarkdown(text, "text")
