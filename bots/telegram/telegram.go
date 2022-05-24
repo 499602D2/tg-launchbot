@@ -101,11 +101,6 @@ func (tg *Bot) genericCallbackHandler(ctx tb.Context) error {
 		return nil
 	}
 
-	// Run permission and spam management
-	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
-		return tg.interactionNotAllowed(ctx, false)
-	}
-
 	// Extract data for logging purposes
 	cbData := ctx.Callback().Data
 
