@@ -581,11 +581,11 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 	// Data is in the format id/toggleTo/notificationType
 	data := strings.Split(ctx.Callback().Data, "/")
 
-	idxMigration := 0
+	migrationIdx := 0
 
 	if len(data) > 3 {
 		log.Warn().Msgf("Temporarily allowing old-format mute callback with mute/ prefix")
-		idxMigration = 1
+		migrationIdx = 1
 	}
 
 	// Load chat and generate the interaction
@@ -602,10 +602,10 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 	}
 
 	// Get bool state the mute status will be toggled to
-	toggleTo := utils.BinStringStateToBool[data[1+idxMigration]]
+	toggleTo := utils.BinStringStateToBool[data[1+migrationIdx]]
 
 	// Toggle user's mute status (id, newState)
-	success := chat.ToggleLaunchMute(data[0+idxMigration], toggleTo)
+	success := chat.ToggleLaunchMute(data[0+migrationIdx], toggleTo)
 
 	// On success, save to disk
 	if success {
@@ -619,7 +619,7 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 		muteBtn := tb.InlineButton{
 			Unique: "muteToggle",
 			Text:   map[bool]string{true: "🔊 Unmute launch", false: "🔇 Mute launch"}[toggleTo],
-			Data:   fmt.Sprintf("%s/%s/%s", data[0+idxMigration], utils.ToggleBoolStateAsString[toggleTo], data[2+idxMigration]),
+			Data:   fmt.Sprintf("%s/%s/%s", data[0+migrationIdx], utils.ToggleBoolStateAsString[toggleTo], data[2+migrationIdx]),
 		}
 
 		// Set the existing mute button to the new one (always at zeroth index, regardless of expansion status)
@@ -809,9 +809,14 @@ func (tg *Bot) expandMessageContent(ctx tb.Context) error {
 	// Split data field
 	callbackData := strings.Split(ctx.Callback().Data, "/")
 
+	var migrationIdx int
+	if len(callbackData) > 2 {
+		migrationIdx = 1
+	}
+
 	// Extract ID and notification type
-	launchId := callbackData[1]
-	notification := callbackData[2]
+	launchId := callbackData[0+migrationIdx]
+	notification := callbackData[1+migrationIdx]
 
 	// Find launch by ID (it may not exist in the cache anymore)
 	launch, err := tg.Cache.FindLaunchById(launchId)

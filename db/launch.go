@@ -515,7 +515,7 @@ func (launch *Launch) TelegramNotificationKeyboard(notificationType string) [][]
 		expandBtn := tb.InlineButton{
 			Unique: "expand",
 			Text:   "ℹ️ Expand description",
-			Data:   fmt.Sprintf("exp/%s/%s", launch.Id, notificationType),
+			Data:   fmt.Sprintf("%s/%s", launch.Id, notificationType),
 		}
 
 		kb = append(kb, []tb.InlineButton{expandBtn})
