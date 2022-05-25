@@ -25,7 +25,7 @@ type CommandMessage struct{}
 type ServiceMessage struct{}
 
 func (messages *Messages) Migrated() string {
-	return "⚠️ LaunchBot has been upgraded. Please send the command again, instead of " +
+	return "🌟 LaunchBot has been upgraded! Please send the command again, instead of " +
 		"using the buttons."
 }
 
