@@ -223,13 +223,17 @@ func Sender(tg *Bot) {
 				}
 
 				// Log time spent processing
-				timeSpent := durafmt.Parse(time.Since(processStartTime)).LimitFirstN(2)
+				timeSpent := time.Since(processStartTime)
 
 				// All done: do post-processing
 				switch sendable.Type {
 				case sendables.Notification:
 					// Send done; log
-					log.Info().Msgf("Sent %d notification(s) for sendable=%s in %s", len(sentIds), hash, timeSpent)
+					log.Info().Msgf("Sent %d notification(s) for sendable=%s in %s",
+						len(sentIds), hash, durafmt.Parse(timeSpent).LimitFirstN(2))
+
+					log.Info().Msgf("Average send-rate %.1f msg/sec",
+						float64(len(sentIds))/timeSpent.Seconds())
 
 					// Update statistics, save to disk
 					tg.Stats.Notifications += len(sentIds)
@@ -255,7 +259,9 @@ func Sender(tg *Bot) {
 						// Create a sendable for removing mass-notifications
 						deletionSendable := sendables.SendableForMessageRemoval(sendable, previouslySentIds)
 
-						// Load recipients, so we can ignore chats that have muted this launch
+						/* Re-use recipients. A user may not have received any notifications,
+						but trying the removal for all recipients is safe as no-one on the list
+						can have the launch muted. */
 						deletionSendable.Recipients = sendable.Recipients
 
 						// Enqueue the sendable for removing the old notifications
@@ -266,7 +272,11 @@ func Sender(tg *Bot) {
 					launch.SaveSentNotificationIds(sentIds, tg.Db)
 
 				case sendables.Delete:
-					log.Info().Msgf("Processed %d message removals in %s", len(sendable.MessageIDs), timeSpent)
+					log.Info().Msgf("Processed %d message removals in %s",
+						len(sendable.MessageIDs), durafmt.Parse(timeSpent).LimitFirstN(2))
+
+					log.Info().Msgf("Average deletion-rate %.1f msg/sec",
+						float64(len(sendable.MessageIDs))/timeSpent.Seconds())
 				}
 
 				// Delete sendable from the queue

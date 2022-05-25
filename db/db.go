@@ -152,6 +152,8 @@ func (db *Database) Update(launches []*Launch, apiUpdate bool, useCacheNotifStat
 
 				// If states exist, use the on-disk states
 				launch.NotificationState = dbLaunch.NotificationState
+				launch.SentNotificationIds = dbLaunch.SentNotificationIds
+
 				log.Debug().Msgf("Successfully utilized on-db launch's notification states on update (id=%s)", launch.Slug)
 			}
 		}

@@ -339,11 +339,14 @@ func (launch *Launch) MessageBodyText(expanded bool, isNotification bool) string
 		location = fmt.Sprintf(", %s%s", location, emoji.GetFlag(launch.LaunchPad.Location.CountryCode))
 	}
 
+	var timeUntil string
+	untilLaunch := time.Until(time.Unix(launch.NETUnix, 0))
+
 	if !isNotification {
 		// If not a notification, add the "Launch time" section with date and time
 		if launch.Status.Abbrev == "TBD" {
 			// If launch-time is still TBD, add a Not-earlier-than date and reduce time accuracy
-			timeUntil := fmt.Sprintf("%s", durafmt.Parse(time.Until(time.Unix(launch.NETUnix, 0))).LimitFirstN(1))
+			timeUntil = fmt.Sprintf("%s", durafmt.Parse(untilLaunch).LimitFirstN(1))
 
 			launchTimeSection = fmt.Sprintf(
 				"🕙 *Launch time*\n"+
@@ -354,7 +357,12 @@ func (launch *Launch) MessageBodyText(expanded bool, isNotification bool) string
 			)
 		} else {
 			// Otherwise, the date is close enough
-			timeUntil := fmt.Sprintf("%s", durafmt.Parse(time.Until(time.Unix(launch.NETUnix, 0))).LimitFirstN(2))
+			if untilLaunch.Seconds() >= 60.0 {
+				timeUntil = fmt.Sprintf("%s", durafmt.Parse(untilLaunch).LimitFirstN(2))
+			} else {
+				// We don't need millisecond-precision for the launch time
+				timeUntil = fmt.Sprintf("%s", durafmt.Parse(untilLaunch).LimitFirstN(1))
+			}
 
 			launchTimeSection = fmt.Sprintf(
 				"🕙 *Launch time*\n"+
@@ -918,6 +926,7 @@ func (launch *Launch) NextNotification(db *Database) Notification {
 					sendTime = time.Now().Unix() + 10
 
 					notifType = strings.ReplaceAll(notifType, "Sent", "")
+
 					return Notification{
 						Type: notifType, SendTime: sendTime, LaunchId: launch.Id,
 						LaunchName: launch.Name, LaunchNET: launch.NETUnix, Count: 1}
