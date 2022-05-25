@@ -141,5 +141,5 @@ func (command *CommandMessage) Feedback(received bool) string {
 }
 
 func (service *ServiceMessage) InteractionNotAllowed() string {
-	return "⚠️ You're not allowed to do that"
+	return "🙃 Whoops, you must be an admin of this group to do that!"
 }
