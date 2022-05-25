@@ -34,7 +34,8 @@ func TestRecipientLoading(t *testing.T) {
 		log.Fatal().Err(err).Msg("Loading launch failed")
 	}
 
-	user, _ := db.Cache.FindUser("12345", "tg", false)
+	log.Debug().Msg("Loading user...")
+	user := db.Cache.FindUser("421341996", "tg")
 	log.Debug().Msgf("User=%s loaded into cache", user.Id)
 
 	notificationType := "24h"

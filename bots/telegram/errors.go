@@ -69,16 +69,13 @@ func notifyAdminOfError(tg *Bot, err error, wasGeneric bool) {
 		errMsg = fmt.Sprintf("Unhandled Telegram error: %#v", err.Error())
 	}
 
-	// Load owner
-	user, _ := tg.Cache.FindUser(fmt.Sprintf("%d", tg.Owner), "tg", true)
-
 	// Wrap in a sendable
 	sendable := sendables.Sendable{
 		Message: &sendables.Message{TextContent: errMsg, SendOptions: tb.SendOptions{}},
 	}
 
 	// Add owner as recipient
-	sendable.AddRecipient(user, false)
+	sendable.AddRecipient(tg.Cache.FindUser(fmt.Sprintf("%d", tg.Owner), "tg"), false)
 
 	// Enqueue message as high-priority
 	tg.Queue.Enqueue(&sendable, true)
@@ -109,7 +106,7 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	}
 
 	// Load user
-	chat, _ := tg.Cache.FindUser(fmt.Sprint(id), "tg", true)
+	chat := tg.Cache.FindUser(fmt.Sprint(id), "tg")
 
 	// Context might be nil: if it is, then this is a send-related error
 	// Send-related errors are handled differently, mainly during migrations

@@ -34,13 +34,34 @@ func (cache *Cache) CleanUserCache(db *Database, force bool) {
 	}
 }
 
+// Searches for user from the cache, returning the existing user-pointer if found.
+// If the user is not cached, the user given as input is inserted into the cache and returned.
+// Returns true if user was found in the cache, false if user was not already cached.
+func (cache *Cache) UseCachedUserIfExists(user *users.User, lockMutex bool) (*users.User, bool) {
+	if lockMutex {
+		cache.Users.Mutex.Lock()
+		defer cache.Users.Mutex.Unlock()
+	}
+
+	// Search for the user in the cache
+	cachedUser, insertAt := cache.UserIsCached(user)
+
+	if cachedUser == nil {
+		// User not cached, insert (mutex locked)
+		cache.InsertIntoCache(user, insertAt, false)
+		return user, false
+	}
+
+	// User is cached, return the found pointer
+	return cachedUser, true
+}
+
 // Inserts a user into the cache
 func (cache *Cache) InsertIntoCache(user *users.User, atIndex int, lockMutex bool) {
 	// Set userCache ptr
 	userCache := cache.Users
 
 	if lockMutex {
-		// Lock mutex if configured
 		userCache.Mutex.Lock()
 		defer userCache.Mutex.Unlock()
 	}
@@ -69,10 +90,32 @@ func (cache *Cache) InsertIntoCache(user *users.User, atIndex int, lockMutex boo
 	}
 }
 
-// Finds a user from the user-cache and returns the user and the index the user was found at
-func (cache *Cache) FindUser(id string, platform string, cacheOnly bool) (*users.User, int) {
+// Return user if the user is cached, otherwise a nil and the idx the user should be inserted at
+func (cache *Cache) UserIsCached(user *users.User) (*users.User, int) {
 	// Set userCache ptr
 	userCache := cache.Users
+
+	i := sort.SearchStrings(userCache.InCache, user.Id)
+
+	if len(userCache.InCache) > 0 {
+		if i < len(userCache.InCache) && userCache.Users[i].Id == user.Id {
+			// User is in cache, return
+			return userCache.Users[i], i
+		}
+	}
+
+	// User not found
+	return nil, i
+}
+
+// Finds a user from the user-cache and returns the user and the index the user was found at
+func (cache *Cache) FindUser(id string, platform string) *users.User {
+	// Set userCache ptr
+	userCache := cache.Users
+
+	// Lock mutex
+	userCache.Mutex.Lock()
+	defer userCache.Mutex.Unlock()
 
 	// Checks if the chat ID already exists
 	i := sort.SearchStrings(userCache.InCache, id)
@@ -80,22 +123,17 @@ func (cache *Cache) FindUser(id string, platform string, cacheOnly bool) (*users
 	if len(userCache.InCache) > 0 {
 		if i < len(userCache.InCache) && userCache.Users[i].Id == id {
 			// User is in cache, return
-			return userCache.Users[i], i
+			return userCache.Users[i]
 		}
-	}
-
-	if cacheOnly {
-		// If we are only doing a cache look-up, return a nil
-		return nil, i
 	}
 
 	// User is not in cache; load from db (also sets time zone)
 	user := cache.Database.LoadUser(id, platform)
 
 	// Add user to cache
-	cache.InsertIntoCache(user, i, true)
+	cache.InsertIntoCache(user, i, false)
 
-	return user, i
+	return user
 }
 
 // Flushes a single user from the user cache

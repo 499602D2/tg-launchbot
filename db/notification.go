@@ -112,10 +112,6 @@ func (launch *Launch) AnyStatesResetByNetSlip(slip int64) (bool, map[string]bool
 
 // Gets all notification recipients for this notification
 func (launch *Launch) NotificationRecipients(db *Database, notificationType string, platform string) []*users.User {
-	// Lock user-cache mutex
-	db.Cache.Users.Mutex.Lock()
-	defer db.Cache.Users.Mutex.Unlock()
-
 	// Load users from database
 	usersWithNotificationEnabled := []*users.User{}
 
@@ -143,6 +139,10 @@ func (launch *Launch) NotificationRecipients(db *Database, notificationType stri
 	// List of final recipients
 	recipients := []*users.User{}
 
+	// Lock user-cache while we write to it
+	db.Cache.Users.Mutex.Lock()
+	defer db.Cache.Users.Mutex.Unlock()
+
 	// Filter all users from the list
 	for _, user := range usersWithNotificationEnabled {
 		// Check if user is subscribed to this provider
@@ -157,21 +157,16 @@ func (launch *Launch) NotificationRecipients(db *Database, notificationType stri
 			continue
 		}
 
-		// User has subscribed to this launch, and has not muted it: add to recipients
-		// Check if this user has already been cached, to avoid overlapping database writes
-		cachedUser, i := db.Cache.FindUser(user.Id, user.Platform, true)
+		/* User has subscribed to this launch, and has not muted it: add to recipients.
+		Check if this user has already been cached, to avoid overlapping database writes. */
+		cachedUser, wasAlreadyCached := db.Cache.UseCachedUserIfExists(user, false)
 
-		if cachedUser != nil {
-			// User is already cached: use the cached pointer
-			log.Warn().Msgf("User=%s already cached, using pointer...", user.Id)
-			recipients = append(recipients, cachedUser)
-		} else {
-			// User not cached, use the one loaded from the db
-			recipients = append(recipients, user)
-
-			// Mutex already locked: insert user
-			db.Cache.InsertIntoCache(user, i, false)
+		if wasAlreadyCached {
+			log.Debug().Msgf("User=%s was already cached when loading recipients", user.Id)
 		}
+
+		// Insert user into the recipients, now that it is certainly in the user-cache
+		recipients = append(recipients, cachedUser)
 	}
 
 	log.Debug().Msgf("%d recipient(s) loaded for launch=%s", len(recipients), launch.Slug)
