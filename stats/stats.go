@@ -60,6 +60,8 @@ func (stats *Statistics) String() string {
 
 	if time.Until(stats.NextNotification) <= 0 {
 		nextNotification = "being sent..."
+	} else if stats.NextNotification.Unix() == 0 {
+		nextNotification = "status unknown"
 	} else {
 		nextNotification = "in " + durafmt.Parse(time.Until(stats.NextNotification)).LimitFirstN(2).String()
 	}
