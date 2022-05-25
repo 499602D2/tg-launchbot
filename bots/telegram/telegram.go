@@ -109,7 +109,7 @@ func (tg *Bot) genericCallbackHandler(ctx tb.Context) error {
 		log.Debug().Msgf("User in chat=%s attempted to use a generic callback, ignoring (data=%s)",
 			chat.Id, cbData)
 
-		return tg.interactionNotAllowed(ctx, true)
+		return tg.interactionNotAllowed(ctx, interaction.IsCommand)
 	}
 
 	log.Debug().Msgf(

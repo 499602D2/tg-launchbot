@@ -73,7 +73,7 @@ func (tg *Bot) permissionedStart(ctx tb.Context) error {
 
 	// Run permission and spam management
 	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
-		return tg.interactionNotAllowed(ctx, true)
+		return tg.interactionNotAllowed(ctx, interaction.IsCommand)
 	}
 
 	return tg.unpermissionedStart(ctx)
@@ -150,7 +150,7 @@ func (tg *Bot) feedbackHandler(ctx tb.Context) error {
 
 	// Run permission and spam management
 	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
-		return tg.interactionNotAllowed(ctx, true)
+		return tg.interactionNotAllowed(ctx, interaction.IsCommand)
 	}
 
 	// If no command parameters, we're not receiving feedback
@@ -198,7 +198,7 @@ func (tg *Bot) scheduleHandler(ctx tb.Context) error {
 
 	// Run permission and spam management
 	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
-		return tg.interactionNotAllowed(ctx, true)
+		return tg.interactionNotAllowed(ctx, interaction.IsCommand)
 	}
 
 	// The mode to use, either "v" for vehicles, or "m" for missions
@@ -252,7 +252,7 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 
 	// Run permission and spam management
 	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
-		return tg.interactionNotAllowed(ctx, true)
+		return tg.interactionNotAllowed(ctx, interaction.IsCommand)
 	}
 
 	// Index we're loading the launch at: defaults to 0 for commands
@@ -334,7 +334,7 @@ func (tg *Bot) statsHandler(ctx tb.Context) error {
 
 	// Run permission and spam management
 	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
-		return tg.interactionNotAllowed(ctx, true)
+		return tg.interactionNotAllowed(ctx, interaction.IsCommand)
 	}
 
 	// Reload some statistics
@@ -382,7 +382,7 @@ func (tg *Bot) settingsHandler(ctx tb.Context) error {
 
 	// Run permission and spam management
 	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
-		return tg.interactionNotAllowed(ctx, true)
+		return tg.interactionNotAllowed(ctx, interaction.IsCommand)
 	}
 
 	// Is chat a group-chat?
@@ -438,7 +438,7 @@ func (tg *Bot) countryCodeListCallback(ctx tb.Context) error {
 
 	// Run permission and spam management
 	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
-		return tg.interactionNotAllowed(ctx, true)
+		return tg.interactionNotAllowed(ctx, interaction.IsCommand)
 	}
 
 	// Get send-options
@@ -470,7 +470,7 @@ func (tg *Bot) notificationToggleCallback(ctx tb.Context) error {
 
 	// Run permission and spam management
 	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
-		return tg.interactionNotAllowed(ctx, true)
+		return tg.interactionNotAllowed(ctx, interaction.IsCommand)
 	}
 
 	// Variable for updated keyboard following a callback
@@ -591,7 +591,7 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 
 	// Run permission and spam management
 	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
-		return tg.interactionNotAllowed(ctx, true)
+		return tg.interactionNotAllowed(ctx, interaction.IsCommand)
 	}
 
 	if len(data) != 4 {
@@ -659,7 +659,7 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 
 	// Run permission and spam management
 	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
-		return tg.interactionNotAllowed(ctx, true)
+		return tg.interactionNotAllowed(ctx, interaction.IsCommand)
 	}
 
 	// Split data into an array
@@ -801,7 +801,7 @@ func (tg *Bot) expandMessageContent(ctx tb.Context) error {
 
 	// Run permission and spam management
 	if !tg.Spam.PreHandler(interaction, chat, tg.Stats) {
-		return tg.interactionNotAllowed(ctx, false)
+		return tg.interactionNotAllowed(ctx, interaction.IsCommand)
 	}
 
 	// Split data field
