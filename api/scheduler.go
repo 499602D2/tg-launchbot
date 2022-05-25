@@ -56,7 +56,7 @@ func Notify(launch *db.Launch, database *db.Database, username string) *sendable
 
 	// Create sendable
 	sendable := sendables.Sendable{
-		Type:             "notification",
+		Type:             sendables.Notification,
 		NotificationType: notification.Type,
 		LaunchId:         launch.Id,
 		Message:          &msg,

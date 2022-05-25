@@ -29,7 +29,7 @@ func highPrioritySender(tg *Bot, message *sendables.Message, chat *users.User) b
 
 	if err != nil {
 		if !tg.handleError(nil, sent, err, int64(id)) {
-			// If error is non-recoverable, continue the loop
+			// If error is unrecoverable, continue the loop
 			log.Warn().Msg("Unrecoverable error in high-priority sender")
 			return false
 		} else {
@@ -127,9 +127,9 @@ func SendNotification(tg *Bot, sendable *sendables.Sendable, user *users.User, r
 			}
 		}
 
-		// If a non-recoverable error, continue
+		// If a unrecoverable error, continue
 		if !tg.handleError(nil, sent, err, int64(id)) {
-			log.Warn().Msg("Non-recoverable error in sender, continuing loop")
+			log.Warn().Msg("Unrecoverable error in sender, continuing loop")
 			return "", false
 		}
 
@@ -189,7 +189,7 @@ func Sender(tg *Bot) {
 
 					// Switch-case the sendable's type
 					switch sendable.Type {
-					case "notification":
+					case sendables.Notification:
 						log.Debug().Msgf("Sending notification to user=%s", chat.Id)
 						sentIdPair, success := SendNotification(tg, sendable, chat, 0)
 
@@ -199,7 +199,8 @@ func Sender(tg *Bot) {
 						} else {
 							log.Warn().Msgf("➙ Sending notification to user=%s failed", chat.Id)
 						}
-					case "delete":
+
+					case sendables.Delete:
 						DeleteNotificationMessage(tg, sendable, chat)
 					}
 
@@ -226,7 +227,7 @@ func Sender(tg *Bot) {
 
 				// All done: do post-processing
 				switch sendable.Type {
-				case "notification":
+				case sendables.Notification:
 					// Send done; log
 					log.Info().Msgf("Sent %d notification(s) for sendable=%s in %s", len(sentIds), hash, timeSpent)
 
@@ -264,7 +265,7 @@ func Sender(tg *Bot) {
 					// Save the IDs of the sent notifications
 					launch.SaveSentNotificationIds(sentIds, tg.Db)
 
-				case "delete":
+				case sendables.Delete:
 					log.Info().Msgf("Processed %d message removals in %s", len(sendable.MessageIDs), timeSpent)
 				}
 

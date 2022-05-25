@@ -189,6 +189,11 @@ func (tg *Bot) buildInteraction(ctx tb.Context, adminOnly bool, name string) (*u
 		Tokens:        tokens,
 	}
 
+	if !isCommand {
+		// If a callback, add callback data to the interaction
+		interaction.CbData = ctx.Callback().Data
+	}
+
 	return chat, &interaction, nil
 }
 

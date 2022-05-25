@@ -16,7 +16,7 @@ import (
 // they will be sent.
 type Sendable struct {
 	Platform         string            // tg, dg
-	Type             string            // in ("delete", "notification", "command", "callback")
+	Type             Type              // sendables.Type (Notification, Command, Callback, Delete)
 	NotificationType string            // 24h, 12h, 1h, 5min
 	LaunchId         string            // Launch ID associated with this sendable
 	Message          *Message          // Message (may be nil)
@@ -35,6 +35,15 @@ type Message struct {
 	RefTime     int64 // Reference time to use for replacing $USERTIME with
 	SendOptions tb.SendOptions
 }
+
+type Type string
+
+const (
+	Notification Type = "notification"
+	Command      Type = "command"
+	Callback     Type = "callback"
+	Delete       Type = "delete"
+)
 
 // Load the size of the message, as perceived by Telegram's API
 func (sendable *Sendable) PerceivedByteSize() int {
@@ -149,7 +158,7 @@ func TextOnlySendable(txt string, user *users.User) *Sendable {
 
 	// Wrap into a sendable
 	sendable := Sendable{
-		Type:       "command",
+		Type:       Command,
 		Message:    &msg,
 		Recipients: []*users.User{},
 	}
@@ -162,7 +171,7 @@ func TextOnlySendable(txt string, user *users.User) *Sendable {
 
 func SendableForMessageRemoval(senderSendable *Sendable, msgIdMap map[string]string) *Sendable {
 	sendable := Sendable{
-		Type:       "delete",
+		Type:       Delete,
 		MessageIDs: msgIdMap,
 		LaunchId:   senderSendable.LaunchId,
 		Platform:   senderSendable.Platform,

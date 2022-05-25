@@ -33,6 +33,7 @@ type Interaction struct {
 	IsGroup       bool   // Called from a group?
 	CallerIsAdmin bool   // Is the caller an admin?
 	Name          string // Name of command or callback
+	CbData        string // Callback data for more accurate logging
 	Tokens        int    // Token-count this call requires
 }
 
@@ -130,7 +131,8 @@ func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *
 				}
 
 				if spam.VerboseLog {
-					log.Debug().Msgf("[pre-handler] Not allowing interaction=%s in chat=%s", interaction.Name, chat.Id)
+					log.Debug().Msgf("[pre-handler] Not allowing interaction=%s/%s in chat=%s",
+						interaction.Name, interaction.CbData, chat.Id)
 				}
 
 				return false
@@ -139,8 +141,11 @@ func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *
 	}
 
 	// Ensure command counter cannot be iterated by spamming the stats refresh button
-	if (interaction.Name != "stats" && interaction.Name != "generic") || (interaction.IsCommand) {
-		// Processing allowed: save statistics (global stats + user's stats)
+	unloggedInteractions := map[string]bool{"stats": true, "generic": true}
+	_, shouldNotBeLogged := unloggedInteractions[interaction.Name]
+
+	if !shouldNotBeLogged || interaction.IsCommand {
+		// Processing allowed: save statistics
 		stats.Update(interaction.IsCommand)
 		chat.Stats.Update(interaction.IsCommand)
 	}
@@ -149,7 +154,8 @@ func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *
 	spam.RunBothLimiters(chat, interaction.Tokens, stats)
 
 	if spam.VerboseLog {
-		log.Debug().Msgf("[pre-handler] Allowed interaction=%s in chat=%s", interaction.Name, chat.Id)
+		log.Debug().Msgf("[pre-handler] Allowed interaction=%s/%s in chat=%s",
+			interaction.Name, interaction.CbData, chat.Id)
 	}
 
 	return true

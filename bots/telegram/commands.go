@@ -45,7 +45,7 @@ func (tg *Bot) adminCommand(ctx tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type: "command",
+		Type: sendables.Command,
 		Message: &sendables.Message{
 			TextContent: text,
 			SendOptions: sendOptions,
@@ -99,7 +99,7 @@ func (tg *Bot) unpermissionedStart(ctx tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type: "command",
+		Type: sendables.Command,
 		Message: &sendables.Message{
 			TextContent: textContent,
 			SendOptions: sendOptions,
@@ -225,7 +225,7 @@ func (tg *Bot) scheduleHandler(ctx tb.Context) error {
 
 		// Wrap into a sendable
 		sendable := sendables.Sendable{
-			Type:    "command",
+			Type:    sendables.Command,
 			Message: &msg,
 		}
 
@@ -285,7 +285,7 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 
 		// Wrap into a sendable
 		sendable := sendables.Sendable{
-			Type:    "command",
+			Type:    sendables.Command,
 			Message: &msg,
 		}
 
@@ -351,7 +351,7 @@ func (tg *Bot) statsHandler(ctx tb.Context) error {
 	if interaction.IsCommand {
 		// Wrap into a sendable
 		sendable := sendables.Sendable{
-			Type: "command",
+			Type: sendables.Command,
 			Message: &sendables.Message{
 				TextContent: textContent,
 				SendOptions: sendOptions,
@@ -406,7 +406,7 @@ func (tg *Bot) settingsHandler(ctx tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type:    "command",
+		Type:    sendables.Command,
 		Message: &msg,
 	}
 
@@ -578,8 +578,15 @@ func (tg *Bot) notificationToggleCallback(ctx tb.Context) error {
 
 // Handle launch mute/unmute callbacks
 func (tg *Bot) muteCallback(ctx tb.Context) error {
-	// Data is in the format mute/id/toggleTo/notificationType
+	// Data is in the format id/toggleTo/notificationType
 	data := strings.Split(ctx.Callback().Data, "/")
+
+	idxMigration := 0
+
+	if len(data) > 3 {
+		log.Warn().Msgf("Temporarily allowing old-format mute callback with mute/ prefix")
+		idxMigration = 1
+	}
 
 	// Load chat and generate the interaction
 	chat, interaction, err := tg.buildInteraction(ctx, true, "mute")
@@ -594,16 +601,11 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 		return tg.interactionNotAllowed(ctx, interaction.IsCommand)
 	}
 
-	if len(data) != 4 {
-		log.Warn().Msgf("Got invalid data at /mute endpoint with length=%d from chat=%s", len(data), chat.Id)
-		return errors.New("Invalid data at /mute endpoint")
-	}
-
 	// Get bool state the mute status will be toggled to
-	toggleTo := utils.BinStringStateToBool[data[2]]
+	toggleTo := utils.BinStringStateToBool[data[1+idxMigration]]
 
 	// Toggle user's mute status (id, newState)
-	success := chat.ToggleLaunchMute(data[1], toggleTo)
+	success := chat.ToggleLaunchMute(data[0+idxMigration], toggleTo)
 
 	// On success, save to disk
 	if success {
@@ -617,7 +619,7 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 		muteBtn := tb.InlineButton{
 			Unique: "muteToggle",
 			Text:   map[bool]string{true: "🔊 Unmute launch", false: "🔇 Mute launch"}[toggleTo],
-			Data:   fmt.Sprintf("mute/%s/%s/%s", data[1], utils.ToggleBoolStateAsString[toggleTo], data[3]),
+			Data:   fmt.Sprintf("%s/%s/%s", data[0+idxMigration], utils.ToggleBoolStateAsString[toggleTo], data[2+idxMigration]),
 		}
 
 		// Set the existing mute button to the new one (always at zeroth index, regardless of expansion status)
@@ -696,7 +698,7 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 
 			// Wrap into a sendable
 			sendable := sendables.Sendable{
-				Type:    "command",
+				Type:    sendables.Command,
 				Message: &msg,
 			}
 
@@ -929,7 +931,7 @@ func (tg *Bot) locationReplyHandler(ctx tb.Context) error {
 
 	// Wrap into a sendable
 	sendable := sendables.Sendable{
-		Type:    "command",
+		Type:    sendables.Command,
 		Message: &msg,
 	}
 
@@ -996,7 +998,7 @@ func (tg *Bot) fauxNotification(ctx tb.Context) error {
 	// Create sendable
 	sendable := sendables.Sendable{
 		Platform:         "tg",
-		Type:             "notification",
+		Type:             sendables.Notification,
 		NotificationType: notifType,
 		LaunchId:         launch.Id,
 		Message:          &msg,

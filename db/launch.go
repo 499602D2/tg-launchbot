@@ -506,7 +506,7 @@ func (launch *Launch) TelegramNotificationKeyboard(notificationType string) [][]
 	muteBtn := tb.InlineButton{
 		Unique: "muteToggle",
 		Text:   "🔇 Mute launch",
-		Data:   fmt.Sprintf("mute/%s/1/%s", launch.Id, notificationType),
+		Data:   fmt.Sprintf("%s/1/%s", launch.Id, notificationType),
 	}
 
 	kb = append(kb, []tb.InlineButton{muteBtn})
@@ -760,7 +760,7 @@ func (launch *Launch) PostponeNotificationMessage(postponedBy int64) (string, tb
 	muteBtn := tb.InlineButton{
 		Unique: "muteToggle",
 		Text:   "🔇 Mute launch",
-		Data:   fmt.Sprintf("mute/%s/1/%s", launch.Id, "postpone"),
+		Data:   fmt.Sprintf("%s/1/%s", launch.Id, "postpone"),
 	}
 
 	// Construct the keyboard
@@ -819,9 +819,11 @@ func (launch *Launch) PostponeNotificationSendable(db *Database, postpone Postpo
 	log.Debug().Msgf("Filtered postpone recipients: %d ➙ %d", len(recipients), len(filteredRecipients))
 
 	sendable := sendables.Sendable{
-		Type: "notification", NotificationType: "postpone", Platform: platform,
-		LaunchId:   launch.Id,
-		Recipients: filteredRecipients,
+		Type:             sendables.Notification,
+		NotificationType: "postpone",
+		Platform:         platform,
+		LaunchId:         launch.Id,
+		Recipients:       filteredRecipients,
 		Message: &sendables.Message{
 			TextContent: text, AddUserTime: true, RefTime: launch.NETUnix, SendOptions: sendOptions,
 		},

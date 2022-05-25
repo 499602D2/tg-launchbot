@@ -354,6 +354,7 @@ func (command *CommandKeyboard) Statistics() (tb.SendOptions, [][]tb.InlineButto
 		tb.InlineButton{
 			Unique: "stats",
 			Text:   "🔄 Refresh data",
+			Data:   "r",
 		}},
 	}
 
@@ -503,7 +504,7 @@ func (command *CommandKeyboard) Expand(id string, notification string, muted boo
 	muteBtn := tb.InlineButton{
 		Unique: "muteToggle",
 		Text:   map[bool]string{true: "🔊 Unmute launch", false: "🔇 Mute launch"}[muted],
-		Data:   fmt.Sprintf("mute/%s/%s/%s", id, utils.ToggleBoolStateAsString[muted], notification),
+		Data:   fmt.Sprintf("%s/%s/%s", id, utils.ToggleBoolStateAsString[muted], notification),
 	}
 
 	// Construct the keyboard and send-options
