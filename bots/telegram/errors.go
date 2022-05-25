@@ -70,7 +70,7 @@ func notifyAdminOfError(tg *Bot, err error, wasGeneric bool) {
 	}
 
 	// Load owner
-	user := tg.Cache.FindUser(fmt.Sprintf("%d", tg.Owner), "tg")
+	user, _ := tg.Cache.FindUser(fmt.Sprintf("%d", tg.Owner), "tg", true)
 
 	// Wrap in a sendable
 	sendable := sendables.Sendable{
@@ -109,7 +109,7 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	}
 
 	// Load user
-	chat := tg.Cache.FindUser(fmt.Sprint(id), "tg")
+	chat, _ := tg.Cache.FindUser(fmt.Sprint(id), "tg", true)
 
 	// Context might be nil: if it is, then this is a send-related error
 	// Send-related errors are handled differently, mainly during migrations

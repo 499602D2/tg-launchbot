@@ -155,7 +155,7 @@ func (tg *Bot) editCbMessage(cb *tb.Callback, text string, sendOptions tb.SendOp
 
 func (tg *Bot) buildInteraction(ctx tb.Context, adminOnly bool, name string) (*users.User, *bots.Interaction, error) {
 	// Load chat
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+	chat, _ := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg", true)
 
 	// Is chat a group?
 	isGroup := isGroup(ctx.Chat().Type)
@@ -251,7 +251,7 @@ func (tg *Bot) migrationHandler(ctx tb.Context) error {
 // Handles changes related to the bot's member status in a chat
 func (tg *Bot) botMemberChangeHandler(ctx tb.Context) error {
 	// Chat associated with this update
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+	chat, _ := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg", true)
 
 	// If we were kicked or somehow managed to leave the chat, remove the chat from the db
 	if ctx.ChatMember().NewChatMember.Role == tb.Kicked || ctx.ChatMember().NewChatMember.Role == tb.Left {

@@ -112,6 +112,10 @@ func (launch *Launch) AnyStatesResetByNetSlip(slip int64) (bool, map[string]bool
 
 // Gets all notification recipients for this notification
 func (launch *Launch) NotificationRecipients(db *Database, notificationType string, platform string) []*users.User {
+	// Lock user-cache mutex
+	db.Cache.Users.Mutex.Lock()
+	defer db.Cache.Users.Mutex.Unlock()
+
 	// Load users from database
 	usersWithNotificationEnabled := []*users.User{}
 
@@ -143,7 +147,7 @@ func (launch *Launch) NotificationRecipients(db *Database, notificationType stri
 	for _, user := range usersWithNotificationEnabled {
 		// Check if user is subscribed to this provider
 		if !user.GetNotificationStatusById(launch.LaunchProvider.Id) {
-			log.Debug().Msgf("➙ User=%s is not subscribed to provider with id=%d", user.Id, launch.LaunchProvider.Id)
+			// User is not subscribed to this provider
 			continue
 		}
 
@@ -154,8 +158,20 @@ func (launch *Launch) NotificationRecipients(db *Database, notificationType stri
 		}
 
 		// User has subscribed to this launch, and has not muted it: add to recipients
-		log.Debug().Msgf("➙ Adding user=%s to recipients", user.Id)
-		recipients = append(recipients, user)
+		// Check if this user has already been cached, to avoid overlapping database writes
+		cachedUser, i := db.Cache.FindUser(user.Id, user.Platform, true)
+
+		if cachedUser != nil {
+			// User is already cached: use the cached pointer
+			log.Warn().Msgf("User=%s already cached, using pointer...", user.Id)
+			recipients = append(recipients, cachedUser)
+		} else {
+			// User not cached, use the one loaded from the db
+			recipients = append(recipients, user)
+
+			// Mutex already locked: insert user
+			db.Cache.InsertIntoCache(user, i, false)
+		}
 	}
 
 	log.Debug().Msgf("%d recipient(s) loaded for launch=%s", len(recipients), launch.Slug)

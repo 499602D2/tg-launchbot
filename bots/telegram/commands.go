@@ -53,7 +53,8 @@ func (tg *Bot) adminCommand(ctx tb.Context) error {
 	}
 
 	// Add the user
-	sendable.AddRecipient(tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg"), false)
+	owner, _ := tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg", true)
+	sendable.AddRecipient(owner, false)
 
 	// Add to queue as a high-priority message
 	go tg.Queue.Enqueue(&sendable, true)
@@ -83,7 +84,7 @@ func (tg *Bot) permissionedStart(ctx tb.Context) error {
 // command does not require permissions to be interacted with
 func (tg *Bot) unpermissionedStart(ctx tb.Context) error {
 	// Load chat
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+	chat, _ := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg", true)
 
 	// Get text for message
 	textContent := tg.Template.Messages.Command.Start(isGroup(ctx.Chat().Type))
@@ -172,10 +173,11 @@ func (tg *Bot) feedbackHandler(ctx tb.Context) error {
 	feedbackLog := fmt.Sprintf("✍️ *Got feedback from %s:* %s", chat.Id, ctx.Data())
 	log.Info().Msgf(feedbackLog)
 
+	owner, _ := tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg", true)
+
 	go tg.Queue.Enqueue(
 		sendables.TextOnlySendable(
-			utils.PrepareInputForMarkdown(feedbackLog, "text"),
-			tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")),
+			utils.PrepareInputForMarkdown(feedbackLog, "text"), owner),
 		true,
 	)
 
@@ -902,7 +904,7 @@ func (tg *Bot) locationReplyHandler(ctx tb.Context) error {
 	}
 
 	// Save locale to user's struct
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Message().Chat.ID), "tg")
+	chat, _ := tg.Cache.FindUser(fmt.Sprint(ctx.Message().Chat.ID), "tg", true)
 	chat.Locale = locale
 	tg.Db.SaveUser(chat)
 
@@ -966,7 +968,7 @@ func (tg *Bot) fauxNotification(ctx tb.Context) error {
 	}
 
 	// Load user from cache
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Message().Sender.ID), "tg")
+	chat, _ := tg.Cache.FindUser(fmt.Sprint(ctx.Message().Sender.ID), "tg", true)
 
 	// Create message, get notification type
 	testId := ctx.Data()

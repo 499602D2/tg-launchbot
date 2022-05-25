@@ -34,8 +34,43 @@ func (cache *Cache) CleanUserCache(db *Database, force bool) {
 	}
 }
 
-// Finds a user from the user-cache and returns the user
-func (cache *Cache) FindUser(id string, platform string) *users.User {
+// Inserts a user into the cache
+func (cache *Cache) InsertIntoCache(user *users.User, atIndex int, lockMutex bool) {
+	// Set userCache ptr
+	userCache := cache.Users
+
+	if lockMutex {
+		// Lock mutex if configured
+		userCache.Mutex.Lock()
+		defer userCache.Mutex.Unlock()
+	}
+
+	// Checks if the chat ID already exists
+	if atIndex == -1 {
+		atIndex = sort.SearchStrings(userCache.InCache, user.Id)
+	}
+
+	// Add user to cache so that the cache stays ordered
+	if len(userCache.InCache) == atIndex {
+		// Nil or empty slice, or after last element
+		userCache.Users = append(userCache.Users, user)
+		userCache.InCache = append(userCache.InCache, user.Id)
+	} else if atIndex == 0 {
+		// If zeroth index, append
+		userCache.Users = append([]*users.User{user}, userCache.Users...)
+		userCache.InCache = append([]string{user.Id}, userCache.InCache...)
+	} else {
+		// Otherwise, we're inserting in the middle of the array
+		userCache.Users = append(userCache.Users[:atIndex+1], userCache.Users[atIndex:]...)
+		userCache.Users[atIndex] = user
+
+		userCache.InCache = append(userCache.InCache[:atIndex+1], userCache.InCache[atIndex:]...)
+		userCache.InCache[atIndex] = user.Id
+	}
+}
+
+// Finds a user from the user-cache and returns the user and the index the user was found at
+func (cache *Cache) FindUser(id string, platform string, cacheOnly bool) (*users.User, int) {
 	// Set userCache ptr
 	userCache := cache.Users
 
@@ -45,36 +80,22 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 	if len(userCache.InCache) > 0 {
 		if i < len(userCache.InCache) && userCache.Users[i].Id == id {
 			// User is in cache, return
-			return userCache.Users[i]
+			return userCache.Users[i], i
 		}
+	}
+
+	if cacheOnly {
+		// If we are only doing a cache look-up, return a nil
+		return nil, i
 	}
 
 	// User is not in cache; load from db (also sets time zone)
 	user := cache.Database.LoadUser(id, platform)
 
-	// Lock mutex for insert
-	userCache.Mutex.Lock()
-	defer userCache.Mutex.Unlock()
+	// Add user to cache
+	cache.InsertIntoCache(user, i, true)
 
-	// Add user to cache so that the cache stays ordered
-	if len(userCache.InCache) == i {
-		// Nil or empty slice, or after last element
-		userCache.Users = append(userCache.Users, user)
-		userCache.InCache = append(userCache.InCache, user.Id)
-	} else if i == 0 {
-		// If zeroth index, append
-		userCache.Users = append([]*users.User{user}, userCache.Users...)
-		userCache.InCache = append([]string{user.Id}, userCache.InCache...)
-	} else {
-		// Otherwise, we're inserting in the middle of the array
-		userCache.Users = append(userCache.Users[:i+1], userCache.Users[i:]...)
-		userCache.Users[i] = user
-
-		userCache.InCache = append(userCache.InCache[:i+1], userCache.InCache[i:]...)
-		userCache.InCache[i] = user.Id
-	}
-
-	return user
+	return user, i
 }
 
 // Flushes a single user from the user cache
