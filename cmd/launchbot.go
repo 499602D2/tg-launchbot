@@ -80,7 +80,7 @@ func main() {
 	// Set-up logging
 	if !debug {
 		// If not debugging, log to file
-		logf := logs.SetupLogFile("logs")
+		logf := logs.SetupLogFile("data")
 		defer logf.Close()
 
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: logf, NoColor: true, TimeFormat: time.RFC822Z})

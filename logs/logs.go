@@ -30,7 +30,7 @@ func SetupLogFile(logFolder string) *os.File {
 func GetLogSize(filepath string) int64 {
 	// Default filepath is logs/bot.log
 	if filepath == "" {
-		filepath = "logs/launchbot-logs.log"
+		filepath = "data/launchbot-logs.log"
 	}
 
 	fileInfo, err := os.Stat(filepath)
