@@ -14,7 +14,7 @@ import (
 )
 
 // HighPrioritySender sends singular high-priority messages.
-func highPrioritySender(tg *Bot, message *sendables.Message, chat *users.User) bool {
+func (tg *Bot) highPrioritySender(message *sendables.Message, chat *users.User) bool {
 	// If message needs to have its time set properly, do it now
 	text := message.TextContent
 
@@ -22,7 +22,7 @@ func highPrioritySender(tg *Bot, message *sendables.Message, chat *users.User) b
 		text = sendables.SetTime(text, chat, message.RefTime, true, true, false)
 	}
 
-	id, _ := strconv.Atoi(chat.Id)
+	id, _ := strconv.ParseInt(chat.Id, 10, 64)
 
 	// FUTURE: use sendable.Send()
 	sent, err := tg.Bot.Send(tb.ChatID(id), text, &message.SendOptions)
@@ -43,7 +43,7 @@ func highPrioritySender(tg *Bot, message *sendables.Message, chat *users.User) b
 }
 
 // Clears the priority queue.
-func clearPriorityQueue(tg *Bot) {
+func (tg *Bot) clearPriorityQueue() {
 	// Lock the high-priority queue
 	tg.Queue.HighPriority.Mutex.Lock()
 
@@ -51,7 +51,7 @@ func clearPriorityQueue(tg *Bot) {
 	for _, prioritySendable := range tg.Queue.HighPriority.Queue {
 		for _, priorityUser := range prioritySendable.Recipients {
 			// Loop over users, send high-priority message
-			highPrioritySender(tg, prioritySendable.Message, priorityUser)
+			tg.highPrioritySender(prioritySendable.Message, priorityUser)
 		}
 	}
 
@@ -64,7 +64,7 @@ func clearPriorityQueue(tg *Bot) {
 }
 
 // Delete a Telegram message with a chat ID and a message ID
-func DeleteNotificationMessage(tg *Bot, sendable *sendables.Sendable, user *users.User) {
+func (tg *Bot) DeleteNotificationMessage(sendable *sendables.Sendable, user *users.User) {
 	// Load ID pair
 	msgId, ok := sendable.MessageIDs[user.Id]
 
@@ -74,7 +74,7 @@ func DeleteNotificationMessage(tg *Bot, sendable *sendables.Sendable, user *user
 	}
 
 	// Convert chat ID to integer
-	chatId, err := strconv.Atoi(user.Id)
+	chatId, err := strconv.ParseInt(user.Id, 10, 64)
 
 	if err != nil {
 		log.Error().Err(err).Msgf("Forming chat ID failed while removing sent messages")
@@ -100,9 +100,9 @@ func DeleteNotificationMessage(tg *Bot, sendable *sendables.Sendable, user *user
 }
 
 // Send a notification
-func SendNotification(tg *Bot, sendable *sendables.Sendable, user *users.User, retryCount int) (string, bool) {
+func (tg *Bot) SendNotification(sendable *sendables.Sendable, user *users.User, retryCount int) (string, bool) {
 	// Convert id to an integer
-	id, _ := strconv.Atoi(user.Id)
+	id, _ := strconv.ParseInt(user.Id, 10, 64)
 
 	var text string
 	if sendable.Message.AddUserTime {
@@ -137,7 +137,7 @@ func SendNotification(tg *Bot, sendable *sendables.Sendable, user *users.User, r
 		log.Warn().Msgf("Recoverable error in sender (re-try count = %d", retryCount)
 		if retryCount < 3 {
 			log.Debug().Msgf("Trying to send again...")
-			return SendNotification(tg, sendable, user, retryCount+1)
+			return tg.SendNotification(sendable, user, retryCount+1)
 		}
 
 		return "", false
@@ -191,7 +191,7 @@ func Sender(tg *Bot) {
 					switch sendable.Type {
 					case sendables.Notification:
 						log.Debug().Msgf("Sending notification to user=%s", chat.Id)
-						sentIdPair, success := SendNotification(tg, sendable, chat, 0)
+						sentIdPair, success := tg.SendNotification(sendable, chat, 0)
 
 						if success {
 							sentIds = append(sentIds, sentIdPair)
@@ -201,7 +201,7 @@ func Sender(tg *Bot) {
 						}
 
 					case sendables.Delete:
-						DeleteNotificationMessage(tg, sendable, chat)
+						tg.DeleteNotificationMessage(sendable, chat)
 					}
 
 					/* Periodically, during long sends, check if the TelegramBot.PriorityQueued is set.
@@ -218,7 +218,7 @@ func Sender(tg *Bot) {
 							len(tg.Queue.HighPriority.Queue))
 
 						// Clear the queue
-						clearPriorityQueue(tg)
+						tg.clearPriorityQueue()
 					}
 				}
 
@@ -290,7 +290,7 @@ func Sender(tg *Bot) {
 
 		// Check if priority queue is populated (and skip sleeping if one entry)
 		if tg.Queue.HighPriority.HasItemsInQueue {
-			clearPriorityQueue(tg)
+			tg.clearPriorityQueue()
 		}
 
 		// Clear queue every 50 ms
