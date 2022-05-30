@@ -9,6 +9,7 @@ import (
 	"launchbot/stats"
 	"launchbot/users"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -16,25 +17,31 @@ import (
 )
 
 type Bot struct {
-	Bot      *tb.Bot
-	Db       *db.Database
-	Cache    *db.Cache
-	Queue    *bots.Queue
-	Spam     *bots.Spam
-	Stats    *stats.Statistics
-	Template templates.Telegram
-	Username string
-	Owner    int64
+	Bot               *tb.Bot
+	Db                *db.Database
+	Cache             *db.Cache
+	NotificationQueue chan *sendables.Sendable
+	CommandQueue      chan *sendables.Sendable
+	Quit              Quit
+	Spam              *bots.Spam
+	Stats             *stats.Statistics
+	Template          templates.Telegram
+	Username          string
+	Owner             int64
+}
+
+// A struct to help with the shutdown flow
+type Quit struct {
+	Channel     chan int
+	Started     bool
+	Finalized   bool
+	QuitWorkers int
+	WaitGroup   sync.WaitGroup
+	Mutex       sync.Mutex
 }
 
 // Simple method to initialize the TelegramBot object
 func (tg *Bot) Initialize(token string) {
-	// Create queue for Telegram messages
-	tg.Queue = &bots.Queue{
-		Sendables:    make(map[string]*sendables.Sendable),
-		HighPriority: &bots.HighPriorityQueue{HasItemsInQueue: false},
-	}
-
 	// Init keyboard-holder struct
 	tg.Template = templates.Telegram{}
 	tg.Template.Init()
