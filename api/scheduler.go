@@ -157,7 +157,7 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 		}
 
 		// Enqueue the sendable
-		session.Telegram.Queue.Enqueue(sendable, false)
+		session.Telegram.Enqueue(sendable, false)
 	}
 
 	log.Debug().Msgf("notificationWrapper exiting normally: running scheduler...")

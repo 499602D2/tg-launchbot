@@ -153,7 +153,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 			sendable := launch.PostponeNotificationSendable(session.Db, postpone, "tg")
 
 			// Enqueue the postpone sendable
-			session.Telegram.Queue.Enqueue(sendable, false)
+			session.Telegram.Enqueue(sendable, false)
 		}
 	} else {
 		log.Debug().Msg("➙ No launches were postponed")

@@ -78,7 +78,7 @@ func notifyAdminOfError(tg *Bot, err error, wasGeneric bool) {
 	sendable.AddRecipient(tg.Cache.FindUser(fmt.Sprintf("%d", tg.Owner), "tg"), false)
 
 	// Enqueue message as high-priority
-	tg.Queue.Enqueue(&sendable, true)
+	tg.Enqueue(&sendable, true)
 }
 
 // Wrapper for warning of unhandled errors */

@@ -56,7 +56,7 @@ func (tg *Bot) adminCommand(ctx tb.Context) error {
 	sendable.AddRecipient(tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg"), false)
 
 	// Add to queue as a high-priority message
-	go tg.Queue.Enqueue(&sendable, true)
+	tg.Enqueue(&sendable, true)
 
 	return nil
 }
@@ -110,7 +110,7 @@ func (tg *Bot) unpermissionedStart(ctx tb.Context) error {
 	sendable.AddRecipient(chat, false)
 
 	// Add to queue as a high-priority message
-	go tg.Queue.Enqueue(&sendable, true)
+	tg.Enqueue(&sendable, true)
 
 	// Check if chat is new
 	if chat.Stats.SentCommands == 0 || chat.Stats.SentCommands == 1 {
@@ -164,7 +164,7 @@ func (tg *Bot) feedbackHandler(ctx tb.Context) error {
 		log.Debug().Msgf("Chat=%s requested feedback instructions", chat.Id)
 		text := utils.PrepareInputForMarkdown(message, "text")
 
-		go tg.Queue.Enqueue(sendables.TextOnlySendable(text, chat), true)
+		tg.Enqueue(sendables.TextOnlySendable(text, chat), true)
 		return nil
 	}
 
@@ -172,7 +172,7 @@ func (tg *Bot) feedbackHandler(ctx tb.Context) error {
 	feedbackLog := fmt.Sprintf("✍️ *Got feedback from %s:* %s", chat.Id, ctx.Data())
 	log.Info().Msgf(feedbackLog)
 
-	go tg.Queue.Enqueue(
+	tg.Enqueue(
 		sendables.TextOnlySendable(
 			utils.PrepareInputForMarkdown(feedbackLog, "text"),
 			tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")),
@@ -181,7 +181,7 @@ func (tg *Bot) feedbackHandler(ctx tb.Context) error {
 
 	// Send a message confirming we received the feedback
 	newText := utils.PrepareInputForMarkdown(message, "text")
-	go tg.Queue.Enqueue(sendables.TextOnlySendable(newText, chat), true)
+	tg.Enqueue(sendables.TextOnlySendable(newText, chat), true)
 
 	return nil
 }
@@ -231,7 +231,7 @@ func (tg *Bot) scheduleHandler(ctx tb.Context) error {
 
 		// Add to send queue as high-priority
 		sendable.AddRecipient(chat, false)
-		go tg.Queue.Enqueue(&sendable, true)
+		tg.Enqueue(&sendable, true)
 	} else {
 		tg.editCbMessage(ctx.Callback(), scheduleMsg, sendOptions)
 		return tg.respondToCallback(ctx, "🔄 Schedule loaded", false)
@@ -290,8 +290,8 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 		}
 
 		// Add to send queue as high-priority
-		go tg.Queue.Enqueue(&sendable, true)
 		sendable.AddRecipient(chat, false)
+		tg.Enqueue(&sendable, true)
 
 		return nil
 	}
@@ -361,7 +361,7 @@ func (tg *Bot) statsHandler(ctx tb.Context) error {
 		sendable.AddRecipient(chat, false)
 
 		// Add to send queue as high-priority
-		go tg.Queue.Enqueue(&sendable, true)
+		tg.Enqueue(&sendable, true)
 		return nil
 	}
 
@@ -413,7 +413,7 @@ func (tg *Bot) settingsHandler(ctx tb.Context) error {
 	sendable.AddRecipient(chat, false)
 
 	// Add to send queue as high-priority
-	go tg.Queue.Enqueue(&sendable, true)
+	tg.Enqueue(&sendable, true)
 
 	return nil
 }
@@ -703,7 +703,7 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 			}
 
 			sendable.AddRecipient(chat, false)
-			go tg.Queue.Enqueue(&sendable, true)
+			tg.Enqueue(&sendable, true)
 		} else {
 			tg.editCbMessage(cb, message, sendOptions)
 		}
@@ -943,7 +943,7 @@ func (tg *Bot) locationReplyHandler(ctx tb.Context) error {
 	sendable.AddRecipient(chat, false)
 
 	// Add to send queue as high-priority
-	go tg.Queue.Enqueue(&sendable, true)
+	tg.Enqueue(&sendable, true)
 
 	// Delete the setup message
 	err = tg.Bot.Delete(tb.Editable(ctx.Message().ReplyTo))
@@ -973,7 +973,7 @@ func (tg *Bot) fauxNotification(ctx tb.Context) error {
 
 	if len(testId) == 0 {
 		sendable := sendables.TextOnlySendable("No launch ID entered", chat)
-		go tg.Queue.Enqueue(sendable, true)
+		tg.Enqueue(sendable, true)
 		return nil
 	}
 
@@ -1009,11 +1009,17 @@ func (tg *Bot) fauxNotification(ctx tb.Context) error {
 		Message:          &msg,
 	}
 
-	// Add only the owner as the recipient
-	sendable.AddRecipient(chat, false)
+	// Flip to use actual recipients (here be dragons)
+	useRealRecipients := true
+
+	if useRealRecipients {
+		sendable.Recipients = launch.NotificationRecipients(tg.Db, notifType, "tg")
+	} else {
+		sendable.AddRecipient(chat, false)
+	}
 
 	// Add to send queue as a normal notification
-	go tg.Queue.Enqueue(&sendable, false)
+	tg.Enqueue(&sendable, false)
 
 	return nil
 }
