@@ -11,8 +11,8 @@ import (
 )
 
 func MoveNET(cache *db.Cache, fakeOrigNet int64, fakeNewNet int64, fakeNotifStates map[string]bool) *db.Launch {
-	// Create a fake launch using the cache (deref)
-	// This is the "old" launch that the net will be compared against
+	/* Create a fake launch using the cache (deref)
+	This is the "old" launch that the net will be compared against */
 	launch := *cache.Launches[0]
 	log.Debug().Msgf("Loaded fake launch with slug=%s", launch.Slug)
 

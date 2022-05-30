@@ -26,8 +26,8 @@ func (cache *Cache) Update(launches []*Launch) {
 	defer cache.Mutex.Unlock()
 
 	if cache.Updated == (time.Time{}) {
-		// If cache has not been initialized yet, populate it first so we have all
-		// the notification states we need
+		/* If cache has not been initialized yet, populate it first so we have all
+		the notification states we need */
 		cache.Mutex.Unlock()
 		cache.Populate()
 		cache.Mutex.Lock()
@@ -111,10 +111,10 @@ func (cache *Cache) Populate() {
 	cache.Mutex.Unlock()
 }
 
-// Finds the next notification send-time from the launch cache.
-// Function goes over the notification states, finding the next notification
-// to send. Returns a Notification-type, with the send-time and all launch
-// IDs associated with this send-time.
+/* Finds the next notification send-time from the launch cache.
+Function goes over the notification states, finding the next notification
+to send. Returns a Notification-type, with the send-time and all launch
+IDs associated with this send-time. */
 func (cache *Cache) FindNextNotification() *Notification {
 	// Find first send-time from the launch cache
 	var (
@@ -122,8 +122,8 @@ func (cache *Cache) FindNextNotification() *Notification {
 		tbdLaunchCount int
 	)
 
-	// Returns a list of notification times
-	// (only more than one if two+ notifs share the same send time)
+	/* Returns a list of notification times
+	(only more than one if two+ notifs share the same send time) */
 	notificationTimes := make(map[int64][]Notification)
 
 	/* How much the send time is allowed to slip, in minutes. This can come in
@@ -290,8 +290,8 @@ func (cache *Cache) NextScheduledUpdateIn() (time.Duration, *Notification) {
 	return autoUpdateIn, notification
 }
 
-// Finds a launch from the cache by a launch ID. If not present in the cache,
-// checks the disk.
+/* Finds a launch from the cache by a launch ID. If not present in the cache,
+checks the disk. */
 func (cache *Cache) FindLaunchById(id string) (*Launch, error) {
 	// Find the launch from the LaunchMap
 	launch, ok := cache.LaunchMap[id]
