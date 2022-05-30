@@ -13,6 +13,11 @@ import (
 	tb "gopkg.in/telebot.v3"
 )
 
+/* TODO
++ Modularize:
+	- take an interface that implements e.g. sending functions and a queue
+*/
+
 // A simple notification job, with a sendable and a single recipient
 type NotificationJob struct {
 	Sendable  *sendables.Sendable
@@ -285,7 +290,6 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan<- Not
 
 	// Gather sent notification IDs
 	sentIds := []string{}
-
 	for i := 0; i < len(sendable.Recipients); i++ {
 		idPair := <-results
 
@@ -310,10 +314,12 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan<- Not
 	tg.Quit.WaitGroup.Done()
 }
 
-func (tg *Bot) CloseSender(workPool chan<- NotificationJob, workerCount int) {
+// Gracefully shut the message channels down
+func (tg *Bot) Close(workPool chan<- NotificationJob, workerCount int) {
 	// Wait for all workers to finish their jobs
 	log.Debug().Msg("Waiting for workers to finish...")
 	tg.Quit.WaitGroup.Wait()
+
 	log.Debug().Msg("All workers finished")
 
 	// Close channels
@@ -380,13 +386,14 @@ func (tg *Bot) ThreadedSender() {
 				tg.Quit.Mutex.Lock()
 
 				// In a go-routine, wait for workers to finish and close all channels
-				go tg.CloseSender(workPool, workerCount)
+				go tg.Close(workPool, workerCount)
 			} else {
 				// If the quit has started, the message is a worker indicating closing
 				log.Debug().Msgf("Received quit-signal from worker=%d", quit)
-				tg.Quit.QuitWorkers++
+				tg.Quit.ExitedWorkers++
 
-				if tg.Quit.QuitWorkers == workerCount {
+				if tg.Quit.ExitedWorkers == workerCount {
+					// Once all workers have exited, flip the flag
 					tg.Quit.Finalized = true
 				}
 			}
