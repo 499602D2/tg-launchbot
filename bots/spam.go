@@ -109,6 +109,7 @@ func (spam *Spam) RunBothLimiters(user *users.User, tokens int, stats *stats.Sta
 func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *stats.Statistics) bool {
 	// Update time chat was last active
 	chat.LastActive = time.Now()
+	chat.LastActivityType = users.Interaction
 
 	if interaction.IsGroup {
 		// In groups, we need to ensure that regular users cannot do funny things
