@@ -269,13 +269,12 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan<- Not
 		}
 	}
 
-	// Log how long processing took
-	timeSpent := time.Since(processStartTime)
-
 	// If this was a deletion, we can return early
 	switch sendable.Type {
 	case sendables.Delete:
-		log.Info().Msgf("Processed %d message removals in %s",
+		timeSpent := time.Since(processStartTime)
+
+		log.Info().Msgf("Processed %d message removals in %s (optimistic)",
 			len(sendable.MessageIDs), durafmt.Parse(timeSpent).LimitFirstN(2))
 
 		log.Info().Msgf("Average deletion-rate %.1f msg/sec",
@@ -297,6 +296,9 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan<- Not
 			sentIds = append(sentIds, idPair)
 		}
 	}
+
+	// Log how long processing took
+	timeSpent := time.Since(processStartTime)
 
 	// Notifications have been sent: log
 	log.Info().Msgf("Sent %d notification(s) for sendable=%s:%s in %s",
