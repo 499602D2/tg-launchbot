@@ -26,6 +26,9 @@ func (cache *Cache) CleanUserCache(db *Database, force bool) {
 		} else if user.LastActivityType == users.Notification {
 			// For notifications, we can purge users whenever
 			usersToBeCleaned = append(usersToBeCleaned, user)
+		} else if user.LastActivityType == "" {
+			// User may be cached for some other reason, e.g. during a start
+			usersToBeCleaned = append(usersToBeCleaned, user)
 		}
 	}
 
