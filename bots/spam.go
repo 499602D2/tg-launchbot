@@ -45,7 +45,7 @@ func (spam *Spam) Initialize() {
 
 	// Enforce a global rate-limiter: sustain 25 msg/sec, with 30 msg/sec bursts
 	// A change of 5 msg/sec is 300 more messages in a minute (!)
-	spam.Limiter = rate.NewLimiter(25, 30)
+	spam.Limiter = rate.NewLimiter(rate.Limit(20), 25)
 }
 
 // Enforce a per-chat rate-limiter. Typically, roughly 20 messages per minute
@@ -83,7 +83,7 @@ func (spam *Spam) UserLimiter(chat *users.User, stats *stats.Statistics, tokens 
 	}
 
 	if err != nil {
-		log.Error().Err(err).Msgf("Error using chat's Limiter.Wait()")
+		log.Error().Err(err).Msgf("Error using chat's Limiter.WaitN()")
 	}
 }
 
@@ -94,7 +94,7 @@ func (spam *Spam) GlobalLimiter(tokens int) {
 	err := spam.Limiter.WaitN(context.Background(), tokens)
 
 	if err != nil {
-		log.Error().Err(err).Msgf("Error using global Limiter.Wait()")
+		log.Error().Err(err).Msgf("Error using global Limiter.WaitN()")
 	}
 }
 
