@@ -755,14 +755,13 @@ func (launch *Launch) PostponeNotificationMessage(postponedBy int64) (string, tb
 
 	// Text for the postpone notification
 	text := fmt.Sprintf(
-		"📣 *Postponed by %s:* %s\n\n"+
-			"🕙 *New launch time*\n"+
-			"*Date* $USERDATE\n"+
-			"*Until launch* %s\n",
+		"📣 *%s* has been postponed by %s\n\n"+
+			"📅 *New date* $USERDATE\n"+
+			"⏳ *Until launch* %s\n",
 
+		launch.HeaderName(),
 		durafmt.ParseShort(time.Duration(postponedBy)*time.Second),
-		utils.Monospaced(launch.HeaderName()),
-		durafmt.Parse(untilLaunch).LimitFirstN(2),
+		utils.Monospaced(durafmt.Parse(untilLaunch).LimitFirstN(2).String()),
 	)
 
 	muteBtn := tb.InlineButton{
@@ -813,7 +812,7 @@ func (launch *Launch) PostponeNotificationSendable(db *Database, postpone Postpo
 
 			if reset {
 				// If state was reset, check if user was subscribed to this type
-				if userStates[strings.ReplaceAll(state, "Sent", "")] == true {
+				if userStates[strings.ReplaceAll(state, "Sent", "")] {
 					log.Debug().Msgf("User=%s has enabled reset_state=%s, adding to recipients", user.Id, state)
 					filteredRecipients = append(filteredRecipients, user)
 					break
@@ -833,7 +832,10 @@ func (launch *Launch) PostponeNotificationSendable(db *Database, postpone Postpo
 		LaunchId:         launch.Id,
 		Recipients:       filteredRecipients,
 		Message: &sendables.Message{
-			TextContent: text, AddUserTime: true, RefTime: launch.NETUnix, SendOptions: sendOptions,
+			TextContent: text,
+			AddUserTime: true,
+			RefTime:     launch.NETUnix,
+			SendOptions: sendOptions,
 		},
 	}
 
