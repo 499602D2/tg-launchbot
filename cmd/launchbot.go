@@ -22,7 +22,7 @@ import (
 // Injected at build-time
 var GitSHA = "0000000000"
 
-const version = "3.1.0"
+const version = "3.1.1"
 
 // Listens for incoming interrupt signals
 func setupSignalHandler(session *config.Session) {
@@ -138,7 +138,7 @@ func main() {
 			go api.Updater(session, true)
 		} else {
 			// Start scheduler normally, but use the startup flag
-			go api.Scheduler(session, true, nil)
+			go api.Scheduler(session, true, nil, false)
 		}
 	} else {
 		log.Warn().Msg("API updates disabled")

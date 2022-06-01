@@ -20,7 +20,7 @@ type PostLaunch struct {
 	LaunchId string
 }
 
-// Notify creates and queues a notification
+// Notify creates a notification sendable
 func Notify(launch *db.Launch, database *db.Database, username string) *sendables.Sendable {
 	// Pull the notification type we are sending (could be e.g. cached)
 	notification := launch.NextNotification(database)
@@ -34,7 +34,9 @@ func Notify(launch *db.Launch, database *db.Database, username string) *sendable
 
 	// Message
 	msg := sendables.Message{
-		TextContent: text, AddUserTime: true, RefTime: launch.NETUnix,
+		TextContent: text,
+		AddUserTime: true,
+		RefTime:     launch.NETUnix,
 		SendOptions: tb.SendOptions{
 			ParseMode:   "MarkdownV2",
 			ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
@@ -108,6 +110,7 @@ func Notify(launch *db.Launch, database *db.Database, username string) *sendable
 	err := database.Update([]*db.Launch{launch}, false, true)
 
 	if err != nil {
+		// TODO do after a verified good notification send
 		log.Error().Err(err).Msg("Dumping updated launch notification states to disk failed")
 	} else {
 		log.Debug().Msg("Launch with updated notification states dumped to database")
@@ -161,7 +164,7 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 	log.Debug().Msgf("notificationWrapper exiting normally: running scheduler...")
 
 	// Notifications processed: queue post-launch check if this is a 5-minute notification
-	Scheduler(session, false, postLaunchUpdate)
+	Scheduler(session, false, postLaunchUpdate, false)
 
 	return true
 }
@@ -210,7 +213,7 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification, 
 
 // Schedules the next API call through Chrono, and delegates calls to
 // the notification scheduler.
-func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunch) bool {
+func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunch, safeToFlushCache bool) bool {
 	// Get interval until next API update and the next upcoming notification
 	untilNextUpdate, notification := session.Cache.NextScheduledUpdateIn()
 
@@ -293,11 +296,37 @@ func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunc
 	// Save stats
 	session.Telegram.Stats.NextApiUpdate = autoUpdateTime
 
-	// Clean user cache: no notifications coming up, so it should be safe
-	if (time.Until(autoUpdateTime) > time.Duration(1)*time.Hour) && !startup {
-		log.Debug().Msg("More than an hour until next update, cleaning user-cache")
-		session.Cache.CleanUserCache(session.Db, false)
-		log.Debug().Msg("User-cache cleaned")
+	// Clean user cache, if it is safe to do so and no notifications are coming up soon
+	if !startup && (time.Until(autoUpdateTime) > time.Duration(1)*time.Hour) {
+		log.Debug().Msgf("[Scheduler] SafeToFlushCache is set to %v", safeToFlushCache)
+
+		if safeToFlushCache {
+			log.Debug().Msg("More than an hour until next update, cleaning user-cache")
+			session.Cache.CleanUserCache(session.Db, false)
+			log.Debug().Msg("User-cache cleaned")
+		} else {
+			/* Issue: users may linger in the cache for 6+ hours following a
+			notification send, if the unsafe flag is set. */
+			log.Debug().Msg("Flushing user-cache is currently unsafe")
+
+			if untilNotification > time.Duration(2)*time.Hour {
+				/* More than two hours until next notif, more than an hour until next API
+				update: schedule a cache flush for later */
+				_, err := session.Scheduler.Schedule(func(ctx context.Context) {
+					session.Cache.CleanUserCache(session.Db, false)
+				}, chrono.WithTime(time.Now().Add(time.Minute*time.Duration(15))))
+
+				if err != nil {
+					log.Error().Err(err).Msg("Scheduling user-cache flush for later failed")
+				} else {
+					log.Debug().Msg("Scheduled user-cache flush for 15 minutes from now")
+				}
+
+			} else {
+				log.Debug().Msg("Time until next notification is less than 2 hours: not scheduling a flush")
+			}
+		}
+
 	}
 
 	return true

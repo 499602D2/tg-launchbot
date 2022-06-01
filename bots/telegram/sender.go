@@ -22,6 +22,7 @@ import (
 type NotificationJob struct {
 	Sendable  *sendables.Sendable
 	Recipient *users.User
+	Id        string
 }
 
 // Enqueue a message into the appropriate queue
@@ -151,7 +152,6 @@ func (tg *Bot) SendNotification(sendable *sendables.Sendable, user *users.User, 
 func (tg *Bot) NotificationWorker(id int, jobChannel <-chan NotificationJob, results chan<- string) {
 	// Loop over the channel as long as it's open
 	for job := range jobChannel {
-		log.Debug().Msgf("[Worker=%d] Processing sendable...", id)
 		if job.Sendable.Type != sendables.Command {
 			/* If this is a notification or a message removal, take tokens. We can
 			skip this for command replies, as the spam manager handles those. */
@@ -170,7 +170,8 @@ func (tg *Bot) NotificationWorker(id int, jobChannel <-chan NotificationJob, res
 				job.Recipient.Stats.ReceivedNotifications++
 			} else {
 				results <- ""
-				log.Warn().Msgf("Sending notification to chat=%s failed", job.Recipient.Id)
+				log.Warn().Msgf("[Worker=%d] Sending notification to chat=%s failed [%s]",
+					id, job.Recipient.Id, job.Id)
 			}
 
 		case sendables.Delete:
@@ -180,6 +181,8 @@ func (tg *Bot) NotificationWorker(id int, jobChannel <-chan NotificationJob, res
 			tg.SendCommand(job.Sendable.Message, job.Recipient)
 			tg.Quit.WaitGroup.Done()
 		}
+
+		log.Debug().Msgf("[Worker=%d] Processed job (%s)", id, job.Id)
 	}
 
 	tg.Quit.Channel <- id
@@ -237,7 +240,7 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan<- Not
 
 		// Set token count for notifications
 		if sendable.Size >= 512 {
-			log.Warn().Msgf("Sendable is %s bytes long, taking %d tokens per send", sendable.Size, sendable.Tokens)
+			log.Warn().Msgf("Sendable is %d bytes long, taking %d tokens per send", sendable.Size, sendable.Tokens)
 		} else {
 			if sendable.Size != 0 {
 				log.Debug().Msgf("Sendable is %d bytes long, taking 1 token per send", sendable.Size)
@@ -248,7 +251,10 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan<- Not
 	// Loop over all the recipients of this sendable
 	for i, chat := range sendable.Recipients {
 		// Add job to work-pool (blocks if queue has more than $queueLength messages)
-		workPool <- NotificationJob{Sendable: sendable, Recipient: chat}
+		workPool <- NotificationJob{
+			Sendable: sendable, Recipient: chat,
+			Id: fmt.Sprintf("%s-%d", sendable.Type, i),
+		}
 
 		/* Periodically, during long sends, check if there are commands in the queue.
 		Vary the modulo to tune how often to check for pending messages. At 25 msg/s,
@@ -258,9 +264,11 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan<- Not
 			case prioritySendable, ok := <-tg.CommandQueue:
 				if ok {
 					log.Debug().Msgf("High-priority message in queue during notification send")
-					for _, priorityRecipient := range prioritySendable.Recipients {
+					for n, priorityRecipient := range prioritySendable.Recipients {
 						tg.Quit.WaitGroup.Add(1)
-						workPool <- NotificationJob{Sendable: prioritySendable, Recipient: priorityRecipient}
+						workPool <- NotificationJob{
+							Sendable: prioritySendable, Recipient: priorityRecipient,
+							Id: fmt.Sprintf("%s-cmd-%d", sendable.Type, n)}
 					}
 				}
 			default:
@@ -375,7 +383,7 @@ func (tg *Bot) ThreadedSender() {
 				// For high-priority messages, we don't need pre-processing
 				tg.Quit.WaitGroup.Add(1)
 				workPool <- NotificationJob{
-					Sendable: sendable, Recipient: sendable.Recipients[0],
+					Sendable: sendable, Recipient: sendable.Recipients[0], Id: "command",
 				}
 			}
 

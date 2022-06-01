@@ -17,7 +17,14 @@ func (cache *Cache) CleanUserCache(db *Database, force bool) {
 	usersToBeCleaned := []*users.User{}
 
 	for _, user := range cache.Users.Users {
-		if time.Since(user.LastActive) > time.Duration(1)*time.Hour || force {
+		if user.LastActivityType == users.Interaction {
+			/* If user has interacted with a bot, only purge if they haven't been
+			active in the last hour (unless we are force-flushing the cache) */
+			if time.Since(user.LastActive) > time.Duration(1)*time.Hour || force {
+				usersToBeCleaned = append(usersToBeCleaned, user)
+			}
+		} else if user.LastActivityType == users.Notification {
+			// For notifications, we can purge users whenever
 			usersToBeCleaned = append(usersToBeCleaned, user)
 		}
 	}
@@ -48,6 +55,7 @@ func (cache *Cache) UseCachedUserIfExists(user *users.User, lockMutex bool) (*us
 
 	if cachedUser == nil {
 		// User not cached, insert (mutex locked)
+		user.LastActivityType = users.Notification
 		cache.InsertIntoCache(user, insertAt, false)
 		return user, false
 	}

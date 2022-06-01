@@ -144,6 +144,9 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 		return false
 	}
 
+	// Is flushing the user cache safe?
+	safeToFlushCache := false
+
 	// If launches were postponed, notify
 	if len(postponedLaunches) != 0 {
 		log.Info().Msgf("➙ %d launches were postponed", len(postponedLaunches))
@@ -165,7 +168,12 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 
 	// Schedule next API update, if configured
 	if scheduleNext {
-		return Scheduler(session, false, nil)
+		if len(postponedLaunches) == 0 && !session.Telegram.Spam.NotificationSendUnderway {
+			// Flushing cache is safe under these conditions
+			safeToFlushCache = true
+		}
+
+		return Scheduler(session, false, nil, safeToFlushCache)
 	}
 
 	return true
