@@ -6,7 +6,6 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"launchbot/config"
 	"launchbot/db"
@@ -47,13 +46,16 @@ func apiCall(client *resty.Client, useDevEndpoint bool) (*db.LaunchUpdate, error
 
 	// Check status code
 	if resp.StatusCode() != 200 {
-		err = errors.New(fmt.Sprintf("Status code != 200 (code %d)", resp.StatusCode()))
+		err = fmt.Errorf("Status code != 200 (code %d)", resp.StatusCode())
 		return &db.LaunchUpdate{}, err
 	}
 
 	// Unmarshal into a launch update struct
 	var update db.LaunchUpdate
 	err = json.Unmarshal(resp.Body(), &update)
+
+	// Init the postponed map of the update
+	update.Postponed = make(map[*db.Launch]db.Postpone)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error unmarshaling JSON")
