@@ -332,11 +332,10 @@ func (tg *Bot) Close(workPool chan<- NotificationJob, workerCount int) {
 
 // ThreadedSender listens on a channel for incoming sendables
 func (tg *Bot) ThreadedSender() {
-	// Create the job pool, where the workers get their jobs from
+	// Queue for mass-sends, e.g. notifications and deletions
 	tg.NotificationQueue = make(chan *sendables.Sendable)
 
-	/* Jobs are de-queued from the priority queue into the main queue during
-	notification sends. */
+	// Command queue contains singular sendables
 	tg.CommandQueue = make(chan *sendables.Sendable)
 
 	// Channel listening for a quit signal
@@ -347,13 +346,12 @@ func (tg *Bot) ThreadedSender() {
 	5–10 sent messages per second. Thus, four workers should be adequate. */
 	const workerCount = 4
 
-	/* Job pool the dequeued, processed sendables are thrown into. The buffered
-	size ensures that high-priority messages are not immediately dequeued during
-	long sends, alleviating possible spam issues. */
-	queueLength := workerCount * 2
-	workPool := make(chan NotificationJob, queueLength)
+	/* The pool the dequeued, processed sendables are thrown into. The buffered
+	size ensures that high-priority messages from the command queue can be regularly
+	dequeued, without having to wait for 1000+ notifications to finish sending first. */
+	workPool := make(chan NotificationJob, workerCount*2)
 
-	// The result channel delivers message ID pairs of delivered messages
+	// The result channel delivers message ID pairs of delivered notification messages
 	results := make(chan string)
 
 	// Spawn the workers
