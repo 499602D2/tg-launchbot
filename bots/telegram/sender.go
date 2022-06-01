@@ -105,9 +105,15 @@ func (tg *Bot) SendNotification(sendable *sendables.Sendable, user *users.User, 
 	// Convert id to an integer
 	id, _ := strconv.ParseInt(user.Id, 10, 64)
 
+	// Set monospacing based on notification type
+	monospaced := false
+	if sendable.NotificationType == "postpone" {
+		monospaced = true
+	}
+
 	var text string
 	if sendable.Message.AddUserTime {
-		text = sendables.SetTime(sendable.Message.TextContent, user, sendable.Message.RefTime, true, false, false)
+		text = sendables.SetTime(sendable.Message.TextContent, user, sendable.Message.RefTime, true, monospaced, false)
 	} else {
 		text = sendable.Message.TextContent
 	}
@@ -252,8 +258,9 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan<- Not
 	for i, chat := range sendable.Recipients {
 		// Add job to work-pool (blocks if queue has more than $queueLength messages)
 		workPool <- NotificationJob{
-			Sendable: sendable, Recipient: chat,
-			Id: fmt.Sprintf("%s-%d", sendable.Type, i),
+			Sendable:  sendable,
+			Recipient: chat,
+			Id:        fmt.Sprintf("%s-%d", sendable.Type, i),
 		}
 
 		/* Periodically, during long sends, check if there are commands in the queue.

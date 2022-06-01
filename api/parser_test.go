@@ -2,6 +2,7 @@ package api
 
 import (
 	"launchbot/db"
+	"launchbot/users"
 	"os"
 	"testing"
 	"time"
@@ -41,7 +42,10 @@ func TestPostponeFunctions(t *testing.T) {
 	// Build the cache so we can compare NETs
 	cache := &db.Cache{
 		Launches:  []*db.Launch{},
-		LaunchMap: make(map[string]*db.Launch)}
+		LaunchMap: make(map[string]*db.Launch),
+	}
+
+	cache.Users = &users.UserCache{}
 
 	// Open the database
 	database := &db.Database{Cache: cache}
