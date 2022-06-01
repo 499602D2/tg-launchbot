@@ -158,7 +158,8 @@ func (launch *Launch) NotificationRecipients(db *Database, notificationType stri
 		}
 
 		/* User has subscribed to this launch, and has not muted it: add to recipients.
-		Check if this user has already been cached, to avoid overlapping database writes. */
+		However, first check if this user has already been cached, in order to avoid
+		overlapping database writes. */
 		cachedUser, wasAlreadyCached := db.Cache.UseCachedUserIfExists(user, false)
 
 		if wasAlreadyCached {
@@ -178,10 +179,15 @@ func (launch *Launch) LoadSentNotificationIdMap() map[string]string {
 	sentIds := map[string]string{}
 
 	// A comma-separated slice of chat_id:msg_id strings
-	for _, idPair := range strings.Split(launch.SentNotificationIds, ",") {
+	for i, idPair := range strings.Split(launch.SentNotificationIds, ",") {
 		// User id (0), message id (1)
 		ids := strings.Split(idPair, ":")
-		sentIds[ids[0]] = ids[1]
+
+		if len(ids) > 1 {
+			sentIds[ids[0]] = ids[1]
+		} else {
+			log.Warn().Msgf("Invalid sentId in sentIds at i=%d: [%s]", i, idPair)
+		}
 	}
 
 	return sentIds

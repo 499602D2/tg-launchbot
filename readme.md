@@ -19,13 +19,16 @@ Other features include...
 - spam management for groups (removes requests the bot won't respond to)
 
 ## Basic instructions
+
+LaunchBot has not been tested on Windows. However, it should run on any Linux distribution, alongside with macOS. Other Unix-like OSs are untested, but should work as long as they have a recent version of Go installed. LaunchBot has been tested on 32-bit ARM, so all Raspberry Pis should work.
+
 1. Clone the repository and install all dependencies with `go get all`
 
-2. `cd` into `/cmd` with `cd cmd`
+2. Move into the main directory with `cd cmd`
 
 3. Build the program with `./build.sh`. This may require you to allow executing the script: this can be done with `chmod +x build.sh`
 
-4. `cd` back into the main folder with `cd ..`
+4. Move back into the main folder with `cd ..`
 
 Now, you can run the program: to start, open a new terminal window, and run `./launchbot`. The bot will ask you for a Telegram bot API key: you can get one from BotFather on Telegram.
 
@@ -35,6 +38,8 @@ If you would like to view the logs as they come in, instead of saving them to a 
 SQLite: `data/launchbot.db`: houses all data the bot needs to operate, including launch information, statistics, chat preferences, etc.
 
 JSON: `data/config.json`: used to configure the bot by setting the Telegram bot API key, alongside with some other configuration information.
+
+Logs: `data/launchbot-logs.log`, when the `--debug` CLI flag has not been provided.
 
 You can specify your personal account's Telegram user ID in `config.json` in the form `owner: 12345`. This disables the logging of commands sent by you.
 
@@ -48,7 +53,34 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 
 ## Dependencies
 
-TODO
+<details>
+  <summary>Expand dependency list</summary>
+
+- `gopkg.in/telebot.v3`: a fantastic Telegram bot API wrapper.
+
+- `github.com/bwmarrin/discordgo`: Discord API wrapper, currently unused.
+
+- `github.com/rs/zerolog`: a fantastic logging library.
+
+- `bradfitz/latlong`: used to determine time zone from a Telegram location message.
+
+- `dustin/go-humanize`: used to produce various human-friendly strings, such as time- and unit-related ones.
+
+- `go-co-op/gocron`: used to schedule regular function calls, for e.g. dumping statistics to the disk.
+
+- `go-resty/resty/v2`: a great alternative to the standard http library, with exponential back-off baked in.
+
+- `hako/durafmt`: pretty ETA strings.
+
+- `jayco/go-emoji-flag`: emoji flags from country codes.
+
+- `jdkato/prose/v2`: natural language parsing for LL2's launch descriptions.
+
+- `procyon-projects/chrono`: used to schedule API calls and notifications to a specific point in time.
+
+- `gorm`: a fantastic ORM library for Go, used with the main SQLite database.
+
+</details>
 
 ## Roadmap and historical changelog
 

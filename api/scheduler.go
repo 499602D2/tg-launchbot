@@ -63,16 +63,14 @@ func Notify(launch *db.Launch, database *db.Database, username string) *sendable
 		Recipients:       recipients,
 	}
 
-	/*
-		Loop over the sent-flags, and ensure every previous state is flagged.
-		This is important for launches that come out of the blue, namely launches
-		by e.g. China/Chinese companies, where the exact NET may only appear less
-		than 24 hours before lift-off.
+	/* Loop over the sent-flags, and ensure every previous state is flagged.
+	This is important for launches that come out of the blue, namely launches
+	by e.g. China/Chinese companies, where the exact NET may only appear less
+	than 24 hours before lift-off.
 
-		As an example, the first notification we send might be the 1-hour notification.
-		In this case, we will need to flag the 12-hour and 24-hour notification types
-		as sent, as they are no-longer relevant. This is done below.
-	*/
+	As an example, the first notification we send might be the 1-hour notification.
+	In this case, we will need to flag the 12-hour and 24-hour notification types
+	as sent, as they are no-longer relevant. This is done below. */
 	times := []string{"5min", "1h", "12h", "24h"}
 
 	iterMap := map[string]string{
@@ -157,7 +155,7 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 		}
 
 		// Enqueue the sendable
-		session.Telegram.Queue.Enqueue(sendable, false)
+		session.Telegram.Enqueue(sendable, false)
 	}
 
 	log.Debug().Msgf("notificationWrapper exiting normally: running scheduler...")
@@ -254,17 +252,15 @@ func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunc
 			durafmt.Parse(time.Until(autoUpdateTime)).LimitFirstN(2))
 	}
 
-	/*
-		Compare the scheduled update to the notification send-time, and use
-		whichever comes first.
+	/* Compare the scheduled update to the notification send-time, and use
+	whichever comes first.
 
-		Basically, if there's a notification coming up before the next API update,
-		we don't need to schedule an API update at all, as the notification handler
-		will perform that for us.
+	Basically, if there's a notification coming up before the next API update,
+	we don't need to schedule an API update at all, as the notification handler
+	will perform that for us.
 
-		This is due to the fact that the notification sender needs to check that the
-		data is still up to date, and has not changed from the last update.
-	*/
+	This is due to the fact that the notification sender needs to check that the
+	data is still up to date, and has not changed from the last update. */
 	if (time.Until(autoUpdateTime) > untilNotification) && (untilNotification.Minutes() > -5.0) {
 		log.Info().Msgf("A notification (type=%s) is coming up before next API update, scheduling...",
 			notification.Type,

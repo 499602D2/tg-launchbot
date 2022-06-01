@@ -13,18 +13,39 @@ import (
 	tb "gopkg.in/telebot.v3"
 )
 
-// HighPrioritySender sends singular high-priority messages.
-func (tg *Bot) highPrioritySender(message *sendables.Message, chat *users.User) bool {
-	// If message needs to have its time set properly, do it now
+/* TODO
++ Modularize:
+	- take an interface that implements e.g. sending functions and a queue
+*/
+
+// A simple notification job, with a sendable and a single recipient
+type NotificationJob struct {
+	Sendable  *sendables.Sendable
+	Recipient *users.User
+}
+
+// Enqueue a message into the appropriate queue
+func (tg *Bot) Enqueue(sendable *sendables.Sendable, isCommand bool) {
+	if isCommand {
+		tg.CommandQueue <- sendable
+	} else {
+		tg.NotificationQueue <- sendable
+	}
+}
+
+// CommandSender sends high-priority command replies.
+func (tg *Bot) SendCommand(message *sendables.Message, chat *users.User) bool {
+	// Extract text
 	text := message.TextContent
 
 	if message.AddUserTime {
+		// If message needs to have its time set properly, do it now
 		text = sendables.SetTime(text, chat, message.RefTime, true, true, false)
 	}
 
 	id, _ := strconv.ParseInt(chat.Id, 10, 64)
 
-	// FUTURE: use sendable.Send()
+	// FUTURE use sendable.Send()
 	sent, err := tg.Bot.Send(tb.ChatID(id), text, &message.SendOptions)
 
 	if err != nil {
@@ -40,27 +61,6 @@ func (tg *Bot) highPrioritySender(message *sendables.Message, chat *users.User) 
 	}
 
 	return true
-}
-
-// Clears the priority queue.
-func (tg *Bot) clearPriorityQueue() {
-	// Lock the high-priority queue
-	tg.Queue.HighPriority.Mutex.Lock()
-
-	// FUTURE: sort before looping over (according to priority)
-	for _, prioritySendable := range tg.Queue.HighPriority.Queue {
-		for _, priorityUser := range prioritySendable.Recipients {
-			// Loop over users, send high-priority message
-			tg.highPrioritySender(prioritySendable.Message, priorityUser)
-		}
-	}
-
-	// Reset high-priority queue
-	tg.Queue.HighPriority.HasItemsInQueue = false
-	tg.Queue.HighPriority.Queue = []*sendables.Sendable{}
-
-	// Unlock high-priority queue
-	tg.Queue.HighPriority.Mutex.Unlock()
 }
 
 // Delete a Telegram message with a chat ID and a message ID
@@ -147,153 +147,267 @@ func (tg *Bot) SendNotification(sendable *sendables.Sendable, user *users.User, 
 	return fmt.Sprintf("%s:%d", user.Id, sent.ID), true
 }
 
-// TelegramSender is a daemon-like function that listens to the notification
-// and priority queues for incoming messages and notifications.
-func Sender(tg *Bot) {
-	const priorityQueueClearInterval = 10
-	var processStartTime time.Time
+// NotificationWorker processes individual message delivery and removal jobs.
+func (tg *Bot) NotificationWorker(id int, jobChannel <-chan NotificationJob, results chan<- string) {
+	// Loop over the channel as long as it's open
+	for job := range jobChannel {
+		log.Debug().Msgf("[Worker=%d] Processing sendable...", id)
+		if job.Sendable.Type != sendables.Command {
+			/* If this is a notification or a message removal, take tokens. We can
+			skip this for command replies, as the spam manager handles those. */
+			tg.Spam.GlobalLimiter(job.Sendable.Tokens)
+		}
 
-	for {
-		// Check notification queue
-		if len(tg.Queue.Sendables) != 0 {
-			// Lock queue while processing
-			tg.Queue.Mutex.Lock()
+		// Switch-case the type of the sendable
+		switch job.Sendable.Type {
+		case sendables.Notification:
+			// Send notification, get sent ID
+			idPair, success := tg.SendNotification(job.Sendable, job.Recipient, 0)
 
-			// Flip switch to indicate that we are sending notifications
-			tg.Spam.NotificationSendUnderway = true
-
-			for hash, sendable := range tg.Queue.Sendables {
-				// Processing time
-				processStartTime = time.Now()
-
-				log.Info().Msgf("Processing sendable with hash=%s, type=%s", hash, sendable.Type)
-
-				// Keep track of sent IDs
-				sentIds := []string{}
-
-				if sendable.Size >= 512 {
-					log.Warn().Msgf("Sendable is %s bytes long, taking %d tokens per send", sendable.Size, sendable.Tokens)
-				} else {
-					if sendable.Size != 0 {
-						log.Debug().Msgf("Sendable is %d bytes long, taking 1 token per send", sendable.Size)
-					}
-				}
-
-				// Loop over users this sendable is meant for
-				for i, chat := range sendable.Recipients {
-					// Rate-limiter: check if we have tokens to proceed
-					tg.Spam.GlobalLimiter(sendable.Tokens)
-
-					// Run a light user-limiter: max tokens is 2
-					// tg.Spam.UserLimiter(chat, tg.Stats, 1)
-
-					// Switch-case the sendable's type
-					switch sendable.Type {
-					case sendables.Notification:
-						log.Debug().Msgf("Sending notification to user=%s", chat.Id)
-						sentIdPair, success := tg.SendNotification(sendable, chat, 0)
-
-						if success {
-							sentIds = append(sentIds, sentIdPair)
-							chat.Stats.ReceivedNotifications++
-						} else {
-							log.Warn().Msgf("➙ Sending notification to user=%s failed", chat.Id)
-						}
-
-					case sendables.Delete:
-						tg.DeleteNotificationMessage(sendable, chat)
-					}
-
-					/* Periodically, during long sends, check if the TelegramBot.PriorityQueued is set.
-					This flag is enabled if there is one, or more, enqueued high-priority messages
-					in the high-priority queue. Vary the priorityQueueClearInterval variable to tune
-					how often to check for pending messages.
-
-					The justification for this is the fact that the main queue's mutex is locked when
-					the sending process is started, and could be locked for minutes. This alleviates
-					the issue of messages sitting in the queue for ages, sacrificing the send time of
-					mass-notifications and mass-removals for timely responses to commands. */
-					if (tg.Queue.HighPriority.HasItemsInQueue) && (i%priorityQueueClearInterval == 0) {
-						log.Debug().Msgf("High-priority messages in queue during long send (count=%d)",
-							len(tg.Queue.HighPriority.Queue))
-
-						// Clear the queue
-						tg.clearPriorityQueue()
-					}
-				}
-
-				// Log time spent processing
-				timeSpent := time.Since(processStartTime)
-
-				// All done: do post-processing
-				switch sendable.Type {
-				case sendables.Notification:
-					// Send done; log
-					log.Info().Msgf("Sent %d notification(s) for sendable=%s in %s",
-						len(sentIds), hash, durafmt.Parse(timeSpent).LimitFirstN(2))
-
-					log.Info().Msgf("Average send-rate %.1f msg/sec",
-						float64(len(sentIds))/timeSpent.Seconds())
-
-					// Update statistics, save to disk
-					tg.Stats.Notifications += len(sentIds)
-					tg.Db.SaveStatsToDisk(tg.Stats)
-
-					// Save stats for all users in recipients (so we can track received notification count)
-					tg.Db.SaveUserBatch(sendable.Recipients)
-
-					// Load launch from cache so we can save the IDs
-					launch, err := tg.Cache.FindLaunchById(sendable.LaunchId)
-
-					if err != nil {
-						log.Error().Err(err).Msgf("Unable to find launch while saving sent message IDs")
-					}
-
-					// If launch has previously sent notifications, delete them
-					if launch.SentNotificationIds != "" {
-						log.Info().Msgf("Launch has previously sent notifications, removing...")
-
-						// Load IDs of previously sent notifications
-						previouslySentIds := launch.LoadSentNotificationIdMap()
-
-						// Create a sendable for removing mass-notifications
-						deletionSendable := sendables.SendableForMessageRemoval(sendable, previouslySentIds)
-
-						/* Re-use recipients. A user may not have received any notifications,
-						but trying the removal for all recipients is safe as no-one on the list
-						can have the launch muted. */
-						deletionSendable.Recipients = sendable.Recipients
-
-						// Enqueue the sendable for removing the old notifications
-						go tg.Queue.Enqueue(deletionSendable, false)
-					}
-
-					// Save the IDs of the sent notifications
-					launch.SaveSentNotificationIds(sentIds, tg.Db)
-
-				case sendables.Delete:
-					log.Info().Msgf("Processed %d message removals in %s",
-						len(sendable.MessageIDs), durafmt.Parse(timeSpent).LimitFirstN(2))
-
-					log.Info().Msgf("Average deletion-rate %.1f msg/sec",
-						float64(len(sendable.MessageIDs))/timeSpent.Seconds())
-				}
-
-				// Delete sendable from the queue
-				delete(tg.Queue.Sendables, hash)
+			if success {
+				// On success, write the sent notification's ID to results channel
+				results <- idPair
+				job.Recipient.Stats.ReceivedNotifications++
+			} else {
+				results <- ""
+				log.Warn().Msgf("Sending notification to chat=%s failed", job.Recipient.Id)
 			}
 
-			// Unlock mutex after each sendable
-			tg.Spam.NotificationSendUnderway = false
-			tg.Queue.Mutex.Unlock()
-		}
+		case sendables.Delete:
+			tg.DeleteNotificationMessage(job.Sendable, job.Recipient)
 
-		// Check if priority queue is populated (and skip sleeping if one entry)
-		if tg.Queue.HighPriority.HasItemsInQueue {
-			tg.clearPriorityQueue()
+		case sendables.Command:
+			tg.SendCommand(job.Sendable.Message, job.Recipient)
+			tg.Quit.WaitGroup.Done()
 		}
-
-		// Clear queue every 50 ms
-		time.Sleep(time.Duration(time.Millisecond * 50))
 	}
+
+	tg.Quit.Channel <- id
+}
+
+// Post-processing after a notification has been successfully sent
+func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds []string) {
+	// Update statistics, save to disk
+	tg.Stats.Notifications += len(sentIds)
+	tg.Db.SaveStatsToDisk(tg.Stats)
+
+	// Load launch from cache so we can save the IDs
+	launch, err := tg.Cache.FindLaunchById(sendable.LaunchId)
+
+	if err != nil {
+		log.Error().Err(err).Msgf("Unable to find launch while saving sent message IDs")
+	}
+
+	// If launch has previously sent notifications, delete them
+	if launch.SentNotificationIds != "" {
+		log.Info().Msgf("Launch has previously sent notifications, removing...")
+
+		// Load IDs of previously sent notifications
+		previouslySentIds := launch.LoadSentNotificationIdMap()
+
+		// Create a sendable for removing mass-notifications
+		deletionSendable := sendables.SendableForMessageRemoval(sendable, previouslySentIds)
+
+		/* Re-use recipients. A user may not have received any notifications,
+		but trying the removal for all recipients is safe as no-one on the list
+		can have the launch muted. */
+		deletionSendable.Recipients = sendable.Recipients
+
+		// Enqueue the sendable for removing the old notifications
+		tg.Enqueue(deletionSendable, false)
+	}
+
+	// Save the IDs of the sent notifications
+	log.Debug().Msg("Saving sent notification IDs")
+	launch.SaveSentNotificationIds(sentIds, tg.Db)
+
+	log.Debug().Msg("Notification post-processing completed")
+	tg.Quit.WaitGroup.Done()
+}
+
+// Process a notification or notification removal sendable
+func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan<- NotificationJob, results <-chan string) {
+	// Track average processing time for notifications and message deletions
+	processStartTime := time.Now()
+
+	// Pre-processing for notifications
+	if sendable.Type == sendables.Notification {
+		// Flip switch to indicate that we are sending notifications
+		tg.Spam.NotificationSendUnderway = true
+
+		// Set token count for notifications
+		if sendable.Size >= 512 {
+			log.Warn().Msgf("Sendable is %s bytes long, taking %d tokens per send", sendable.Size, sendable.Tokens)
+		} else {
+			if sendable.Size != 0 {
+				log.Debug().Msgf("Sendable is %d bytes long, taking 1 token per send", sendable.Size)
+			}
+		}
+	}
+
+	// Loop over all the recipients of this sendable
+	for i, chat := range sendable.Recipients {
+		// Add job to work-pool (blocks if queue has more than $queueLength messages)
+		workPool <- NotificationJob{Sendable: sendable, Recipient: chat}
+
+		/* Periodically, during long sends, check if there are commands in the queue.
+		Vary the modulo to tune how often to check for pending messages. At 25 msg/s,
+		a modulo of 25 will result in approximately one second of delay. */
+		if i%25 == 0 {
+			select {
+			case prioritySendable, ok := <-tg.CommandQueue:
+				if ok {
+					log.Debug().Msgf("High-priority message in queue during notification send")
+					for _, priorityRecipient := range prioritySendable.Recipients {
+						tg.Quit.WaitGroup.Add(1)
+						workPool <- NotificationJob{Sendable: prioritySendable, Recipient: priorityRecipient}
+					}
+				}
+			default:
+				continue
+			}
+		}
+	}
+
+	// If this was a deletion, we can return early
+	switch sendable.Type {
+	case sendables.Delete:
+		timeSpent := time.Since(processStartTime)
+
+		log.Info().Msgf("Processed %d message removals in %s (optimistic)",
+			len(sendable.MessageIDs), durafmt.Parse(timeSpent).LimitFirstN(2))
+
+		log.Info().Msgf("Average deletion-rate %.1f msg/sec",
+			float64(len(sendable.MessageIDs))/timeSpent.Seconds())
+
+		tg.Quit.WaitGroup.Done()
+		return
+	}
+
+	// Notification sending done
+	tg.Spam.NotificationSendUnderway = false
+
+	// Gather sent notification IDs
+	sentIds := []string{}
+	for i := 0; i < len(sendable.Recipients); i++ {
+		idPair := <-results
+
+		if idPair != "" {
+			sentIds = append(sentIds, idPair)
+		}
+	}
+
+	// Log how long processing took
+	timeSpent := time.Since(processStartTime)
+
+	// Notifications have been sent: log
+	log.Info().Msgf("Sent %d notification(s) for sendable=%s:%s in %s",
+		len(sentIds), sendable.NotificationType, sendable.LaunchId,
+		durafmt.Parse(timeSpent).LimitFirstN(2))
+
+	log.Info().Msgf("Average send-rate %.1f msg/sec",
+		float64(len(sentIds))/timeSpent.Seconds())
+
+	// Post-process the notification send, in a go-routine to avoid blocking
+	tg.Quit.WaitGroup.Add(1)
+	go tg.NotificationPostProcessing(sendable, sentIds)
+
+	// Done
+	tg.Quit.WaitGroup.Done()
+}
+
+// Gracefully shut the message channels down
+func (tg *Bot) Close(workPool chan<- NotificationJob, workerCount int) {
+	// Wait for all workers to finish their jobs
+	log.Debug().Msg("Waiting for workers to finish...")
+	tg.Quit.WaitGroup.Wait()
+
+	log.Debug().Msg("All workers finished")
+
+	// Close channels
+	close(tg.NotificationQueue)
+	close(tg.CommandQueue)
+	close(workPool)
+
+	log.Debug().Msg("All channels closed")
+}
+
+// ThreadedSender listens on a channel for incoming sendables
+func (tg *Bot) ThreadedSender() {
+	// Queue for mass-sends, e.g. notifications and deletions
+	tg.NotificationQueue = make(chan *sendables.Sendable)
+
+	// Command queue contains singular sendables
+	tg.CommandQueue = make(chan *sendables.Sendable)
+
+	// Channel listening for a quit signal
+	tg.Quit.Channel = make(chan int)
+
+	/* Maximum worker-count during sending. Depending on what kind of day
+	Telegram's API is having, one worker will typically do anywhere from
+	5–10 sent messages per second. Thus, four workers should be adequate. */
+	const workerCount = 4
+
+	/* The pool the dequeued, processed sendables are thrown into. The buffered
+	size ensures that high-priority messages from the command queue can be regularly
+	dequeued, without having to wait for 1000+ notifications to finish sending first. */
+	workPool := make(chan NotificationJob, workerCount*2)
+
+	// The result channel delivers message ID pairs of delivered notification messages
+	results := make(chan string)
+
+	// Spawn the workers
+	for workerId := 1; workerId <= workerCount; workerId++ {
+		go tg.NotificationWorker(workerId, workPool, results)
+	}
+
+	for {
+		select {
+		case sendable, ok := <-tg.NotificationQueue:
+			if ok {
+				// In the case of notifications, pre-process them first
+				tg.Quit.WaitGroup.Add(1)
+				tg.ProcessSendable(sendable, workPool, results)
+			}
+
+		case sendable, ok := <-tg.CommandQueue:
+			if ok {
+				// For high-priority messages, we don't need pre-processing
+				tg.Quit.WaitGroup.Add(1)
+				workPool <- NotificationJob{
+					Sendable: sendable, Recipient: sendable.Recipients[0],
+				}
+			}
+
+		case quit := <-tg.Quit.Channel:
+			if !tg.Quit.Started {
+				// Indicate that the sender shutdown has started
+				tg.Quit.Started = true
+				tg.Quit.Mutex.Lock()
+
+				// In a go-routine, wait for workers to finish and close all channels
+				go tg.Close(workPool, workerCount)
+			} else {
+				// If the quit has started, the message is a worker indicating closing
+				log.Debug().Msgf("Received quit-signal from worker=%d", quit)
+				tg.Quit.ExitedWorkers++
+
+				if tg.Quit.ExitedWorkers == workerCount {
+					// Once all workers have exited, flip the flag
+					tg.Quit.Finalized = true
+				}
+			}
+		}
+
+		if tg.Quit.Finalized {
+			log.Debug().Msg("Quit process finalized")
+			break
+		}
+
+		time.Sleep(time.Millisecond * time.Duration(50))
+	}
+
+	// Send final quit-signal and unlock mutex
+	tg.Quit.Mutex.Unlock()
+	tg.Quit.Channel <- -1
 }

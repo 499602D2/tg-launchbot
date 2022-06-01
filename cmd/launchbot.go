@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"launchbot/api"
-	"launchbot/bots/telegram"
 	"launchbot/config"
 	"launchbot/logs"
 	"os"
@@ -20,10 +19,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Variables injected at build-time
+// Injected at build-time
 var GitSHA = "0000000000"
 
-const version = "3.0.15"
+const version = "3.1.0"
 
 // Listens for incoming interrupt signals
 func setupSignalHandler(session *config.Session) {
@@ -33,7 +32,25 @@ func setupSignalHandler(session *config.Session) {
 	go func() {
 		<-channel
 		// Log shutdown
-		log.Info().Msg("🚦 Received interrupt signal: stopping updaters...")
+		log.Info().Msg("🚦 Received interrupt signal, stopping the program...")
+
+		// Close message sender
+		session.Telegram.Quit.Channel <- 1
+
+		// Sleep so that the closer can acquire a lock
+		time.Sleep(time.Millisecond * time.Duration(100))
+
+		// Once we can re-acquire a lock, the sender is closed
+		// TODO add a "press ctrl+c again to force-quit"
+		session.Telegram.Quit.Mutex.Lock()
+
+		// Wait for signal
+		success := <-session.Telegram.Quit.Channel
+
+		if success == -1 {
+			log.Info().Msgf("Message sender shut down gracefully")
+			close(session.Telegram.Quit.Channel)
+		}
 
 		// Save stats to disk
 		session.Db.SaveStatsToDisk(session.Telegram.Stats)
@@ -41,14 +58,14 @@ func setupSignalHandler(session *config.Session) {
 		// Save all cached users
 		session.Cache.CleanUserCache(session.Db, true)
 
-		/* TODO uncomment in production
-		if session.Telegram != nil {
-			session.Telegram.Bot.Stop()
-		}
+		// if session.Telegram != nil {
+		// 	log.Debug().Msg("Stopping Telegram bot...")
+		// 	session.Telegram.Bot.Stop()
+		// }
 
-		if session.Discord != nil {
-			session.Discord.Bot.Close()
-		} */
+		// if session.Discord != nil {
+		// 	session.Discord.Bot.Close()
+		// }
 
 		// Exit
 		os.Exit(0)
@@ -139,7 +156,7 @@ func main() {
 	scheduler.StartAsync()
 
 	// Start the Telegram-sender in a go-routine
-	go telegram.Sender(session.Telegram)
+	go session.Telegram.ThreadedSender()
 
 	// Start the bot in a go-routine
 	go session.Telegram.Bot.Start()
