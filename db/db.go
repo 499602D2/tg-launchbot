@@ -80,7 +80,7 @@ func (db *Database) Open(dbFolder string) bool {
 	log.Debug().Msgf("Opening sqlite3 database at %s", filepath.Join(dbFolder, dbName))
 
 	gormZerolog := logger.New(
-		&log.Logger, // IO.writer
+		&log.Logger,
 		logger.Config{
 			SlowThreshold:             time.Second, // Slow SQL threshold
 			LogLevel:                  logger.Warn, // Log level

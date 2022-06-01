@@ -6,4 +6,4 @@ LDFLAGS=(
 	"-X 'main.GitSHA=$SHA'"
 )
 
-go build -o ../launchbot -ldflags="${LDFLAGS[*]}"
+go build -x -o ../launchbot -ldflags="${LDFLAGS[*]}"

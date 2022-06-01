@@ -45,7 +45,7 @@ func (spam *Spam) Initialize() {
 
 	// Enforce a global rate-limiter: sustain 25 msg/sec, with 30 msg/sec bursts
 	// A change of 5 msg/sec is 300 more messages in a minute (!)
-	spam.Limiter = rate.NewLimiter(25, 30)
+	spam.Limiter = rate.NewLimiter(rate.Limit(20), 25)
 }
 
 // Enforce a per-chat rate-limiter. Typically, roughly 20 messages per minute
@@ -70,20 +70,20 @@ func (spam *Spam) UserLimiter(chat *users.User, stats *stats.Statistics, tokens 
 	err := spam.Chats[chat].Limiter.WaitN(context.Background(), tokens)
 
 	// Track enforced limits
-	duration := time.Since(start).Seconds()
+	duration := time.Since(start)
 	stats.LimitsEnforced++
 
 	// FUTURE track means with a fixed-length set of rate-limit durations (average same-index insertions)
 	if stats.LimitsEnforced == 1 {
-		stats.LimitsAverage = duration
+		stats.LimitsAverage = duration.Seconds()
 	} else {
 		/* If duration is lower than the average, the average drops. And, if
 		the duration is greater than the average, the average increases. */
-		stats.LimitsAverage = stats.LimitsAverage + (duration-stats.LimitsAverage)/float64(stats.LimitsEnforced)
+		stats.LimitsAverage = stats.LimitsAverage + (duration.Seconds()-stats.LimitsAverage)/float64(stats.LimitsEnforced)
 	}
 
 	if err != nil {
-		log.Error().Err(err).Msgf("Error using chat's Limiter.Wait()")
+		log.Error().Err(err).Msgf("Error using chat's Limiter.WaitN()")
 	}
 }
 
@@ -94,7 +94,7 @@ func (spam *Spam) GlobalLimiter(tokens int) {
 	err := spam.Limiter.WaitN(context.Background(), tokens)
 
 	if err != nil {
-		log.Error().Err(err).Msgf("Error using global Limiter.Wait()")
+		log.Error().Err(err).Msgf("Error using global Limiter.WaitN()")
 	}
 }
 
@@ -131,7 +131,7 @@ func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *
 				}
 
 				if spam.VerboseLog {
-					log.Debug().Msgf("[pre-handler] Not allowing interaction=%s/%s in chat=%s",
+					log.Debug().Msgf("[Pre-handler] Not allowing interaction=%s/%s in chat=%s",
 						interaction.Name, interaction.CbData, chat.Id)
 				}
 
@@ -154,7 +154,7 @@ func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *
 	spam.RunBothLimiters(chat, interaction.Tokens, stats)
 
 	if spam.VerboseLog {
-		log.Debug().Msgf("[pre-handler] Allowed interaction=%s/%s in chat=%s",
+		log.Debug().Msgf("[Pre-handler] Allowed interaction=%s/%s in chat=%s",
 			interaction.Name, interaction.CbData, chat.Id)
 	}
 

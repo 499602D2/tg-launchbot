@@ -346,7 +346,7 @@ func (launch *Launch) MessageBodyText(expanded bool, isNotification bool) string
 		// If not a notification, add the "Launch time" section with date and time
 		if launch.Status.Abbrev == "TBD" {
 			// If launch-time is still TBD, add a Not-earlier-than date and reduce time accuracy
-			timeUntil = fmt.Sprintf("%s", durafmt.Parse(untilLaunch).LimitFirstN(1))
+			timeUntil = fmt.Sprintf("%s", durafmt.Parse(untilLaunch).LimitFirstN(2))
 
 			launchTimeSection = fmt.Sprintf(
 				"🕙 *Launch time*\n"+

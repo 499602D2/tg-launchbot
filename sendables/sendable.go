@@ -17,6 +17,7 @@ import (
 type Sendable struct {
 	Platform         string            // tg, dg
 	Type             Type              // sendables.Type (Notification, Command, Callback, Delete)
+	IsHighPriority   bool              // High-priority flag (anything that's not a notification)
 	NotificationType string            // 24h, 12h, 1h, 5min
 	LaunchId         string            // Launch ID associated with this sendable
 	Message          *Message          // Message (may be nil)
@@ -41,7 +42,6 @@ type Type string
 const (
 	Notification Type = "notification"
 	Command      Type = "command"
-	Callback     Type = "callback"
 	Delete       Type = "delete"
 )
 

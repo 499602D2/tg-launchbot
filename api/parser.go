@@ -70,7 +70,7 @@ func netParser(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
 	if !ok {
 		/* A launch is uncached if it has slipped outside of range, or has already launched.
 		This also frequently occurs when switching back and forth between the main- and dev-endpoint of LL2,
-		or if a launch is simply new and seen for the first time. */
+		or if a launch is simply new and is seen for the first time. */
 
 		return false, db.Postpone{}
 	}
@@ -122,8 +122,8 @@ func processLaunch(launch *db.Launch, update *db.LaunchUpdate, idx int, cache *d
 		launch.Launched = true
 	}
 
-	// Shorten description, by keeping the first two sentences
-	// Disable all heavy NLP functions, except for sentence-splitting
+	/* Shorten description, by keeping the first two sentences, and
+	disable all heavy NLP functions, except for sentence-splitting */
 	document, err := prose.NewDocument(
 		launch.Mission.Description, prose.WithExtraction(false),
 		prose.WithTagging(false), prose.WithTokenization(false),

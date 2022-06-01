@@ -9,6 +9,7 @@ import (
 	"launchbot/stats"
 	"launchbot/users"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -16,25 +17,31 @@ import (
 )
 
 type Bot struct {
-	Bot      *tb.Bot
-	Db       *db.Database
-	Cache    *db.Cache
-	Queue    *bots.Queue
-	Spam     *bots.Spam
-	Stats    *stats.Statistics
-	Template templates.Telegram
-	Username string
-	Owner    int64
+	Bot               *tb.Bot
+	Db                *db.Database
+	Cache             *db.Cache
+	NotificationQueue chan *sendables.Sendable
+	CommandQueue      chan *sendables.Sendable
+	Quit              Quit
+	Spam              *bots.Spam
+	Stats             *stats.Statistics
+	Template          templates.Telegram
+	Username          string
+	Owner             int64
+}
+
+// A struct to help with the shutdown flow
+type Quit struct {
+	Channel       chan int
+	Started       bool
+	Finalized     bool
+	ExitedWorkers int
+	WaitGroup     sync.WaitGroup
+	Mutex         sync.Mutex
 }
 
 // Simple method to initialize the TelegramBot object
 func (tg *Bot) Initialize(token string) {
-	// Create queue for Telegram messages
-	tg.Queue = &bots.Queue{
-		Sendables:    make(map[string]*sendables.Sendable),
-		HighPriority: &bots.HighPriorityQueue{HasItemsInQueue: false},
-	}
-
 	// Init keyboard-holder struct
 	tg.Template = templates.Telegram{}
 	tg.Template.Init()
@@ -48,7 +55,7 @@ func (tg *Bot) Initialize(token string) {
 	})
 
 	if err != nil {
-		log.Fatal().Err(err).Msg("Error creating Telegram bot")
+		log.Fatal().Err(err).Msg("Error starting Telegram bot")
 	}
 
 	// Set bot's username
@@ -88,6 +95,7 @@ func (tg *Bot) Initialize(token string) {
 	tg.Bot.Handle(tb.OnAddedToGroup, tg.unpermissionedStart)
 	tg.Bot.Handle(tb.OnGroupCreated, tg.unpermissionedStart)
 	tg.Bot.Handle(tb.OnSuperGroupCreated, tg.unpermissionedStart)
+	tg.Bot.Handle(tb.OnChannelCreated, tg.unpermissionedStart)
 	tg.Bot.Handle(tb.OnMyChatMember, tg.botMemberChangeHandler)
 }
 
@@ -153,6 +161,7 @@ func (tg *Bot) editCbMessage(cb *tb.Callback, text string, sendOptions tb.SendOp
 	return msg
 }
 
+// Builds a spam- and rate-limit managed interaction from context and interaction-specific limits.
 func (tg *Bot) buildInteraction(ctx tb.Context, adminOnly bool, name string) (*users.User, *bots.Interaction, error) {
 	// Load chat
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
@@ -161,7 +170,7 @@ func (tg *Bot) buildInteraction(ctx tb.Context, adminOnly bool, name string) (*u
 	isGroup := isGroup(ctx.Chat().Type)
 	senderIsAdmin := false
 
-	// If chat is a group _and_ command is admin-only, or users cannot send commands
+	// If chat is a group AND (command is admin-only OR users cannot send commands)
 	if isGroup && (adminOnly || !chat.AnyoneCanSendCommands) {
 		// Call senderIsAdmin separately, as it's an API call and may fail due to e.g. migration
 		var err error
