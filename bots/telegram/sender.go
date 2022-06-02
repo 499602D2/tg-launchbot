@@ -19,9 +19,10 @@ import (
 */
 
 // A simple notification job, with a sendable and a single recipient
-type NotificationJob struct {
+type MessageJob struct {
 	Sendable  *sendables.Sendable
 	Recipient *users.User
+	Results   chan string
 	Id        string
 }
 
@@ -32,6 +33,160 @@ func (tg *Bot) Enqueue(sendable *sendables.Sendable, isCommand bool) {
 	} else {
 		tg.NotificationQueue <- sendable
 	}
+}
+
+// Post-processing after a notification has been successfully sent
+func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds []string) {
+	// Update statistics, save to disk
+	tg.Stats.Notifications += len(sentIds)
+	tg.Db.SaveStatsToDisk(tg.Stats)
+
+	// Load launch from cache so we can save the IDs
+	launch, err := tg.Cache.FindLaunchById(sendable.LaunchId)
+
+	if err != nil {
+		log.Error().Err(err).Msgf("Unable to find launch while saving sent message IDs")
+	}
+
+	// If launch has previously sent notifications, delete them
+	if launch.SentNotificationIds != "" {
+		log.Info().Msgf("Launch has previously sent notifications, removing...")
+
+		// Load IDs of previously sent notifications
+		previouslySentIds := launch.LoadSentNotificationIdMap()
+
+		// Create a sendable for removing mass-notifications
+		deletionSendable := sendables.SendableForMessageRemoval(sendable, previouslySentIds)
+
+		/* Re-use recipients. A user may not have received any notifications,
+		but trying the removal for all recipients is safe as no-one on the list
+		can have the launch muted. */
+		deletionSendable.Recipients = sendable.Recipients
+
+		// Enqueue the sendable for removing the old notifications
+		tg.Enqueue(deletionSendable, false)
+	}
+
+	// Save the IDs of the sent notifications
+	log.Debug().Msg("Saving sent notification IDs")
+	launch.SaveSentNotificationIds(sentIds, tg.Db)
+
+	log.Debug().Msg("Notification post-processing completed")
+	tg.Quit.WaitGroup.Done()
+}
+
+// Process a notification or old notification removal. This path is not used
+// for command messages.
+func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan MessageJob) {
+	// Track average processing time for notifications and message deletions
+	processStartTime := time.Now()
+
+	// Create the results channel
+	results := make(chan string, len(sendable.Recipients))
+
+	// Pre-processing for notifications
+	if sendable.Type == sendables.Notification {
+		// Flip switch to indicate that we are sending notifications
+		tg.Spam.NotificationSendUnderway = true
+
+		// Set token count for notifications
+		if sendable.Size >= 512 {
+			log.Warn().Msgf("Sendable is %d bytes long, taking %d tokens per send", sendable.Size, sendable.Tokens)
+		} else {
+			if sendable.Size != 0 {
+				log.Debug().Msgf("Sendable is %d bytes long, taking 1 token per send", sendable.Size)
+			}
+		}
+	}
+
+	// Loop over all the recipients of this sendable
+	for i, chat := range sendable.Recipients {
+		// Add job to work-pool (blocks if queue has more than $queueLength messages)
+		workPool <- MessageJob{
+			Sendable:  sendable,
+			Recipient: chat,
+			Results:   results,
+			Id:        fmt.Sprintf("%s-%d", sendable.Type, i),
+		}
+
+		/* Periodically, during long sends, check if there are commands in the queue.
+		Vary the modulo to tune how often to check for pending messages. At 25 msg/s,
+		a modulo of 25 will result in approximately one second of delay. */
+		if i%25 == 0 {
+			select {
+			case prioritySendable, ok := <-tg.CommandQueue:
+				if ok {
+					log.Debug().Msgf("High-priority message in queue during notification send")
+					for n, priorityRecipient := range prioritySendable.Recipients {
+						workPool <- MessageJob{
+							Sendable:  prioritySendable,
+							Recipient: priorityRecipient,
+							Id:        fmt.Sprintf("%s-cmd-%d", sendable.Type, n),
+						}
+					}
+				}
+			default:
+				break
+			}
+		}
+	}
+
+	// If this was a deletion, we can return early
+	switch sendable.Type {
+	case sendables.Delete:
+		// Wait for all workers to finish before calculating processing time
+		for i := 0; i < len(sendable.Recipients); i++ {
+			<-results
+		}
+
+		// Close results channel
+		close(results)
+
+		timeSpent := time.Since(processStartTime)
+
+		log.Info().Msgf("Processed %d message removals in %s",
+			len(sendable.MessageIDs), durafmt.Parse(timeSpent).LimitFirstN(2))
+
+		log.Info().Msgf("Average deletion-rate %.1f msg/sec",
+			float64(len(sendable.MessageIDs))/timeSpent.Seconds())
+
+		tg.Quit.WaitGroup.Done()
+		return
+	}
+
+	// Notification sending done: mark as finished
+	tg.Spam.NotificationSendUnderway = false
+
+	// Gather sent notification IDs
+	sentIds := []string{}
+	for i := 0; i < len(sendable.Recipients); i++ {
+		idPair := <-results
+
+		if idPair != "" {
+			sentIds = append(sentIds, idPair)
+		}
+	}
+
+	// Close results channel
+	close(results)
+
+	// Log how long processing took
+	timeSpent := time.Since(processStartTime)
+
+	// Notifications have been sent: log
+	log.Info().Msgf("Sent %d notification(s) for sendable=%s:%s in %s",
+		len(sentIds), sendable.NotificationType, sendable.LaunchId,
+		durafmt.Parse(timeSpent).LimitFirstN(2))
+
+	log.Info().Msgf("Average send-rate %.1f msg/sec",
+		float64(len(sentIds))/timeSpent.Seconds())
+
+	// Post-process the notification send, in a go-routine to avoid blocking
+	tg.Quit.WaitGroup.Add(1)
+	go tg.NotificationPostProcessing(sendable, sentIds)
+
+	// Done
+	tg.Quit.WaitGroup.Done()
 }
 
 // CommandSender sends high-priority command replies.
@@ -155,7 +310,7 @@ func (tg *Bot) SendNotification(sendable *sendables.Sendable, user *users.User, 
 }
 
 // NotificationWorker processes individual message delivery and removal jobs.
-func (tg *Bot) NotificationWorker(id int, jobChannel <-chan NotificationJob, results chan<- string) {
+func (tg *Bot) NotificationWorker(id int, jobChannel chan MessageJob) {
 	// Loop over the channel as long as it's open
 	for job := range jobChannel {
 		if job.Sendable.Type != sendables.Command {
@@ -172,16 +327,17 @@ func (tg *Bot) NotificationWorker(id int, jobChannel <-chan NotificationJob, res
 
 			if success {
 				// On success, write the sent notification's ID to results channel
-				results <- idPair
+				job.Results <- idPair
 				job.Recipient.Stats.ReceivedNotifications++
 			} else {
-				results <- ""
+				job.Results <- ""
 				log.Warn().Msgf("[Worker=%d] Sending notification to chat=%s failed [%s]",
 					id, job.Recipient.Id, job.Id)
 			}
 
 		case sendables.Delete:
 			tg.DeleteNotificationMessage(job.Sendable, job.Recipient)
+			job.Results <- ""
 
 		case sendables.Command:
 			tg.SendCommand(job.Sendable.Message, job.Recipient)
@@ -194,145 +350,8 @@ func (tg *Bot) NotificationWorker(id int, jobChannel <-chan NotificationJob, res
 	tg.Quit.Channel <- id
 }
 
-// Post-processing after a notification has been successfully sent
-func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds []string) {
-	// Update statistics, save to disk
-	tg.Stats.Notifications += len(sentIds)
-	tg.Db.SaveStatsToDisk(tg.Stats)
-
-	// Load launch from cache so we can save the IDs
-	launch, err := tg.Cache.FindLaunchById(sendable.LaunchId)
-
-	if err != nil {
-		log.Error().Err(err).Msgf("Unable to find launch while saving sent message IDs")
-	}
-
-	// If launch has previously sent notifications, delete them
-	if launch.SentNotificationIds != "" {
-		log.Info().Msgf("Launch has previously sent notifications, removing...")
-
-		// Load IDs of previously sent notifications
-		previouslySentIds := launch.LoadSentNotificationIdMap()
-
-		// Create a sendable for removing mass-notifications
-		deletionSendable := sendables.SendableForMessageRemoval(sendable, previouslySentIds)
-
-		/* Re-use recipients. A user may not have received any notifications,
-		but trying the removal for all recipients is safe as no-one on the list
-		can have the launch muted. */
-		deletionSendable.Recipients = sendable.Recipients
-
-		// Enqueue the sendable for removing the old notifications
-		tg.Enqueue(deletionSendable, false)
-	}
-
-	// Save the IDs of the sent notifications
-	log.Debug().Msg("Saving sent notification IDs")
-	launch.SaveSentNotificationIds(sentIds, tg.Db)
-
-	log.Debug().Msg("Notification post-processing completed")
-	tg.Quit.WaitGroup.Done()
-}
-
-// Process a notification or notification removal sendable
-func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan<- NotificationJob, results <-chan string) {
-	// Track average processing time for notifications and message deletions
-	processStartTime := time.Now()
-
-	// Pre-processing for notifications
-	if sendable.Type == sendables.Notification {
-		// Flip switch to indicate that we are sending notifications
-		tg.Spam.NotificationSendUnderway = true
-
-		// Set token count for notifications
-		if sendable.Size >= 512 {
-			log.Warn().Msgf("Sendable is %d bytes long, taking %d tokens per send", sendable.Size, sendable.Tokens)
-		} else {
-			if sendable.Size != 0 {
-				log.Debug().Msgf("Sendable is %d bytes long, taking 1 token per send", sendable.Size)
-			}
-		}
-	}
-
-	// Loop over all the recipients of this sendable
-	for i, chat := range sendable.Recipients {
-		// Add job to work-pool (blocks if queue has more than $queueLength messages)
-		workPool <- NotificationJob{
-			Sendable:  sendable,
-			Recipient: chat,
-			Id:        fmt.Sprintf("%s-%d", sendable.Type, i),
-		}
-
-		/* Periodically, during long sends, check if there are commands in the queue.
-		Vary the modulo to tune how often to check for pending messages. At 25 msg/s,
-		a modulo of 25 will result in approximately one second of delay. */
-		if i%25 == 0 {
-			select {
-			case prioritySendable, ok := <-tg.CommandQueue:
-				if ok {
-					log.Debug().Msgf("High-priority message in queue during notification send")
-					for n, priorityRecipient := range prioritySendable.Recipients {
-						tg.Quit.WaitGroup.Add(1)
-						workPool <- NotificationJob{
-							Sendable: prioritySendable, Recipient: priorityRecipient,
-							Id: fmt.Sprintf("%s-cmd-%d", sendable.Type, n)}
-					}
-				}
-			default:
-				continue
-			}
-		}
-	}
-
-	// If this was a deletion, we can return early
-	switch sendable.Type {
-	case sendables.Delete:
-		timeSpent := time.Since(processStartTime)
-
-		log.Info().Msgf("Processed %d message removals in %s (optimistic)",
-			len(sendable.MessageIDs), durafmt.Parse(timeSpent).LimitFirstN(2))
-
-		log.Info().Msgf("Average deletion-rate %.1f msg/sec",
-			float64(len(sendable.MessageIDs))/timeSpent.Seconds())
-
-		tg.Quit.WaitGroup.Done()
-		return
-	}
-
-	// Notification sending done
-	tg.Spam.NotificationSendUnderway = false
-
-	// Gather sent notification IDs
-	sentIds := []string{}
-	for i := 0; i < len(sendable.Recipients); i++ {
-		idPair := <-results
-
-		if idPair != "" {
-			sentIds = append(sentIds, idPair)
-		}
-	}
-
-	// Log how long processing took
-	timeSpent := time.Since(processStartTime)
-
-	// Notifications have been sent: log
-	log.Info().Msgf("Sent %d notification(s) for sendable=%s:%s in %s",
-		len(sentIds), sendable.NotificationType, sendable.LaunchId,
-		durafmt.Parse(timeSpent).LimitFirstN(2))
-
-	log.Info().Msgf("Average send-rate %.1f msg/sec",
-		float64(len(sentIds))/timeSpent.Seconds())
-
-	// Post-process the notification send, in a go-routine to avoid blocking
-	tg.Quit.WaitGroup.Add(1)
-	go tg.NotificationPostProcessing(sendable, sentIds)
-
-	// Done
-	tg.Quit.WaitGroup.Done()
-}
-
 // Gracefully shut the message channels down
-func (tg *Bot) Close(workPool chan<- NotificationJob, workerCount int) {
+func (tg *Bot) Close(workPool chan MessageJob, workerCount int) {
 	// Wait for all workers to finish their jobs
 	log.Debug().Msg("Waiting for workers to finish...")
 	tg.Quit.WaitGroup.Wait()
@@ -366,14 +385,11 @@ func (tg *Bot) ThreadedSender() {
 	/* The pool the dequeued, processed sendables are thrown into. The buffered
 	size ensures that high-priority messages from the command queue can be regularly
 	dequeued, without having to wait for 1000+ notifications to finish sending first. */
-	workPool := make(chan NotificationJob, workerCount*2)
-
-	// The result channel delivers message ID pairs of delivered notification messages
-	results := make(chan string)
+	workPool := make(chan MessageJob, workerCount*2)
 
 	// Spawn the workers
 	for workerId := 1; workerId <= workerCount; workerId++ {
-		go tg.NotificationWorker(workerId, workPool, results)
+		go tg.NotificationWorker(workerId, workPool)
 	}
 
 	for {
@@ -382,15 +398,17 @@ func (tg *Bot) ThreadedSender() {
 			if ok {
 				// In the case of notifications, pre-process them first
 				tg.Quit.WaitGroup.Add(1)
-				tg.ProcessSendable(sendable, workPool, results)
+				tg.ProcessSendable(sendable, workPool)
 			}
 
 		case sendable, ok := <-tg.CommandQueue:
 			if ok {
 				// For high-priority messages, we don't need pre-processing
 				tg.Quit.WaitGroup.Add(1)
-				workPool <- NotificationJob{
-					Sendable: sendable, Recipient: sendable.Recipients[0], Id: "command",
+				workPool <- MessageJob{
+					Sendable:  sendable,
+					Recipient: sendable.Recipients[0],
+					Id:        "command",
 				}
 			}
 
