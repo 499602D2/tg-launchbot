@@ -160,11 +160,11 @@ func (launch *Launch) NotificationRecipients(db *Database, notificationType stri
 		/* User has subscribed to this launch, and has not muted it: add to recipients.
 		However, first check if this user has already been cached, in order to avoid
 		overlapping database writes. */
-		cachedUser, wasAlreadyCached := db.Cache.UseCachedUserIfExists(user, false)
+		cachedUser, _ := db.Cache.UseCachedUserIfExists(user, false)
 
-		if wasAlreadyCached {
-			log.Debug().Msgf("User=%s was already cached when loading recipients", user.Id)
-		}
+		// if wasAlreadyCached {
+		// 	log.Debug().Msgf("User=%s was already cached when loading recipients", user.Id)
+		// }
 
 		// Insert user into the recipients, now that it is certainly in the user-cache
 		recipients = append(recipients, cachedUser)

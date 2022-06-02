@@ -161,7 +161,7 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 		session.Telegram.Enqueue(sendable, false)
 	}
 
-	log.Debug().Msgf("notificationWrapper exiting normally: running scheduler...")
+	log.Debug().Msg("[notificationWrapper] Exiting normally: running scheduler...")
 
 	// Notifications processed: queue post-launch check if this is a 5-minute notification
 	Scheduler(session, false, postLaunchUpdate, false)
