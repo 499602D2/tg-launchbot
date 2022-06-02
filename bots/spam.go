@@ -31,6 +31,7 @@ type Interaction struct {
 	IsAdminOnly   bool
 	IsCommand     bool
 	IsGroup       bool   // Called from a group?
+	AnyoneCanUse  bool   // An interaction that is one-off (message expansions)
 	CallerIsAdmin bool   // Is the caller an admin?
 	Name          string // Name of command or callback
 	CbData        string // Callback data for more accurate logging
@@ -113,7 +114,7 @@ func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *
 
 	if interaction.IsGroup {
 		// In groups, we need to ensure that regular users cannot do funny things
-		if interaction.IsAdminOnly || !chat.AnyoneCanSendCommands {
+		if interaction.IsAdminOnly || !(chat.AnyoneCanSendCommands || interaction.AnyoneCanUse) {
 			// Admin-only interaction, or group doesn't allow users to interact with the bot
 			if !interaction.CallerIsAdmin {
 				if interaction.IsCommand {

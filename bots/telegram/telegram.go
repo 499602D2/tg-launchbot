@@ -198,6 +198,11 @@ func (tg *Bot) buildInteraction(ctx tb.Context, adminOnly bool, name string) (*u
 		Tokens:        tokens,
 	}
 
+	// Allow any user to expand notification messages
+	if name == "expandMessage" {
+		interaction.AnyoneCanUse = true
+	}
+
 	if !isCommand {
 		// If a callback, add callback data to the interaction
 		interaction.CbData = ctx.Callback().Data

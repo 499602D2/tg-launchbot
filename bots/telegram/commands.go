@@ -794,7 +794,7 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 // Handle notification message expansions
 func (tg *Bot) expandMessageContent(ctx tb.Context) error {
 	// Load chat and generate the interaction
-	chat, interaction, err := tg.buildInteraction(ctx, true, "expandMessage")
+	chat, interaction, err := tg.buildInteraction(ctx, false, "expandMessage")
 
 	if err != nil {
 		log.Warn().Msg("Running expandMessageContent failed")
