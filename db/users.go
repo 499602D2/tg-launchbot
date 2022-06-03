@@ -43,8 +43,14 @@ func (cache *Cache) CleanUserCache(db *Database, force bool, shutdown bool) {
 	}
 
 	if len(usersToBeCleaned) > 0 {
-		log.Debug().Msgf("Flushed %d user(s) from the cache, %d still cached",
-			len(usersToBeCleaned), len(cache.Users.Users)-len(usersToBeCleaned))
+		if !shutdown {
+			log.Debug().Msgf("Flushed %d user(s) from the cache, %d still cached",
+				len(usersToBeCleaned), len(cache.Users.Users))
+		} else {
+			log.Debug().Msgf("Flushed %d user(s), %d still cached",
+				len(usersToBeCleaned), len(cache.Users.Users)-len(usersToBeCleaned))
+		}
+
 	} else {
 		log.Debug().Msgf("No users flushed, %d still cached", len(cache.Users.InCache))
 	}
