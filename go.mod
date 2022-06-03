@@ -9,20 +9,18 @@ require (
 )
 
 require (
-	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/deckarep/golang-set v1.8.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/jonas-p/go-shp v0.1.1 // indirect
 	github.com/mingrammer/commonregex v1.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/stretchr/objx v0.4.0 // indirect
 	github.com/stretchr/testify v1.7.1 // indirect
-	golang.org/x/image v0.0.0-20220413100746-70e8d0d3baa9 // indirect
+	golang.org/x/image v0.0.0-20220601225756-64ec528b34cd // indirect
 	golang.org/x/net v0.0.0-20220531201128-c960675eff93 // indirect
-	golang.org/x/sync v0.0.0-20220513210516-0976fa681c29 // indirect
+	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f // indirect
 	gonum.org/v1/gonum v0.11.0 // indirect
 	gopkg.in/neurosnap/sentences.v1 v1.0.7 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
@@ -40,7 +38,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.13 // indirect
 	github.com/procyon-projects/chrono v1.1.0
 	golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e // indirect
-	golang.org/x/exp v0.0.0-20220518171630-0b5c67f07fdf
+	golang.org/x/exp v0.0.0-20220602145555-4a0574d9293f
 	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a
 	golang.org/x/time v0.0.0-20220411224347-583f2d630306
 	gorm.io/driver/sqlite v1.3.2
