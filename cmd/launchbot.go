@@ -53,9 +53,11 @@ func setupSignalHandler(session *config.Session) {
 		}
 
 		// Save stats to disk
+		log.Info().Msg("Saving stats to disk...")
 		session.Db.SaveStatsToDisk(session.Telegram.Stats)
 
 		// Save all cached users
+		log.Info().Msg("Starting user-cache flush...")
 		session.Cache.CleanUserCache(session.Db, true)
 
 		// if session.Telegram != nil {
