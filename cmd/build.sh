@@ -7,7 +7,6 @@ LDFLAGS=(
 )
 
 echo "Current head at $SHA"
-
 echo "Building LaunchBot..."
 
 go build -o ../launchbot -ldflags="${LDFLAGS[*]}"
