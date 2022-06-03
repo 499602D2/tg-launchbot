@@ -58,7 +58,7 @@ func setupSignalHandler(session *config.Session) {
 
 		// Save all cached users
 		log.Info().Msg("Starting user-cache flush...")
-		session.Cache.CleanUserCache(session.Db, true)
+		session.Cache.CleanUserCache(session.Db, true, true)
 
 		// if session.Telegram != nil {
 		// 	log.Debug().Msg("Stopping Telegram bot...")
