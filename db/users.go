@@ -12,7 +12,7 @@ import (
 )
 
 // Clean any users from the cache that have not been active in a while
-func (cache *Cache) CleanUserCache(db *Database, force bool) {
+func (cache *Cache) CleanUserCache(db *Database, force bool, shutdown bool) {
 	// Loop over users and clean all that shoud be expired
 	usersToBeCleaned := []*users.User{}
 
@@ -32,15 +32,21 @@ func (cache *Cache) CleanUserCache(db *Database, force bool) {
 		}
 	}
 
-	// Clean all users, and save stats before doing it
-	for _, user := range usersToBeCleaned {
-		db.SaveUser(user)
-		cache.FlushUser(user.Id, user.Platform)
+	// Save the flushed users to disk
+	cache.Database.SaveUserBatch(usersToBeCleaned)
+
+	if !shutdown {
+		// If not shutting down, re-build the cache
+		for _, user := range usersToBeCleaned {
+			cache.FlushUser(user.Id, user.Platform)
+		}
 	}
 
 	if len(usersToBeCleaned) > 0 {
 		log.Debug().Msgf("Flushed %d user(s) from the cache, %d still cached",
-			len(usersToBeCleaned), len(cache.Users.Users))
+			len(usersToBeCleaned), len(cache.Users.Users)-len(usersToBeCleaned))
+	} else {
+		log.Debug().Msgf("No users flushed, %d still cached", len(cache.Users.InCache))
 	}
 }
 
@@ -168,8 +174,6 @@ func (cache *Cache) FlushUser(id string, platform string) {
 			userCache.InCache = append(userCache.InCache[:i], userCache.InCache[i+1:]...)
 		}
 	}
-
-	// log.Debug().Msgf("Flushed user=%s", id)
 }
 
 // Load a user from the database. If the user is not found, initialize it in

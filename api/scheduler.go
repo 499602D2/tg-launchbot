@@ -302,7 +302,7 @@ func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunc
 
 		if safeToFlushCache {
 			log.Debug().Msg("More than an hour until next update, cleaning user-cache")
-			session.Cache.CleanUserCache(session.Db, false)
+			session.Cache.CleanUserCache(session.Db, false, false)
 			log.Debug().Msg("User-cache cleaned")
 		} else {
 			/* Issue: users may linger in the cache for 6+ hours following a
@@ -313,7 +313,7 @@ func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunc
 				/* More than two hours until next notif, more than an hour until next API
 				update: schedule a cache flush for later */
 				_, err := session.Scheduler.Schedule(func(ctx context.Context) {
-					session.Cache.CleanUserCache(session.Db, false)
+					session.Cache.CleanUserCache(session.Db, false, false)
 				}, chrono.WithTime(time.Now().Add(time.Minute*time.Duration(15))))
 
 				if err != nil {
