@@ -13,8 +13,10 @@ import (
 	tb "gopkg.in/telebot.v3"
 )
 
-/* TODO
-+ Modularize:
+/*
+TODO
+
+Modularize:
 	- take an interface that implements e.g. sending functions and a queue
 */
 
@@ -84,18 +86,20 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan Messa
 	// Create the results channel
 	results := make(chan string, len(sendable.Recipients))
 
-	// Pre-processing for notifications
 	if sendable.Type == sendables.Notification {
 		// Flip switch to indicate that we are sending notifications
 		tg.Spam.NotificationSendUnderway = true
 
+		// Calculate the size for this sendable
+		sendable.Size = sendable.PerceivedByteSize()
+
 		// Set token count for notifications
 		if sendable.Size >= 512 {
+			sendable.Tokens = 6
 			log.Warn().Msgf("Sendable is %d bytes long, taking %d tokens per send", sendable.Size, sendable.Tokens)
 		} else {
-			if sendable.Size != 0 {
-				log.Debug().Msgf("Sendable is %d bytes long, taking 1 token per send", sendable.Size)
-			}
+			sendable.Tokens = 1
+			log.Debug().Msgf("Sendable is %d bytes long, taking 1 token per send", sendable.Size)
 		}
 	}
 
@@ -111,8 +115,8 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan Messa
 
 		/* Periodically, during long sends, check if there are commands in the queue.
 		Vary the modulo to tune how often to check for pending messages. At 25 msg/s,
-		a modulo of 25 will result in approximately one second of delay. */
-		if i%25 == 0 {
+		a modulo of 20 will result in approximately one second of delay. */
+		if i%20 == 0 {
 			select {
 			case prioritySendable, ok := <-tg.CommandQueue:
 				if ok {

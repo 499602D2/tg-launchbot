@@ -44,9 +44,8 @@ func (spam *Spam) Initialize() {
 	spam.Chats = make(map[*users.User]Chat)
 	spam.Rules = make(map[string]int64)
 
-	// Enforce a global rate-limiter, at 25 msg/sec.
-	// A change of 5 msg/sec is 300 more messages in a minute (!)
-	spam.Limiter = rate.NewLimiter(rate.Every(time.Second), 30)
+	// Enforce a global rate-limiter, at 25 msg/sec + burst capacity of 5
+	spam.Limiter = rate.NewLimiter(25, 5)
 }
 
 // Enforce a per-chat rate-limiter. Typically, roughly 20 messages per minute
