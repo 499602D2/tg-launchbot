@@ -261,6 +261,9 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 		log.Debug().Msgf("User=%s has been deactivated, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
 
+	case tb.ErrNoRightsToSend:
+		log.Debug().Msgf("No rights to send messages to chat=%s (ignoring and not removing)", chat.Id)
+
 	default:
 		// If none of the earlier switch-cases caught the error, default here
 		tg.handleGenericError(err)
