@@ -66,8 +66,10 @@ func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds 
 		deletionSendable.Recipients = sendable.Recipients
 
 		// Enqueue the sendable for removing the old notifications
-		tg.Quit.WaitGroup.Add(1)
 		tg.Enqueue(deletionSendable, false)
+
+		// Sleep for a while so the message gets added to the queue
+		time.Sleep(250 * time.Millisecond)
 	}
 
 	// Save the IDs of the sent notifications
