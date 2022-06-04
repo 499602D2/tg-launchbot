@@ -442,16 +442,20 @@ func (launch *Launch) NotificationMessage(notifType string, expanded bool, botUs
 
 		// If we're seconds away, use seconds
 		if untilNet.Minutes() < 1.0 {
-			log.Warn().Msgf("Launch less than 1 minute away, formatting as seconds")
+			log.Warn().Msgf("Launch less than 1 minute away (seconds=%.1f), formatting as seconds",
+				untilNet.Seconds())
 
 			// If less than 0 seconds, set to "now"
 			if untilNet.Seconds() < 0 {
 				header = "Launching now"
 			} else {
-				header = fmt.Sprintf("T-%d seconds", int(untilNet.Seconds()))
+				header = fmt.Sprintf("T-%d %s",
+					int(untilNet.Seconds()), english.PluralWord(int(untilNet.Minutes()), "second", ""))
 			}
 		} else {
-			header = fmt.Sprintf("T-%d minutes", int(untilNet.Minutes()))
+			// Otherwise, use actual minutes
+			header = fmt.Sprintf("T-%d %s",
+				int(untilNet.Minutes()), english.PluralWord(int(untilNet.Minutes()), "minute", ""))
 		}
 	}
 
