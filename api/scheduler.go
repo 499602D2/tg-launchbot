@@ -309,9 +309,9 @@ func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunc
 			notification send, if the unsafe flag is set. */
 			log.Debug().Msg("Flushing user-cache is currently unsafe")
 
-			if untilNotification > time.Duration(2)*time.Hour {
+			if untilNotification > time.Duration(2)*time.Hour && postLaunchCheck == nil {
 				/* More than two hours until next notif, more than an hour until next API
-				update: schedule a cache flush for later */
+				update, no post-launch check scheduled. Schedule a cache flush for later */
 				_, err := session.Scheduler.Schedule(func(ctx context.Context) {
 					session.Cache.CleanUserCache(session.Db, false, false)
 				}, chrono.WithTime(time.Now().Add(time.Minute*time.Duration(15))))
