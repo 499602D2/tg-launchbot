@@ -66,6 +66,7 @@ func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds 
 		deletionSendable.Recipients = sendable.Recipients
 
 		// Enqueue the sendable for removing the old notifications
+		tg.Quit.WaitGroup.Add(1)
 		tg.Enqueue(deletionSendable, false)
 	}
 
@@ -74,6 +75,8 @@ func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds 
 	launch.SaveSentNotificationIds(sentIds, tg.Db)
 
 	log.Debug().Msg("Notification post-processing completed")
+
+	// Waitgroup done (added when NotificationPostProcessing is called)
 	tg.Quit.WaitGroup.Done()
 }
 
@@ -439,7 +442,7 @@ func (tg *Bot) ThreadedSender() {
 			break
 		}
 
-		time.Sleep(time.Millisecond * time.Duration(50))
+		time.Sleep(50 * time.Millisecond)
 	}
 
 	// Send final quit-signal and unlock mutex
