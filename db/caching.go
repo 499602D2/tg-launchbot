@@ -139,7 +139,7 @@ func (cache *Cache) FindNextNotification() *Notification {
 
 			if next.AllSent {
 				// If all notifications have already been sent, ignore
-				log.Warn().Msgf("All notifications have been sent for launch=%s", launch.Id)
+				log.Debug().Msgf("All notifications have been sent for launch=%s (safe to ignore)", launch.Slug)
 				continue
 			}
 
