@@ -22,10 +22,10 @@ import (
 // Injected at build-time
 var GitSHA = "0000000000"
 
-const version = "3.1.7"
+const version = "3.1.8"
 
 // Listens for incoming interrupt signals
-func setupSignalHandler(session *config.Session) {
+func signalListener(session *config.Session) {
 	channel := make(chan os.Signal, 1)
 	signal.Notify(channel, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 
@@ -119,7 +119,7 @@ func main() {
 	}
 
 	// Signal handler (ctrl+c, etc.)
-	setupSignalHandler(session)
+	signalListener(session)
 
 	// Initialize session
 	session.Initialize()

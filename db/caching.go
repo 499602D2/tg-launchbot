@@ -21,7 +21,7 @@ type Cache struct {
 }
 
 // Updates cache with a list of fresh launches
-func (cache *Cache) Update(launches []*Launch) {
+func (cache *Cache) UpdateWithNew(launches []*Launch) {
 	cache.Mutex.Lock()
 	defer cache.Mutex.Unlock()
 

@@ -419,7 +419,7 @@ func (tg *Bot) settingsHandler(ctx tb.Context) error {
 }
 
 // Handles requests to view a list of launch providers associated with a country code
-func (tg *Bot) countryCodeListCallback(ctx tb.Context) error {
+func (tg *Bot) settingsCountryCodeView(ctx tb.Context) error {
 	// Ensure callback data is valid
 	data := strings.Split(ctx.Callback().Data, "/")
 
