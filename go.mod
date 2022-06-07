@@ -19,7 +19,7 @@ require (
 	github.com/stretchr/objx v0.4.0 // indirect
 	github.com/stretchr/testify v1.7.1 // indirect
 	golang.org/x/image v0.0.0-20220601225756-64ec528b34cd // indirect
-	golang.org/x/net v0.0.0-20220531201128-c960675eff93 // indirect
+	golang.org/x/net v0.0.0-20220607020251-c690dde0001d // indirect
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f // indirect
 	gonum.org/v1/gonum v0.11.0 // indirect
 	gopkg.in/neurosnap/sentences.v1 v1.0.7 // indirect
