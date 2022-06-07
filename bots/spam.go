@@ -13,17 +13,11 @@ import (
 
 // In-memory struct keeping track of banned chats and per-chat activity
 type Spam struct {
-	Chats                    map[*users.User]Chat // Map chat ID to a per-chat spam struct
-	Rules                    map[string]int64     // Arbitrary rules for code flexibility
-	Limiter                  *rate.Limiter        // Main rate-limiter
-	NotificationSendUnderway bool                 // True if notifications are currently being sent
-	VerboseLog               bool                 // Toggle to enable verbose permission logging
-	Mutex                    sync.Mutex           // Mutex to avoid concurrent map writes
-}
-
-// Per-chat struct keeping track of activity for spam management
-type Chat struct {
-	Limiter *rate.Limiter // Per-chat ratelimiter
+	BroadcastLimiter         *rate.Limiter                 // Main rate-limiter
+	ChatLimiters             map[*users.User]*rate.Limiter // Map chat ID to a per-chat limiter
+	NotificationSendUnderway bool                          // True if notifications are currently being sent
+	VerboseLog               bool                          // Toggle to enable verbose permission logging
+	Mutex                    sync.Mutex                    // Mutex to avoid concurrent map writes
 }
 
 // An interaction handled by preHandler
@@ -39,27 +33,33 @@ type Interaction struct {
 }
 
 // Initialize the spam struct
-func (spam *Spam) Initialize() {
+func (spam *Spam) Initialize(broadcastLimit int, broadcastBurst int) {
 	// Create maps for the spam struct
-	spam.Chats = make(map[*users.User]Chat)
-	spam.Rules = make(map[string]int64)
+	spam.ChatLimiters = make(map[*users.User]*rate.Limiter)
 
-	// Enforce a global rate-limiter, at 25 msg/sec + burst capacity of 5
-	spam.Limiter = rate.NewLimiter(20, 5)
+	// Enforce a global rate-limiter, at 20 msg/sec + burst capacity of 5 msg/sec
+	spam.BroadcastLimiter = rate.NewLimiter(rate.Limit(broadcastLimit), broadcastBurst)
+
+	if broadcastLimit > 30 || broadcastLimit+broadcastBurst > 30 {
+		log.Warn().Msgf(
+			"Very high broadcast limits (%d, %d): consider lowering the limits. "+
+				"Ideally, broadcastLimit < 30 and broadcastLimit+broadcastBurst <= 30",
+			broadcastLimit, broadcastBurst)
+	}
 }
 
-// Enforce a per-chat rate-limiter. Typically, roughly 20 messages per minute
-// can be sent to one chat.
+// Enforce a per-chat rate-limiter
 func (spam *Spam) UserLimiter(chat *users.User, stats *stats.Statistics, tokens int) {
-	// If limiter doesn't exist, create it
-	if spam.Chats[chat].Limiter == nil {
+	if spam.ChatLimiters[chat] == nil {
+		// If limiter doesn't exist, create it
 		spam.Mutex.Lock()
 
-		// Load user's chatLog, assign new limiter, save back
-		chatLog := spam.Chats[chat]
-		chatLog.Limiter = rate.NewLimiter(rate.Every(time.Second*3), 2)
-		spam.Chats[chat] = chatLog
+		/* Create a limiter: 1 msg every 3 seconds, plus 2 msg/sec burst capacity.
+		https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this
 
+		"Also note that your bot will not be able to send more than 20 messages
+		per minute to the same group." */
+		spam.ChatLimiters[chat] = rate.NewLimiter(rate.Every(time.Second*3), 2)
 		spam.Mutex.Unlock()
 	}
 
@@ -67,7 +67,7 @@ func (spam *Spam) UserLimiter(chat *users.User, stats *stats.Statistics, tokens 
 	start := time.Now()
 
 	// Wait until we can take as many tokens as we need
-	err := spam.Chats[chat].Limiter.WaitN(context.Background(), tokens)
+	err := spam.ChatLimiters[chat].WaitN(context.Background(), tokens)
 
 	// Track enforced limits
 	duration := time.Since(start)
@@ -87,11 +87,12 @@ func (spam *Spam) UserLimiter(chat *users.User, stats *stats.Statistics, tokens 
 	}
 }
 
-// Enforces a global rate-limiter for the bot. Telegram has some hard rate-limits,
-// including a 30 messages-per-second send limit for messages under 512 bytes.
+// Enforces a global broadcast rate-limiter for the bot. Telegram has some hard
+// rate-limits, including a 30 messages-per-second send limit for messages
+// under 512 bytes.
 func (spam *Spam) GlobalLimiter(tokens int) {
 	// Take the required amount of tokens, sleep if required
-	err := spam.Limiter.WaitN(context.Background(), tokens)
+	err := spam.BroadcastLimiter.WaitN(context.Background(), tokens)
 
 	if err != nil {
 		log.Error().Err(err).Msgf("Error using global Limiter.WaitN()")
@@ -142,7 +143,11 @@ func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *
 	}
 
 	// Ensure command counter cannot be iterated by spamming the stats refresh button
-	unloggedInteractions := map[string]bool{"stats": true, "generic": true}
+	unloggedInteractions := map[string]bool{
+		"stats": true, "generic": true,
+	}
+
+	// Check if command should not be logged
 	_, shouldNotBeLogged := unloggedInteractions[interaction.Name]
 
 	if !shouldNotBeLogged || interaction.IsCommand {
