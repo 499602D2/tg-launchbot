@@ -41,14 +41,16 @@ type Session struct {
 
 // Config contains the configuration parameters used by the program
 type Config struct {
-	Token    Tokens     // API tokens
-	DbFolder string     // Folder path the DB lives in
-	Owner    int64      // Telegram owner id
-	Mutex    sync.Mutex // Mutex to avoid concurrent writes
+	Token              ApiTokens  // API tokens
+	DbFolder           string     // Folder path the DB lives in
+	Owner              int64      // Telegram owner id
+	BroadcastTokenPool int        // Broadcast rate-limit, msg/sec (<= 30)
+	BroadcastBurstPool int        // Broadcast bursting limit, msg/sec
+	Mutex              sync.Mutex // Mutex to avoid concurrent writes
 }
 
-// Tokens containts the API tokens used by the bot(s)
-type Tokens struct {
+// ApiTokens contains the API tokens used by the bot(s)
+type ApiTokens struct {
 	Telegram string
 	Discord  string
 }
@@ -74,7 +76,8 @@ func (session *Session) Initialize() {
 
 	// Create and initialize the anti-spam system
 	session.Spam = &bots.Spam{}
-	session.Spam.Initialize()
+	session.Spam.Initialize(
+		session.Config.BroadcastTokenPool, session.Config.BroadcastBurstPool)
 
 	// Initialize the Telegram bot
 	session.Telegram = &telegram.Bot{
@@ -93,8 +96,8 @@ func (session *Session) Initialize() {
 	session.Telegram.Initialize(session.Config.Token.Telegram)
 }
 
-// DumpConfig dumps the config to disk
-func DumpConfig(config *Config) {
+// SaveConfig dumps the config to disk
+func SaveConfig(config *Config) {
 	jsonbytes, err := json.MarshalIndent(config, "", "\t")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Error marshaling json")
@@ -133,6 +136,7 @@ func LoadConfig() *Config {
 	}
 
 	configf := filepath.Join(configPath, "config.json")
+
 	if _, err := os.Stat(configf); os.IsNotExist(err) {
 		// Config doesn't exist: create
 		fmt.Print("Enter bot token: ")
@@ -143,18 +147,21 @@ func LoadConfig() *Config {
 
 		// Create, marshal
 		config := Config{
-			Token:    Tokens{Telegram: botToken},
-			DbFolder: "data",
+			Token:              ApiTokens{Telegram: botToken},
+			BroadcastTokenPool: 20,
+			BroadcastBurstPool: 5,
+			DbFolder:           "data",
 		}
 
 		fmt.Println("Success! Starting bot...")
 
-		go DumpConfig(&config)
+		go SaveConfig(&config)
 		return &config
 	}
 
 	// Config exists: load
 	fbytes, err := ioutil.ReadFile(configf)
+
 	if err != nil {
 		log.Fatal().Err(err).Msg("Error reading config file")
 	}
@@ -164,8 +171,15 @@ func LoadConfig() *Config {
 
 	// Unmarshal into our config struct
 	err = json.Unmarshal(fbytes, &config)
+
 	if err != nil {
 		log.Fatal().Err(err).Msg("Error unmarshaling config json")
+	}
+
+	if config.BroadcastTokenPool == 0 {
+		// Ensure migrating from older versions has _some_ value for token pool size
+		config.BroadcastTokenPool = 20
+		config.BroadcastBurstPool = 5
 	}
 
 	return &config
