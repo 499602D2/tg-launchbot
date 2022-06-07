@@ -66,12 +66,12 @@ func (cache *Cache) UseCachedUserIfExists(user *users.User, lockMutex bool) (*us
 	}
 
 	// Search for the user in the cache
-	cachedUser, insertAt := cache.UserIsCached(user)
+	cachedUser, insertAt := cache.UserOrInsertAt(user)
 
 	if cachedUser == nil {
 		// User not cached, insert (mutex locked)
 		user.LastActivityType = users.Notification
-		cache.InsertIntoCache(user, insertAt, false)
+		cache.InsertUser(user, insertAt, false)
 		return user, false
 	}
 
@@ -80,7 +80,7 @@ func (cache *Cache) UseCachedUserIfExists(user *users.User, lockMutex bool) (*us
 }
 
 // Inserts a user into the cache
-func (cache *Cache) InsertIntoCache(user *users.User, atIndex int, lockMutex bool) {
+func (cache *Cache) InsertUser(user *users.User, atIndex int, lockMutex bool) {
 	// Set userCache ptr
 	userCache := cache.Users
 
@@ -114,7 +114,7 @@ func (cache *Cache) InsertIntoCache(user *users.User, atIndex int, lockMutex boo
 }
 
 // Return user if the user is cached, otherwise a nil and the idx the user should be inserted at
-func (cache *Cache) UserIsCached(user *users.User) (*users.User, int) {
+func (cache *Cache) UserOrInsertAt(user *users.User) (*users.User, int) {
 	// Set userCache ptr
 	userCache := cache.Users
 
@@ -154,7 +154,7 @@ func (cache *Cache) FindUser(id string, platform string) *users.User {
 	user := cache.Database.LoadUser(id, platform)
 
 	// Add user to cache
-	cache.InsertIntoCache(user, i, false)
+	cache.InsertUser(user, i, false)
 
 	return user
 }

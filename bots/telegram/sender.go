@@ -231,10 +231,10 @@ func (tg *Bot) SendCommand(message *sendables.Message, chat *users.User) bool {
 // Delete a Telegram message with a chat ID and a message ID
 func (tg *Bot) DeleteNotificationMessage(sendable *sendables.Sendable, user *users.User) {
 	// Load ID pair
-	msgId, ok := sendable.MessageIDs[user.Id]
+	strMessageId, ok := sendable.MessageIDs[user.Id]
 
 	if !ok {
-		log.Warn().Msgf("Unable to find message ID during deletion for user=%s", user.Id)
+		// If chat has not received a previous notification, do nothing
 		return
 	}
 
@@ -247,7 +247,7 @@ func (tg *Bot) DeleteNotificationMessage(sendable *sendables.Sendable, user *use
 	}
 
 	// Convert message ID to an integer
-	messageId, err := strconv.Atoi(msgId)
+	messageId, err := strconv.Atoi(strMessageId)
 
 	if err != nil {
 		log.Error().Err(err).Msgf("Forming message ID failed while removing sent messages")
@@ -260,7 +260,7 @@ func (tg *Bot) DeleteNotificationMessage(sendable *sendables.Sendable, user *use
 
 	if err != nil {
 		tg.handleError(nil, messageToBeDeleted, err, int64(chatId))
-		log.Error().Err(err).Msgf("Deleting message %s:%s failed", user.Id, msgId)
+		log.Error().Err(err).Msgf("Deleting message %s:%s failed", user.Id, strMessageId)
 	}
 }
 
@@ -271,6 +271,7 @@ func (tg *Bot) SendNotification(sendable *sendables.Sendable, user *users.User, 
 
 	// Set monospacing based on notification type
 	monospaced := false
+
 	if sendable.NotificationType == "postpone" {
 		monospaced = true
 	}

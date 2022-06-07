@@ -78,7 +78,7 @@ func (tg *Bot) Initialize(token string) {
 	tg.Bot.Handle(&tb.InlineButton{Unique: "schedule"}, tg.scheduleHandler)
 	tg.Bot.Handle(&tb.InlineButton{Unique: "stats"}, tg.statsHandler)
 	tg.Bot.Handle(&tb.InlineButton{Unique: "settings"}, tg.settingsCallback)
-	tg.Bot.Handle(&tb.InlineButton{Unique: "countryCodeView"}, tg.countryCodeListCallback)
+	tg.Bot.Handle(&tb.InlineButton{Unique: "countryCodeView"}, tg.settingsCountryCodeView)
 	tg.Bot.Handle(&tb.InlineButton{Unique: "notificationToggle"}, tg.notificationToggleCallback)
 	tg.Bot.Handle(&tb.InlineButton{Unique: "muteToggle"}, tg.muteCallback)
 	tg.Bot.Handle(&tb.InlineButton{Unique: "expand"}, tg.expandMessageContent)

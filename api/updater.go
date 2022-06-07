@@ -126,7 +126,7 @@ func Updater(session *config.Session, scheduleNext bool) bool {
 	}
 
 	// Update hot launch cache
-	session.Cache.Update(launches)
+	session.Cache.UpdateWithNew(launches)
 	log.Debug().Msg("➙ Hot launch cache updated")
 
 	// Update on-disk database
