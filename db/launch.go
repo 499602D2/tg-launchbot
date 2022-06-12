@@ -768,6 +768,8 @@ func (launch *Launch) PostponeNotificationMessage(postponedBy int64) (string, tb
 		utils.Monospaced(durafmt.Parse(untilLaunch).LimitFirstN(2).String()),
 	)
 
+	text = utils.PrepareInputForMarkdown(text, "text")
+
 	muteBtn := tb.InlineButton{
 		Unique: "muteToggle",
 		Text:   "🔇 Mute launch",
