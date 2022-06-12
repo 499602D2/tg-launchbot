@@ -77,7 +77,6 @@ func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds 
 				if userId == recipientUser.Id {
 					/* User is a current recipient and has a previously received
 					notification, add to list of removals */
-					log.Debug().Msgf("User=%s found in previouslySentIds", userId)
 					removalRecipients = append(removalRecipients, recipientUser)
 					removalIdPairs[userId] = msgId
 
