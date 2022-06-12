@@ -16,12 +16,13 @@ type Postpone struct {
 }
 
 type Notification struct {
-	Type       string   // In (24h, 12h, 1h, 5min, postpone)
-	SendTime   int64    // Unix-time of the notification
-	AllSent    bool     // All notifications sent already?
-	LaunchId   string   // Launch ID associated
-	LaunchName string   // Name of launch
-	LaunchNET  int64    // NET of launch
+	Type       string // In (24h, 12h, 1h, 5min, postpone)
+	SendTime   int64  // Unix-time of the notification
+	AllSent    bool   // All notifications sent already?
+	LaunchId   string // Launch ID associated
+	LaunchName string // Name of launch
+	LaunchNET  int64  // NET of launch
+	IsHolding  bool
 	Count      int      // If more than one, list their count
 	IDs        []string // If more than one, include their IDs here
 }

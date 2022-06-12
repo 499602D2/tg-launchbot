@@ -151,6 +151,11 @@ func (cache *Cache) FindNextNotification() *Notification {
 				continue
 			}
 
+			// Set holding flag
+			if launch.Status.Abbrev == "Hold" {
+				next.IsHolding = true
+			}
+
 			if (next.SendTime < earliestTime) || (earliestTime == 0) {
 				// If send-time is smaller than last earliestTime, delete old key and insert
 				delete(notificationTimes, earliestTime)
@@ -285,6 +290,12 @@ func (cache *Cache) NextScheduledUpdateIn() (time.Duration, *Notification) {
 		// Default case, needed for debugging without a working database
 		log.Error().Msgf("Next notification's type fell through: %#v", notification)
 		autoUpdateIn = time.Hour * 6
+	}
+
+	if notification.IsHolding {
+		// If the launch is holding, we're very close to launch: update more often
+		log.Debug().Msgf("Launch is holding, modifying auto-update time to 15 minutes")
+		autoUpdateIn = time.Minute * 15
 	}
 
 	return autoUpdateIn, notification
