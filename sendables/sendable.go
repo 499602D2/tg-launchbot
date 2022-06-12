@@ -169,6 +169,8 @@ func TextOnlySendable(txt string, user *users.User) *Sendable {
 	return &sendable
 }
 
+// Create a simple sendable for message removal. Only the launch ID and
+// platform of the sendable are re-used.
 func SendableForMessageRemoval(senderSendable *Sendable, msgIdMap map[string]string) *Sendable {
 	sendable := Sendable{
 		Type:       Delete,

@@ -50,6 +50,13 @@ func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds 
 		log.Error().Err(err).Msgf("Unable to find launch while saving sent message IDs")
 	}
 
+	// Persist old notification IDs, if the user is not a current recipient
+	filteredNotificationIds := sentIds
+
+	// Users and ID-pairs for removal
+	removalRecipients := []*users.User{}
+	removalIdPairs := map[string]string{}
+
 	// If launch has previously sent notifications, delete them
 	if launch.SentNotificationIds != "" {
 		log.Info().Msgf("Launch has previously sent notifications, removing...")
@@ -57,13 +64,40 @@ func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds 
 		// Load IDs of previously sent notifications
 		previouslySentIds := launch.LoadSentNotificationIdMap()
 
-		// Create a sendable for removing mass-notifications
-		deletionSendable := sendables.SendableForMessageRemoval(sendable, previouslySentIds)
+		/* Get notification IDs that will not be deleted, i.e. all users who did
+		not receive a notification now. Effectively, we just add certain IDs to
+		the sentIds map.
 
-		/* Re-use recipients. A user may not have received any notifications,
-		but trying the removal for all recipients is safe as no-one on the list
-		can have the launch muted. */
-		deletionSendable.Recipients = sendable.Recipients
+		The previouslySentIds map effectively has "extra" recipients, which are not
+		found in the current recipient list. */
+		var userFound bool
+		for userId, msgId := range previouslySentIds {
+			userFound = false
+			for _, recipientUser := range sendable.Recipients {
+				if userId == recipientUser.Id {
+					/* User is a current recipient and has a previously received
+					notification, add to list of removals */
+					log.Debug().Msgf("User=%s found in previouslySentIds", userId)
+					removalRecipients = append(removalRecipients, recipientUser)
+					removalIdPairs[userId] = msgId
+
+					userFound = true
+					continue
+				}
+			}
+
+			if !userFound {
+				// User not found in recipients: persist the id-pair
+				log.Debug().Msgf("Persisting user=%s in sent notification ids (message=%s)", userId, msgId)
+				filteredNotificationIds = append(filteredNotificationIds, fmt.Sprintf("%s:%s", userId, msgId))
+			}
+		}
+
+		// Create a sendable for removing mass-notifications
+		deletionSendable := sendables.SendableForMessageRemoval(sendable, removalIdPairs)
+
+		// Set recipients, as in users that will have a previous notification removed
+		deletionSendable.Recipients = removalRecipients
 
 		// Enqueue the sendable for removing the old notifications
 		tg.Enqueue(deletionSendable, false)
@@ -74,7 +108,7 @@ func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds 
 
 	// Save the IDs of the sent notifications
 	log.Debug().Msg("Saving sent notification IDs")
-	launch.SaveSentNotificationIds(sentIds, tg.Db)
+	launch.SaveSentNotificationIds(filteredNotificationIds, tg.Db)
 
 	log.Debug().Msg("Notification post-processing completed")
 
