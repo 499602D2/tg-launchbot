@@ -2,6 +2,7 @@ package api
 
 import (
 	"launchbot/db"
+	"math"
 	"runtime"
 	"sort"
 	"strings"
@@ -77,7 +78,7 @@ func netParser(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
 
 	// NETs differ and launch has not launched yet
 	if freshLaunch.NETUnix != cacheLaunch.NETUnix && !freshLaunch.Launched {
-		netSlip := freshLaunch.NETUnix - cacheLaunch.NETUnix
+		netSlip := int64(math.Abs(float64(freshLaunch.NETUnix - cacheLaunch.NETUnix)))
 
 		// If no notifications have been sent, the postponement does not matter
 		if !cacheLaunch.NotificationState.AnyNotificationsSent() {
@@ -98,7 +99,7 @@ func netParser(cache *db.Cache, freshLaunch *db.Launch) (bool, db.Postpone) {
 			return true, db.Postpone{PostponedBy: netSlip, ResetStates: resetStates}
 		}
 
-		log.Debug().Msgf("Launch NET moved, but no states were reset despite notifications having been previously sent")
+		log.Debug().Msgf("Launch NET moved by %d seconds, but no states were reset", netSlip)
 	}
 
 	return false, db.Postpone{}
