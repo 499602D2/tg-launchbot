@@ -227,6 +227,10 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 		// Not really an error, as a user may have manually deleted a mesage
 		return false
 
+	case tb.ErrNoRightsToDelete:
+		log.Error().Err(err).Msg("No rights to remove message in chat")
+		return false
+
 	case tb.ErrTooLongMarkup:
 		warnUnhandled(tg, err, false)
 
