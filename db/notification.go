@@ -174,7 +174,7 @@ func (launch *Launch) NotificationRecipients(db *Database, notificationType stri
 	return recipients
 }
 
-// Load IDs of sent notifications into a map
+// Load IDs of sent notifications into a map of user_id:sent_message_id
 func (launch *Launch) LoadSentNotificationIdMap() map[string]string {
 	sentIds := map[string]string{}
 
