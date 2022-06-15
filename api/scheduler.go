@@ -258,7 +258,15 @@ func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunc
 	// Do not do an API update if the delta between the notification and API update is minor
 	var slip time.Duration
 	if notification.IsHolding || (notification.Type == "5min" || notification.Type == "1h") {
-		slip = time.Second * time.Duration(int64(untilNotification.Seconds()*0.1))
+		switch notification.Type {
+		case "5min":
+			slip = time.Minute * time.Duration(5)
+		case "1h":
+			slip = time.Minute * time.Duration(15)
+		default:
+			// If holding
+			slip = time.Minute * time.Duration(5)
+		}
 	}
 
 	/* Compare the scheduled update to the notification send-time, and use
@@ -273,7 +281,6 @@ func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunc
 	if (time.Until(autoUpdateTime) > (untilNotification + slip)) && (untilNotification.Minutes() > -5.0) {
 		log.Info().Msgf("A notification (type=%s) is coming up before next API update, scheduling...",
 			notification.Type)
-		log.Debug().Msgf("-> Slip set to %.1f seconds", slip.Seconds())
 
 		// Save stats
 		session.Telegram.Stats.NextApiUpdate = time.Now().Add(untilNotification)
