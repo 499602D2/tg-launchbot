@@ -759,16 +759,19 @@ func (launch *Launch) PostponeNotificationMessage(postponedBy int64) (string, tb
 
 	// Text for the postpone notification
 	text := fmt.Sprintf(
-		"📣 *%s* has been postponed by %s\n\n"+
-			"📅 *New date* $USERDATE\n"+
-			"⏳ *Until launch* %s\n",
+		"📢 *%s %s* has been postponed by %s. Next launch attempt in %s.\n\n"+
 
+			"📅 Launch date $USERDATE\n"+
+			"ℹ️ _You will be re-notified of this launch._",
+
+		launch.LaunchProvider.ShortName(),
 		launch.HeaderName(),
-		durafmt.ParseShort(time.Duration(postponedBy)*time.Second),
-		utils.Monospaced(durafmt.Parse(untilLaunch).LimitFirstN(2).String()),
+
+		durafmt.Parse(time.Second*time.Duration(postponedBy)).LimitFirstN(2).String(),
+		durafmt.Parse(untilLaunch).LimitFirstN(2).String(),
 	)
 
-	text = utils.PrepareInputForMarkdown(text, "text")
+	text = utils.PrepareInputForMarkdown(text, "italictext")
 
 	muteBtn := tb.InlineButton{
 		Unique: "muteToggle",
