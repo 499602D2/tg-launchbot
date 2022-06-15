@@ -385,7 +385,7 @@ func (tg *Bot) NotificationWorker(id int, jobChannel chan MessageJob) {
 			tg.Quit.WaitGroup.Done()
 		}
 
-		log.Debug().Msgf("[Worker=%d] Processed job (%s)", id, job.Id)
+		// log.Debug().Msgf("[Worker=%d] Processed job (%s)", id, job.Id)
 	}
 
 	tg.Quit.Channel <- id
