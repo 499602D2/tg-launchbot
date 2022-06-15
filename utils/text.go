@@ -82,7 +82,7 @@ func NotificationToggleCallbackString(newState bool) string {
 /*
 Prepares textual input for Telegram's Markdown parser.
 
-Mode is "text" or "link".
+Mode is "text", "italictext", "link".
 
 Ref: https://core.telegram.org/bots/api#markdownv2-style
 */
