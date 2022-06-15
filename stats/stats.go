@@ -78,7 +78,7 @@ func (stats *Statistics) String() string {
 			"Storage used: %s\n\n"+
 
 			"🌍 *Server information*\n"+
-			"Bot started %s\n"+
+			"Bot started %s ago\n"+
 			"Average rate-limit %s\n"+
 			"GITHUBLINK",
 
@@ -91,7 +91,7 @@ func (stats *Statistics) String() string {
 		dbLastUpdated, nextNotification, humanize.Bytes(uint64(stats.DbSize)),
 
 		// Server information
-		humanize.Time(stats.StartedAt),
+		durafmt.Parse(time.Since(stats.StartedAt)).LimitFirstN(2).String(),
 		humanize.SIWithDigits(stats.LimitsAverage, 1, "s"),
 	)
 
