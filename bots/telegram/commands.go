@@ -635,7 +635,7 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 			}
 		}
 
-		if toggleTo == true {
+		if toggleTo {
 			cbResponseText = "🔇 Launch muted!"
 		} else {
 			cbResponseText = "🔊 Launch unmuted! You will now receive notifications for this launch."
