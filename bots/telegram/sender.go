@@ -177,9 +177,12 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan Messa
 	switch sendable.Type {
 	case sendables.Delete:
 		// Wait for all workers to finish before calculating processing time
+		log.Debug().Msgf("Waiting for all deletion processes to finish...")
 		for i := 0; i < len(sendable.Recipients); i++ {
 			<-results
 		}
+
+		log.Debug().Msgf("Deletions done!")
 
 		// Close results channel
 		close(results)
@@ -367,7 +370,6 @@ func (tg *Bot) NotificationWorker(id int, jobChannel chan MessageJob) {
 		case sendables.Notification:
 			// Send notification, get sent ID
 			idPair, success := tg.SendNotification(job.Sendable, job.Recipient, 0)
-			job.Results <- idPair
 
 			if success {
 				job.Recipient.Stats.ReceivedNotifications++
@@ -375,6 +377,8 @@ func (tg *Bot) NotificationWorker(id int, jobChannel chan MessageJob) {
 				log.Warn().Msgf("[Worker=%d] Sending notification to chat=%s failed [%s]",
 					id, job.Recipient.Id, job.Id)
 			}
+
+			job.Results <- idPair
 
 		case sendables.Delete:
 			tg.DeleteNotificationMessage(job.Sendable, job.Recipient)
@@ -385,7 +389,7 @@ func (tg *Bot) NotificationWorker(id int, jobChannel chan MessageJob) {
 			tg.Quit.WaitGroup.Done()
 		}
 
-		// log.Debug().Msgf("[Worker=%d] Processed job (%s)", id, job.Id)
+		log.Debug().Msgf("[Worker=%d] Processed job (%s)", id, job.Id)
 	}
 
 	tg.Quit.Channel <- id
