@@ -88,8 +88,6 @@ func warnUnhandled(tg *Bot, err error, wasGeneric bool) {
 	} else {
 		log.Error().Err(err).Msg("Unhandled Telegram error")
 	}
-
-	notifyAdminOfError(tg, err, wasGeneric)
 }
 
 // A generic error handler
