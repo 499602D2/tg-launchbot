@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"launchbot/config"
 	"launchbot/db"
+	"math"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -69,16 +70,19 @@ func apiCall(client *resty.Client, useDevEndpoint bool) (*db.LaunchUpdate, error
 func updateWrapper(session *config.Session, scheduleNext bool) {
 	log.Debug().Msgf("Running updateWrapper with scheduleNext=%v", scheduleNext)
 
+	// Log start-time for failures
+	startTime := time.Now()
+
 	// Run updater in a re-try loop
-	for i := 0; ; i++ {
+	for i := 1; ; i++ {
 		// Check for success
 		success := Updater(session, scheduleNext)
 
 		if !success {
-			// If updater failed, do exponential back-off (1 min -> 2 min -> 4 min...)
-			retryAfter := 60*2 ^ i
+			// If updater failed, do exponential back-off
+			retryAfter := math.Pow(2.0, float64(i))
 
-			log.Warn().Msgf("Re-try number %d failed, trying again in %d minutes", i, retryAfter)
+			log.Warn().Msgf("Re-try number %d failed, trying again in %.1f seconds", i, retryAfter)
 
 			// Sleep, continue loop
 			time.Sleep(time.Duration(retryAfter) * time.Second)
@@ -86,7 +90,8 @@ func updateWrapper(session *config.Session, scheduleNext bool) {
 		}
 
 		if i > 0 {
-			log.Debug().Msgf("Update succeeded after %d attempt(s)", i+1)
+			log.Debug().Msgf("Update succeeded after %d attempt(s), took %s",
+				i, durafmt.Parse(time.Since(startTime)).LimitFirstN(2).String())
 		}
 
 		break
@@ -99,7 +104,7 @@ func updateWrapper(session *config.Session, scheduleNext bool) {
 func Updater(session *config.Session, scheduleNext bool) bool {
 	// Create http-client
 	client := resty.New()
-	client.SetTimeout(time.Duration(1 * time.Minute))
+	client.SetTimeout(time.Duration(30 * time.Second))
 	client.SetHeader(
 		"user-agent", fmt.Sprintf("%s (telegram @%s)", session.Github, session.Telegram.Username),
 	)
