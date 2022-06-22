@@ -110,8 +110,6 @@ func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds 
 	launch.SaveSentNotificationIds(filteredNotificationIds, tg.Db)
 
 	log.Debug().Msg("Notification post-processing completed")
-
-	// Waitgroup done (added when NotificationPostProcessing is called)
 	tg.Quit.WaitGroup.Done()
 }
 
@@ -195,7 +193,6 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan Messa
 		log.Info().Msgf("Average deletion-rate %.1f msg/sec",
 			float64(len(sendable.MessageIDs))/timeSpent.Seconds())
 
-		tg.Quit.WaitGroup.Done()
 		return
 	}
 
@@ -227,11 +224,7 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan Messa
 		float64(len(sentIds))/timeSpent.Seconds())
 
 	// Post-process the notification send, in a go-routine to avoid blocking
-	tg.Quit.WaitGroup.Add(1)
 	go tg.NotificationPostProcessing(sendable, sentIds)
-
-	// Done
-	tg.Quit.WaitGroup.Done()
 }
 
 // CommandSender sends high-priority command replies.
@@ -442,8 +435,9 @@ func (tg *Bot) ThreadedSender() {
 		case sendable, ok := <-tg.NotificationQueue:
 			if ok {
 				// In the case of notifications, pre-process them first
-				tg.Quit.WaitGroup.Add(1)
+				tg.Quit.WaitGroup.Add(2)
 				tg.ProcessSendable(sendable, workPool)
+				tg.Quit.WaitGroup.Done()
 			}
 
 		case sendable, ok := <-tg.CommandQueue:
