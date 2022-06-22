@@ -435,7 +435,15 @@ func (tg *Bot) ThreadedSender() {
 		case sendable, ok := <-tg.NotificationQueue:
 			if ok {
 				// In the case of notifications, pre-process them first
-				tg.Quit.WaitGroup.Add(2)
+				switch sendable.Type {
+				case sendables.Delete:
+					tg.Quit.WaitGroup.Add(1)
+				case sendables.Notification:
+					tg.Quit.WaitGroup.Add(2)
+				default:
+					log.Warn().Msgf("Unknown sendable type in ThreadedSender: %s", sendable.Type)
+				}
+
 				tg.ProcessSendable(sendable, workPool)
 				tg.Quit.WaitGroup.Done()
 			}
