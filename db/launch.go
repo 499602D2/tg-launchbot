@@ -606,7 +606,10 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool, botUser
 		var row string
 		for i, launch := range launchList {
 			if i == 3 {
-				message += fmt.Sprintf("*+ %d more %s*\n", len(launchList)-i, english.Plural(int(len(launchList)-i), "flight", "flights"))
+				message += fmt.Sprintf("*+ %d more %s*\n",
+					len(launchList)-i,
+					english.PluralWord(int(len(launchList)-i), "flight", "flights"),
+				)
 				break
 			}
 
