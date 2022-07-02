@@ -38,6 +38,7 @@ var LSPShorthands = map[int]LSP{
 	1024: {Name: "Virgin Galactic", Flag: "🇺🇸", Cc: "USA"},
 	1029: {Name: "TiSPACE", Flag: "🇹🇼", Cc: "TWN"},
 	1030: {Name: "ABL", Flag: "🇺🇸", Cc: "USA"},
+	1038: {Name: "ELA", Flag: "🇦🇺", Cc: "AUS"},
 }
 
 // Map country codes to a list of provider IDs under this country code
@@ -49,14 +50,15 @@ var IdByCountryCode = map[string][]int{
 	"IND": {31, 190},
 	"JPN": {37, 98, 1002},
 	"TWN": {1029},
+	"AUS": {1038},
 }
 
 // List of available countries (EU is effectively a faux-country)
-var CountryCodes = []string{"USA", "EU", "CHN", "RUS", "IND", "JPN", "TWN"}
+var CountryCodes = []string{"USA", "EU", "CHN", "RUS", "IND", "JPN", "TWN", "AUS"}
 
 var CountryCodeToName = map[string]string{
 	"USA": "USA 🇺🇸", "EU": "EU 🇪🇺", "CHN": "China 🇨🇳", "RUS": "Russia 🇷🇺",
-	"IND": "India 🇮🇳", "JPN": "Japan 🇯🇵", "TWN": "Taiwan 🇹🇼",
+	"IND": "India 🇮🇳", "JPN": "Japan 🇯🇵", "TWN": "Taiwan 🇹🇼", "AUS": "Australia 🇦🇺",
 }
 
 type LSP struct {
