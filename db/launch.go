@@ -825,7 +825,7 @@ func (launch *Launch) PostponeNotificationSendable(db *Database, postpone Postpo
 			if reset {
 				// If state was reset, check if user was subscribed to this type
 				if userStates[strings.ReplaceAll(state, "Sent", "")] {
-					log.Debug().Msgf("User=%s has enabled reset_state=%s, adding to recipients", user.Id, state)
+					// log.Debug().Msgf("User=%s has enabled reset_state=%s, adding to recipients", user.Id, state)
 					filteredRecipients = append(filteredRecipients, user)
 					break
 				} else {
