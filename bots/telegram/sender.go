@@ -335,7 +335,7 @@ func (tg *Bot) SendNotification(sendable *sendables.Sendable, user *users.User, 
 		}
 
 		// Error is recoverable: try sending again twice
-		log.Warn().Msgf("Recoverable error in sender (re-try count = %d", retryCount)
+		log.Warn().Msgf("Recoverable error in sender (re-try count = %d)", retryCount)
 		if retryCount < 3 {
 			log.Debug().Msgf("Trying to send again...")
 			return tg.SendNotification(sendable, user, retryCount+1)
