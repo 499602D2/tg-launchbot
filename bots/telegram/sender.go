@@ -113,6 +113,7 @@ func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds 
 	launch.SaveSentNotificationIds(filteredNotificationIds, tg.Db)
 
 	log.Debug().Msg("Notification post-processing completed")
+	log.Debug().Msg("WaitGroup done (NotificationPostProcessing)")
 	tg.Quit.WaitGroup.Done()
 }
 
@@ -484,7 +485,7 @@ func (tg *Bot) ThreadedSender() {
 				tg.ProcessSendable(sendable, workPool)
 				log.Debug().Msg("Exited from ProcessSendable()")
 				tg.Quit.WaitGroup.Done()
-				log.Debug().Msg("WaitGroup done")
+				log.Debug().Msg("WaitGroup done (ThreadedSender)")
 			}
 
 		case sendable, ok := <-tg.CommandQueue:
