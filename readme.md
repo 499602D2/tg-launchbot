@@ -208,7 +208,13 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 
 	- ✅ Add some group-specific settings, e.g. command permissions
 
-	## 3.1 and onwards
+	## 3.1 / threaded sender (June 2022)
+
+	- ✅ Implements a threaded sender, achieving much higher send-rates
+	
+	- ✅ General improvements and bug-fixes
+
+	## 3.2 and onwards
 
 	- [ ] Inline queries (should be trivial to do)
 
