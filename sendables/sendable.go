@@ -16,7 +16,7 @@ import (
 // they will be sent.
 type Sendable struct {
 	Platform         string            // tg, dg
-	Type             Type              // sendables.Type (Notification, Command, Callback, Delete)
+	Type             Type              // sendables.Type (Notification, Command, Delete)
 	IsHighPriority   bool              // High-priority flag (anything that's not a notification)
 	NotificationType string            // 24h, 12h, 1h, 5min
 	LaunchId         string            // Launch ID associated with this sendable
