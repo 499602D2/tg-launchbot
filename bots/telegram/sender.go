@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"launchbot/sendables"
 	"launchbot/users"
+	"os"
+	"runtime/debug"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/hako/durafmt"
@@ -172,8 +175,7 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan Messa
 	}
 
 	// If this was a deletion, we can return early
-	switch sendable.Type {
-	case sendables.Delete:
+	if sendable.Type == sendables.Delete {
 		// Wait for all workers to finish before calculating processing time
 		log.Debug().Msgf("Waiting for all deletion processes to finish...")
 		for i := 0; i < len(sendable.Recipients); i++ {
@@ -193,6 +195,7 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan Messa
 		log.Info().Msgf("Average deletion-rate %.1f msg/sec",
 			float64(len(sendable.MessageIDs))/timeSpent.Seconds())
 
+		log.Info().Msgf("Returning from ProcessSendable... Sendable=%+v", sendable)
 		return
 	}
 
@@ -406,6 +409,40 @@ func (tg *Bot) Close(workPool chan MessageJob, workerCount int) {
 
 // ThreadedSender listens on a channel for incoming sendables
 func (tg *Bot) ThreadedSender() {
+	// Add a deferred function that runs if we panic
+	defer func() {
+		if err := recover(); err != nil {
+			log.Error().Msgf("Ran into an exception in ThreadedSender, err: %v", err)
+
+			// Attempt logging the stack
+			log.Error().Msgf("%s", string(debug.Stack()[:]))
+
+			// Attempt a graceful exit
+			log.Warn().Msg("Sending SIGINT...")
+			err := syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+
+			if err != nil {
+				log.Error().Err(err).Msgf("Error sending SIGINT signal: exiting...")
+				os.Exit(0)
+			}
+
+			// Sleep so the main function has time to capture the signal
+			time.Sleep(time.Second)
+
+			// Read the signal sent by the main function, set quit process as finalized
+			<-tg.Quit.Channel
+			tg.Quit.Finalized = true
+
+			// Signal went through: lock the mutex, sleep for a while
+			tg.Quit.Mutex.Lock()
+			time.Sleep(time.Second)
+
+			// Unlock the mutex so the main function can acquire a lock and receive the final signal
+			tg.Quit.Mutex.Unlock()
+			tg.Quit.Channel <- -1
+		}
+	}()
+
 	// Queue for mass-sends, e.g. notifications and deletions
 	tg.NotificationQueue = make(chan *sendables.Sendable)
 
@@ -445,7 +482,9 @@ func (tg *Bot) ThreadedSender() {
 				}
 
 				tg.ProcessSendable(sendable, workPool)
+				log.Debug().Msg("Exited from ProcessSendable()")
 				tg.Quit.WaitGroup.Done()
+				log.Debug().Msg("WaitGroup done")
 			}
 
 		case sendable, ok := <-tg.CommandQueue:

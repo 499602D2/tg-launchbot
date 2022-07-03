@@ -6,6 +6,7 @@ import (
 	"launchbot/api"
 	"launchbot/config"
 	"launchbot/logs"
+	"launchbot/sendables"
 	"os"
 	"os/signal"
 	"syscall"
@@ -22,7 +23,7 @@ import (
 // Injected at build-time
 var GitSHA = "0000000000"
 
-const version = "3.1.18"
+const version = "3.1.19"
 
 // Listens for incoming interrupt signals
 func signalListener(session *config.Session) {
@@ -162,7 +163,18 @@ func main() {
 
 	// Start the bot in a go-routine
 	go session.Telegram.Bot.Start()
+
 	log.Info().Msgf("Telegram bot started (@%s)", session.Telegram.Username)
+
+	if session.Telegram.Owner != 0 {
+		// If owner is configured, notify of startup
+		startSendable := sendables.TextOnlySendable(
+			"🤖 LaunchBot started",
+			session.Db.LoadUser(fmt.Sprint(session.Telegram.Owner), "tg"),
+		)
+
+		session.Telegram.Enqueue(startSendable, true)
+	}
 
 	for {
 		time.Sleep(time.Second * 60)
