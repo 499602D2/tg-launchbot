@@ -42,6 +42,9 @@ func (tg *Bot) Enqueue(sendable *sendables.Sendable, isCommand bool) {
 
 // Post-processing after a notification has been successfully sent
 func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds []string) {
+	// Add a deferred function that runs if we panic
+	defer tg.gracefulPanic(sendable)
+
 	// Update statistics, save to disk
 	tg.Stats.Notifications += len(sentIds)
 	tg.Db.SaveStatsToDisk(tg.Stats)
@@ -384,6 +387,9 @@ func (tg *Bot) NotificationWorker(id int, jobChannel chan MessageJob) {
 		case sendables.Command:
 			tg.SendCommand(job.Sendable.Message, job.Recipient)
 			tg.Quit.WaitGroup.Done()
+
+		default:
+			log.Warn().Msgf("Invalide sendable type in NotificationWorker: %+v", job.Sendable)
 		}
 
 		// log.Debug().Msgf("[Worker=%d] Processed job (%s)", id, job.Id)
@@ -408,41 +414,47 @@ func (tg *Bot) Close(workPool chan MessageJob, workerCount int) {
 	log.Debug().Msg("All channels closed")
 }
 
+func (tg *Bot) gracefulPanic(sendable *sendables.Sendable) {
+	if err := recover(); err != nil {
+		log.Error().Msgf("Ran into an exception in ThreadedSender, err: %+v", err)
+
+		if sendable != nil {
+			log.Error().Msgf("Sendable associated with this error: %+v", sendable)
+		}
+
+		// Attempt logging the stack
+		log.Error().Msgf("%s", string(debug.Stack()[:]))
+
+		// Attempt a graceful exit
+		log.Warn().Msg("Sending SIGINT...")
+		err := syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+
+		if err != nil {
+			log.Error().Err(err).Msgf("Error sending SIGINT signal: exiting...")
+			os.Exit(0)
+		}
+
+		// Sleep so the main function has time to capture the signal
+		time.Sleep(time.Second)
+
+		// Read the signal sent by the main function, set quit process as finalized
+		<-tg.Quit.Channel
+		tg.Quit.Finalized = true
+
+		// Signal went through: lock the mutex, sleep for a while
+		tg.Quit.Mutex.Lock()
+		time.Sleep(time.Second)
+
+		// Unlock the mutex so the main function can acquire a lock and receive the final signal
+		tg.Quit.Mutex.Unlock()
+		tg.Quit.Channel <- -1
+	}
+}
+
 // ThreadedSender listens on a channel for incoming sendables
 func (tg *Bot) ThreadedSender() {
 	// Add a deferred function that runs if we panic
-	defer func() {
-		if err := recover(); err != nil {
-			log.Error().Msgf("Ran into an exception in ThreadedSender, err: %v", err)
-
-			// Attempt logging the stack
-			log.Error().Msgf("%s", string(debug.Stack()[:]))
-
-			// Attempt a graceful exit
-			log.Warn().Msg("Sending SIGINT...")
-			err := syscall.Kill(syscall.Getpid(), syscall.SIGINT)
-
-			if err != nil {
-				log.Error().Err(err).Msgf("Error sending SIGINT signal: exiting...")
-				os.Exit(0)
-			}
-
-			// Sleep so the main function has time to capture the signal
-			time.Sleep(time.Second)
-
-			// Read the signal sent by the main function, set quit process as finalized
-			<-tg.Quit.Channel
-			tg.Quit.Finalized = true
-
-			// Signal went through: lock the mutex, sleep for a while
-			tg.Quit.Mutex.Lock()
-			time.Sleep(time.Second)
-
-			// Unlock the mutex so the main function can acquire a lock and receive the final signal
-			tg.Quit.Mutex.Unlock()
-			tg.Quit.Channel <- -1
-		}
-	}()
+	defer tg.gracefulPanic(nil)
 
 	// Queue for mass-sends, e.g. notifications and deletions
 	tg.NotificationQueue = make(chan *sendables.Sendable)
