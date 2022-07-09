@@ -172,6 +172,7 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan Messa
 						}
 					}
 				}
+
 			default:
 				break
 			}
@@ -231,6 +232,7 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan Messa
 		float64(len(sentIds))/timeSpent.Seconds())
 
 	// Post-process the notification send, in a go-routine to avoid blocking
+	log.Debug().Msgf("Entering NotificationPostProcessing, sendable.Type==%s", sendable.Type)
 	go tg.NotificationPostProcessing(sendable, sentIds)
 }
 
@@ -488,7 +490,9 @@ func (tg *Bot) ThreadedSender() {
 				switch sendable.Type {
 				case sendables.Delete:
 					tg.Quit.WaitGroup.Add(1)
+					log.Debug().Msg("Case sendables.Delete: adding 1 to waitgroup...")
 				case sendables.Notification:
+					log.Debug().Msg("Case sendables.Delete: adding 2 to waitgroup...")
 					tg.Quit.WaitGroup.Add(2)
 				default:
 					log.Warn().Msgf("Unknown sendable type in ThreadedSender: %s", sendable.Type)
