@@ -492,7 +492,7 @@ func (tg *Bot) ThreadedSender() {
 					tg.Quit.WaitGroup.Add(1)
 					log.Debug().Msg("Case sendables.Delete: adding 1 to waitgroup...")
 				case sendables.Notification:
-					log.Debug().Msg("Case sendables.Delete: adding 2 to waitgroup...")
+					log.Debug().Msg("Case sendables.Notification: adding 2 to waitgroup...")
 					tg.Quit.WaitGroup.Add(2)
 				default:
 					log.Warn().Msgf("Unknown sendable type in ThreadedSender: %s", sendable.Type)
