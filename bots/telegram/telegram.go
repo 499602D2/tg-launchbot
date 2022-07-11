@@ -36,7 +36,7 @@ type Quit struct {
 	Started       bool
 	Finalized     bool
 	ExitedWorkers int
-	WaitGroup     sync.WaitGroup
+	WaitGroup     *sync.WaitGroup
 	Mutex         sync.Mutex
 }
 

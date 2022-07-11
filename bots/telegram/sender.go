@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime/debug"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -116,7 +117,7 @@ func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds 
 	launch.SaveSentNotificationIds(filteredNotificationIds, tg.Db)
 
 	log.Debug().Msg("Notification post-processing completed")
-	log.Debug().Msg("WaitGroup done (NotificationPostProcessing)")
+	log.Debug().Msgf("WaitGroup done (NotificationPostProcessing), sendable.Type=%s", sendable.Type)
 	tg.Quit.WaitGroup.Done()
 }
 
@@ -200,7 +201,7 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan Messa
 		log.Info().Msgf("Average deletion-rate %.1f msg/sec",
 			float64(len(sendable.MessageIDs))/timeSpent.Seconds())
 
-		log.Info().Msgf("Returning from ProcessSendable... Sendable=%+v", sendable)
+		log.Info().Msgf("Returning from ProcessSendable...")
 		return
 	}
 
@@ -391,7 +392,7 @@ func (tg *Bot) NotificationWorker(id int, jobChannel chan MessageJob) {
 			tg.Quit.WaitGroup.Done()
 
 		default:
-			log.Warn().Msgf("Invalide sendable type in NotificationWorker: %+v", job.Sendable)
+			log.Warn().Msgf("Invalide sendable type in NotificationWorker: %s", job.Sendable.Type)
 		}
 
 		// log.Debug().Msgf("[Worker=%d] Processed job (%s)", id, job.Id)
@@ -466,6 +467,7 @@ func (tg *Bot) ThreadedSender() {
 
 	// Channel listening for a quit signal
 	tg.Quit.Channel = make(chan int)
+	tg.Quit.WaitGroup = &sync.WaitGroup{}
 
 	/* Maximum worker-count during sending. Depending on what kind of day
 	Telegram's API is having, one worker will typically do anywhere from
