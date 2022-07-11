@@ -95,7 +95,7 @@ func Notify(launch *db.Launch, database *db.Database, username string) *sendable
 
 		if passed && ok {
 			// If flag has been set, and last type is flagged as unsent, update flag
-			if launch.NotificationState.Map[fmt.Sprintf("Sent%s", previousType)] == false {
+			if !launch.NotificationState.Map[fmt.Sprintf("Sent%s", previousType)] {
 				log.Debug().Msgf("Set %s to true for launch=%s", previousType, launch.Id)
 				launch.NotificationState.Map[fmt.Sprintf("Sent%s", previousType)] = true
 			}
