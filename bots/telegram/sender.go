@@ -124,6 +124,9 @@ func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds 
 // Process a notification or old notification removal. This path is not used
 // for command messages.
 func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan MessageJob) {
+	// Add a deferred function that runs if we panic
+	defer tg.gracefulPanic(sendable)
+
 	// Track average processing time for notifications and message deletions
 	processStartTime := time.Now()
 
