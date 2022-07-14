@@ -21,7 +21,7 @@ require (
 	github.com/stretchr/objx v0.4.0 // indirect
 	github.com/stretchr/testify v1.7.5 // indirect
 	golang.org/x/image v0.0.0-20220601225756-64ec528b34cd // indirect
-	golang.org/x/net v0.0.0-20220630215102-69896b714898 // indirect
+	golang.org/x/net v0.0.0-20220708220712-1185a9018129 // indirect
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f // indirect
 	gonum.org/v1/gonum v0.11.0 // indirect
 	gopkg.in/neurosnap/sentences.v1 v1.0.7 // indirect
@@ -40,9 +40,9 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.14 // indirect
 	github.com/procyon-projects/chrono v1.1.0
 	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d // indirect
-	golang.org/x/exp v0.0.0-20220613132600-b0d781184e0d
-	golang.org/x/sys v0.0.0-20220702020025-31831981b65f
+	golang.org/x/exp v0.0.0-20220713135740-79cabaa25d75
+	golang.org/x/sys v0.0.0-20220712014510-0a85c31ab51e
 	golang.org/x/time v0.0.0-20220609170525-579cf78fd858
-	gorm.io/driver/sqlite v1.3.5
-	gorm.io/gorm v1.23.7
+	gorm.io/driver/sqlite v1.3.6
+	gorm.io/gorm v1.23.8
 )
