@@ -168,7 +168,12 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan Messa
 			case prioritySendable, ok := <-tg.CommandQueue:
 				if ok {
 					log.Debug().Msgf("High-priority message in queue during notification send")
+
 					for n, priorityRecipient := range prioritySendable.Recipients {
+						// Add a job to the waitgroup
+						tg.Quit.WaitGroup.Add(1)
+
+						// Throw the job into the work pool
 						workPool <- MessageJob{
 							Sendable:  prioritySendable,
 							Recipient: priorityRecipient,
