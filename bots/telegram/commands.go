@@ -9,6 +9,7 @@ import (
 	"launchbot/utils"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bradfitz/latlong"
 	"github.com/dustin/go-humanize"
@@ -340,6 +341,10 @@ func (tg *Bot) statsHandler(ctx tb.Context) error {
 	// Reload some statistics
 	tg.Stats.DbSize = tg.Db.Size
 	tg.Stats.Subscribers = tg.Db.Subscribers
+
+	// Set next notification statistic
+	_, notification := tg.Cache.NextScheduledUpdateIn()
+	tg.Stats.NextNotification = time.Unix(notification.SendTime, 0)
 
 	// Get text content
 	textContent := tg.Stats.String()
