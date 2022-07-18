@@ -275,10 +275,10 @@ func (db *Database) SaveStatsToDisk(statistics *stats.Statistics) {
 
 // Load how many users have subscribed to any notifications
 func (db *Database) GetSubscriberCount() int64 {
-	// Select all chats with any notifications enabled, and at least one notification time enabled
+	// Select all chats with any notifications enabled, AND at least one notification time enabled
 	result := db.Conn.Where(
-		"(subscribed_all = ? OR subscribed_to != ?) AND "+
-			"(enabled24h != ? OR enabled12h != ? OR enabled1h != ? OR enabled5min != ?)",
+		"(subscribed_all = ? OR subscribed_to != ?) AND NOT "+
+			"(enabled24h == ? AND enabled12h == ? AND enabled1h == ? AND enabled5min == ?)",
 		1, "", 0, 0, 0, 0).Find(&[]users.User{})
 
 	return result.RowsAffected
