@@ -97,6 +97,15 @@ func (tg *Bot) adminFeedbackResponse(ctx tb.Context) error {
 	)
 
 	log.Debug().Msgf("Sent feedback response to user=%s", strings.Split(ctx.Data(), " ")[1])
+
+	// Send confirmation message to admin
+	tg.Enqueue(sendables.TextOnlySendable(
+		utils.PrepareInputForMarkdown(
+			fmt.Sprintf("📟 Response sent to *%s*", inputDataSplit[0]), "text"),
+		tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")),
+		true,
+	)
+
 	return nil
 }
 
