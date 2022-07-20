@@ -62,6 +62,44 @@ func (tg *Bot) adminCommand(ctx tb.Context) error {
 	return nil
 }
 
+// Admin-only command to respond to feedback messages (Simple direct messages to users)
+func (tg *Bot) adminFeedbackResponse(ctx tb.Context) error {
+	// Owner-only function
+	if !tg.senderIsOwner(ctx) {
+		log.Error().Msgf("/admin called by non-owner (%d in %d)", ctx.Sender().ID, ctx.Chat().ID)
+		return nil
+	}
+
+	// Split data
+	inputDataSplit := strings.Split(ctx.Data(), " ")
+
+	if len(inputDataSplit) == 1 {
+		tg.Enqueue(sendables.TextOnlySendable(
+			utils.PrepareInputForMarkdown("Incorrect data length. Format: /feedbackresponse [userId] [text...]", "text"),
+			tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")),
+			true,
+		)
+
+		return nil
+	}
+
+	text := fmt.Sprintf(
+		"📟 *Received a feedback response*\n\n"+
+			"%s\n\n"+
+			"_To respond to this message, use /feedback again._",
+		strings.Join(inputDataSplit[1:], " "),
+	)
+
+	tg.Enqueue(sendables.TextOnlySendable(
+		utils.PrepareInputForMarkdown(text, "italictext"),
+		tg.Cache.FindUser(inputDataSplit[0], "tg")),
+		true,
+	)
+
+	log.Debug().Msgf("Sent feedback response to user=%s", strings.Split(ctx.Data(), " ")[1])
+	return nil
+}
+
 // Handles the /start command when called directly
 func (tg *Bot) permissionedStart(ctx tb.Context) error {
 	// Load chat and generate the interaction
