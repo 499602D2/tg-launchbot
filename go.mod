@@ -29,7 +29,7 @@ require (
 require (
 	github.com/bradfitz/latlong v0.0.0-20170410180902-f3db6d0dff40
 	github.com/dustin/go-humanize v1.0.0
-	github.com/go-co-op/gocron v1.15.0
+	github.com/go-co-op/gocron v1.15.1
 	github.com/go-resty/resty/v2 v2.7.0
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
