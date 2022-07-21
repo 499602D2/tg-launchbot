@@ -1,5 +1,5 @@
 # LaunchBot – a rocket launch information and notifications bot for Telegram 🚀
-LaunchBot keeps you up to date with what's going up, around the clock, since 2019. Over 900'000 notifications delivered to thousands of chats and groups!
+LaunchBot keeps you up to date with what's going up, around the clock, since 2019. Over a million launch notifications delivered to thousands of chats and groups!
 
 Reachable as [@rocketrybot](https://t.me/rocketrybot) on Telegram.
 
