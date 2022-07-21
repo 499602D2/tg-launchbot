@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"gorm.io/gorm"
 )
 
 type User struct {
@@ -60,6 +61,36 @@ type UserList struct {
 	Platform string
 	Users    []*User
 	Mutex    sync.Mutex
+}
+
+// Saves a user into a database over Gorm
+func (user *User) SaveIntoDatabase(tx *gorm.DB) error {
+	// Load user
+	temp := User{}
+	result := tx.First(&temp, "Id = ? AND platform = ?", user.Id, user.Platform)
+
+	// Set time zone when function returns
+	defer user.SetTimeZone()
+
+	switch result.Error {
+	case nil:
+		// No errors: user exists, save
+		result = tx.Save(user)
+	case gorm.ErrRecordNotFound:
+		// Record doesn't exist: insert as new
+		result = tx.Create(user)
+	default:
+		// Other error: log
+		log.Error().Err(result.Error).Msgf("Error finding chat with id=%s:%s", user.Id, user.Platform)
+		return result.Error
+	}
+
+	if result.Error != nil {
+		log.Error().Err(result.Error).Msgf("Failed to save chat id=%s:%s", user.Id, user.Platform)
+		return result.Error
+	}
+
+	return nil
 }
 
 // Toggle mute for launch with id

@@ -8,7 +8,6 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // Clean any users from the cache that have not been active in a while
@@ -219,44 +218,39 @@ func (db *Database) LoadUser(id string, platform string) *users.User {
 	return &user
 }
 
-// Save user to disk
+// Save user to disk: a simple wrapper around the user-specific function
 func (db *Database) SaveUser(user *users.User) {
-	// Load user
-	temp := users.User{}
-	result := db.Conn.First(&temp, "Id = ? AND platform = ?", user.Id, user.Platform)
+	err := user.SaveIntoDatabase(db.Conn)
 
-	// Set time zone when function returns
-	defer user.SetTimeZone()
-
-	switch result.Error {
-	case nil:
-		// No errors: user exists, save
-		result = db.Conn.Save(user)
-	case gorm.ErrRecordNotFound:
-		// Record doesn't exist: insert as new
-		result = db.Conn.Create(user)
-	default:
-		// Other error: log
-		log.Error().Err(result.Error).Msgf("Error finding chat with id=%s:%s", user.Id, user.Platform)
-		return
-	}
-
-	if result.Error != nil {
-		log.Error().Err(result.Error).Msgf("Failed to save chat id=%s:%s", user.Id, user.Platform)
+	if err != nil {
+		log.Error().Err(err).Msgf("Saving user=%s failed (SaveUser)", user.Id)
 	}
 }
 
 // Save a batch of users to disk
 func (db *Database) SaveUserBatch(users []*users.User) {
-	// Do a single batch upsert (Update all columns, except primary keys, to new value on conflict)
-	// https://gorm.io/docs/create.html#Upsert-x2F-On-Conflict
-	result := db.Conn.Clauses(clause.OnConflict{
-		UpdateAll: true,
-	}).Create(&users)
+	// Count failures
+	failCount := 0
 
-	if result.Error != nil {
-		log.Error().Err(result.Error).Msg("Batch insert of users failed in SaveUserBatch")
+	// Save users in a single transaction
+	txErr := db.Conn.Transaction(func(tx *gorm.DB) error {
+		for _, user := range users {
+			err := user.SaveIntoDatabase(tx)
+
+			if err != nil {
+				failCount++
+			}
+		}
+
+		// Tx gets commited on a nil return
+		return nil
+	})
+
+	if txErr != nil {
+		log.Error().Err(txErr).Msgf("Error during batch transaction (SaveUserBatch)")
 	}
+
+	log.Debug().Msgf("Saved a batch of %d user(s) with %d error(s)", len(users), failCount)
 }
 
 // Remove a user from the database
