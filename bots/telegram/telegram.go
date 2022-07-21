@@ -69,7 +69,7 @@ func (tg *Bot) Initialize(token string) {
 	tg.Bot.Handle("/settings", tg.settingsHandler)
 	tg.Bot.Handle("/feedback", tg.feedbackHandler)
 	tg.Bot.Handle("/admin", tg.adminCommand)
-	tg.Bot.Handle("/feedbackresponse", tg.adminFeedbackResponse)
+	tg.Bot.Handle("/reply", tg.adminReply)
 
 	// Handler for fake notification requests
 	tg.Bot.Handle("/send", tg.fauxNotification)

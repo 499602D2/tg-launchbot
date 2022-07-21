@@ -63,7 +63,7 @@ func (tg *Bot) adminCommand(ctx tb.Context) error {
 }
 
 // Admin-only command to respond to feedback messages (Simple direct messages to users)
-func (tg *Bot) adminFeedbackResponse(ctx tb.Context) error {
+func (tg *Bot) adminReply(ctx tb.Context) error {
 	// Owner-only function
 	if !tg.senderIsOwner(ctx) {
 		log.Error().Msgf("/admin called by non-owner (%d in %d)", ctx.Sender().ID, ctx.Chat().ID)
@@ -71,11 +71,11 @@ func (tg *Bot) adminFeedbackResponse(ctx tb.Context) error {
 	}
 
 	// Split data
-	inputDataSplit := strings.Split(ctx.Data(), " ")
+	inputDataSplit := strings.Split(ctx.Text(), " ")
 
 	if len(inputDataSplit) == 1 {
 		tg.Enqueue(sendables.TextOnlySendable(
-			utils.PrepareInputForMarkdown("Incorrect data length. Format: /feedbackresponse [userId] [text...]", "text"),
+			utils.PrepareInputForMarkdown("Incorrect data length. Format: /reply [userId] [text...]", "text"),
 			tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")),
 			true,
 		)
@@ -87,21 +87,21 @@ func (tg *Bot) adminFeedbackResponse(ctx tb.Context) error {
 		"📟 *Received a feedback response*\n\n"+
 			"%s\n\n"+
 			"_To respond to this message, use /feedback again._",
-		strings.Join(inputDataSplit[1:], " "),
+		strings.Join(inputDataSplit[2:], " "),
 	)
 
 	tg.Enqueue(sendables.TextOnlySendable(
 		utils.PrepareInputForMarkdown(text, "italictext"),
-		tg.Cache.FindUser(inputDataSplit[0], "tg")),
+		tg.Cache.FindUser(inputDataSplit[1], "tg")),
 		true,
 	)
 
-	log.Debug().Msgf("Sent feedback response to user=%s", strings.Split(ctx.Data(), " ")[1])
+	log.Debug().Msgf("Sent feedback response to user=%s", strings.Split(ctx.Text(), " ")[1])
 
 	// Send confirmation message to admin
 	tg.Enqueue(sendables.TextOnlySendable(
 		utils.PrepareInputForMarkdown(
-			fmt.Sprintf("📟 Response sent to *%s*", inputDataSplit[0]), "text"),
+			fmt.Sprintf("📟 Response sent to *%s*", inputDataSplit[1]), "text"),
 		tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")),
 		true,
 	)
