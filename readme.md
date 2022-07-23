@@ -131,7 +131,7 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 	
 	- ✅ delete older notification messages when a new one is sent
 	
-	- [ ] add a "more info"/"less info" button to /next and notification messages
+	- ❌ add a "more info"/"less info" button to /next and notification messages
 	
 	- ✅ add probability of launch and launch location, separate from mission name etc. with \n\n
 	
@@ -175,7 +175,7 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 	- ✅ open-source LaunchBot ✨
 
 
-	## 2.1 (December 2020 to February 2022)
+	## 2.1 / Telegram API updates (December 2020 to February 2022)
 
 	- ✅ Postpone notification fixes
 
@@ -208,11 +208,13 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 
 	- ✅ Add some group-specific settings, e.g. command permissions
 
-	## 3.1 / threaded sender (June 2022)
+	## 3.1 / threaded sender (June 2022 ->)
 
 	- ✅ Implements a threaded sender, achieving much higher send-rates
 	
-	- ✅ General improvements and bug-fixes
+	- ✅ A massive amount of edge-case bug fixes
+
+	- ✅ General improvements
 
 	## 3.2 and onwards
 
