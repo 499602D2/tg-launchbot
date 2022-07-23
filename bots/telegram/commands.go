@@ -9,7 +9,6 @@ import (
 	"launchbot/utils"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/bradfitz/latlong"
 	"github.com/dustin/go-humanize"
@@ -134,7 +133,7 @@ func (tg *Bot) unpermissionedStart(ctx tb.Context) error {
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
 	// Get text for message
-	textContent := tg.Template.Messages.Command.Start(isGroup(ctx.Chat().Type))
+	textContent := tg.Template.Messages.Command.Start(isGroup(ctx.Chat()))
 	textContent = utils.PrepareInputForMarkdown(textContent, "text")
 
 	// Set the Github link
@@ -388,10 +387,7 @@ func (tg *Bot) statsHandler(ctx tb.Context) error {
 	// Reload some statistics
 	tg.Stats.DbSize = tg.Db.Size
 	tg.Stats.Subscribers = tg.Db.Subscribers
-
-	// Set next notification statistic
-	_, notification := tg.Cache.NextScheduledUpdateIn()
-	tg.Stats.NextNotification = time.Unix(notification.SendTime, 0)
+	tg.Stats.ActiveUsers = tg.Db.ActiveUsers
 
 	// Get text content
 	textContent := tg.Stats.String()
@@ -437,14 +433,11 @@ func (tg *Bot) settingsHandler(ctx tb.Context) error {
 		return tg.interactionNotAllowed(ctx, interaction.IsCommand)
 	}
 
-	// Is chat a group-chat?
-	isGroup := isGroup(ctx.Chat().Type)
+	// Load keyboard based on chat-type
+	_, kb := tg.Template.Keyboard.Settings.Main(isGroup(ctx.Chat()))
 
-	// Load keyboard
-	_, kb := tg.Template.Keyboard.Settings.Main(isGroup)
-
-	// Load message text content
-	message := tg.Template.Messages.Settings.Main(isGroup)
+	// Load message text content based on chat-type
+	message := tg.Template.Messages.Settings.Main(isGroup(ctx.Chat()))
 	message = utils.PrepareInputForMarkdown(message, "text")
 
 	// Construct message
@@ -722,14 +715,11 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 
 	switch callbackData[0] {
 	case "main": // User requested main settings menu
-		// Load text based on the chat being a group or not
-		isGroup := isGroup(cb.Message.Chat.Type)
-
-		// Load keyboard
-		sendOptions, _ := tg.Template.Keyboard.Settings.Main(isGroup)
+		// Load keyboard based on chat type
+		sendOptions, _ := tg.Template.Keyboard.Settings.Main(isGroup(cb.Message.Chat))
 
 		// Init text so we don't need to run it twice thorugh the markdown escaper
-		message := tg.Template.Messages.Settings.Main(isGroup)
+		message := tg.Template.Messages.Settings.Main(isGroup(cb.Message.Chat))
 		message = utils.PrepareInputForMarkdown(message, "text")
 
 		if len(callbackData) == 2 && callbackData[1] == "newMessage" {

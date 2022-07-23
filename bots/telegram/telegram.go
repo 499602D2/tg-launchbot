@@ -30,7 +30,7 @@ type Bot struct {
 	Owner             int64
 }
 
-// A struct to help with the shutdown flow
+// Quit is used to manage a graceful shutdown flow
 type Quit struct {
 	Channel       chan int
 	Started       bool
@@ -100,7 +100,9 @@ func (tg *Bot) Initialize(token string) {
 	tg.Bot.Handle(tb.OnMyChatMember, tg.botMemberChangeHandler)
 }
 
-// A generic callback handler, to notify users of the bot having been migrated/upgraded
+// A generic callback handler, to notify users of the bot having been migrated/upgraded.
+// Effectively, if a callback fails to be properly routed to any existing callback endpoint,
+// the callback _has_ to be using an old format, which we cannot respond to.
 func (tg *Bot) genericCallbackHandler(ctx tb.Context) error {
 	// Load chat and generate the interaction
 	chat, interaction, err := tg.buildInteraction(ctx, false, "generic")
@@ -166,13 +168,10 @@ func (tg *Bot) editCbMessage(cb *tb.Callback, text string, sendOptions tb.SendOp
 func (tg *Bot) buildInteraction(ctx tb.Context, adminOnly bool, name string) (*users.User, *bots.Interaction, error) {
 	// Load chat
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
-
-	// Is chat a group?
-	isGroup := isGroup(ctx.Chat().Type)
 	senderIsAdmin := false
 
 	// If chat is a group AND (command is admin-only OR users cannot send commands)
-	if isGroup && (adminOnly || !chat.AnyoneCanSendCommands) {
+	if isGroup(ctx.Chat()) && (adminOnly || !chat.AnyoneCanSendCommands) {
 		// Call senderIsAdmin separately, as it's an API call and may fail due to e.g. migration
 		var err error
 		senderIsAdmin, err = tg.senderIsAdmin(ctx)
@@ -193,7 +192,7 @@ func (tg *Bot) buildInteraction(ctx tb.Context, adminOnly bool, name string) (*u
 	interaction := bots.Interaction{
 		IsAdminOnly:   adminOnly,
 		IsCommand:     isCommand,
-		IsGroup:       isGroup,
+		IsGroup:       isGroup(ctx.Chat()),
 		CallerIsAdmin: senderIsAdmin,
 		Name:          name,
 		Tokens:        tokens,
@@ -223,7 +222,7 @@ func (tg *Bot) tryRemovingMessage(ctx tb.Context) error {
 		return nil
 	}
 
-	if bot.CanDeleteMessages || !isGroup(ctx.Chat().Type) {
+	if bot.CanDeleteMessages || !isGroup(ctx.Chat()) {
 		// If we have permission to delete messages, delete the command message
 		err = tg.Bot.Delete(ctx.Message())
 	} else {
@@ -281,7 +280,7 @@ func (tg *Bot) botMemberChangeHandler(ctx tb.Context) error {
 // FUTURE: cache, and keep track of member status changes as they happen
 func (tg *Bot) senderIsAdmin(ctx tb.Context) (bool, error) {
 	// If not a group, return true
-	if !isGroup(ctx.Chat().Type) {
+	if !isGroup(ctx.Chat()) {
 		return true, nil
 	}
 
@@ -301,8 +300,8 @@ func (tg *Bot) senderIsAdmin(ctx tb.Context) (bool, error) {
 
 // Return true if chat is a group
 // TODO determine whether this works in channels or not
-func isGroup(chatType tb.ChatType) bool {
-	return chatType == tb.ChatGroup || chatType == tb.ChatSuperGroup
+func isGroup(chat *tb.Chat) bool {
+	return (chat.Type == tb.ChatGroup) || (chat.Type == tb.ChatSuperGroup)
 }
 
 // Is the sender the owner of the bot?
