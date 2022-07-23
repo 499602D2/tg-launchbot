@@ -1,6 +1,6 @@
 package db
 
-// FUTURE save in a database table + cache (V3.1)
+// TODO FUTURE save in a database table + cache (V3.1)
 // - when a new LSP ID is encountered in /launch/upcoming endpoint, request its info and insert into LSP table
 // Currently contains all featured launch providers + a couple extra
 // https://ll.thespacedevs.com/2.2.0/agencies/?featured=true&limit=50

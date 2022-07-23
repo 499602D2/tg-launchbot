@@ -28,7 +28,7 @@ func apiCall(client *resty.Client, useDevEndpoint bool) (*db.LaunchUpdate, error
 	var endpoint string
 
 	if useDevEndpoint {
-		log.Warn().Msg("Using development endpoint")
+		log.Warn().Msg("Using LL2 development endpoint")
 		endpoint = "https://lldev.thespacedevs.com"
 	} else {
 		endpoint = "https://ll.thespacedevs.com"

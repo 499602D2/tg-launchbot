@@ -176,6 +176,7 @@ func (cache *Cache) FindNextNotification() *Notification {
 	if earliestTime != 0 {
 		// Calculate time until notification(s)
 		toNext := durafmt.Parse(time.Until(time.Unix(earliestTime, 0))).LimitFirstN(2)
+
 		log.Info().Msgf("Next notification send time %s from now, %d launch(es)",
 			toNext, len(notificationTimes[earliestTime]))
 
