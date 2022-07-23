@@ -215,11 +215,11 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	case tb.ErrGroupMigrated:
 		log.Error().Err(err).Msg("Caught a tb.ErrGroupMigrated in the switch-case?")
 
-	case tb.ErrNoRightsToDelete:
-		warnUnhandled(tg, err, false)
-
 	case tb.ErrNoRightsToSend:
-		warnUnhandled(tg, err, false)
+		log.Debug().Msgf("No rights to send messages to chat=%s (ignoring)", chat.Id)
+
+	case tb.ErrNoRightsToDelete:
+		log.Debug().Msgf("No rights to delete message in chat=%s (ignoring)", chat.Id)
 
 	case tb.ErrNotFoundToDelete:
 		// Not really an error, as a user may have manually deleted a mesage
@@ -262,9 +262,6 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	case tb.ErrUserIsDeactivated:
 		log.Debug().Msgf("User=%s has been deactivated, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
-
-	case tb.ErrNoRightsToSend:
-		log.Debug().Msgf("No rights to send messages to chat=%s (ignoring and not removing)", chat.Id)
 
 	default:
 		// If none of the earlier switch-cases caught the error, default here
