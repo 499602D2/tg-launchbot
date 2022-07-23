@@ -17,21 +17,22 @@ import (
 
 // Global statistics, per-platform
 type Statistics struct {
-	Platform         string `gorm:"primaryKey;uniqueIndex"`
-	Notifications    int
-	Commands         int
-	Callbacks        int
-	V2Commands       int // Combined commands + callbacks for pre-v3
-	ApiRequests      int
-	LimitsAverage    float64 // Track average enforced limit duration
-	LimitsEnforced   int64   // Track count of enforced limits
-	LastApiUpdate    time.Time
-	NextApiUpdate    time.Time
-	NextNotification time.Time
-	StartedAt        time.Time
-	Subscribers      int64  `gorm:"-:all"`
-	DbSize           int64  `gorm:"-:all"`
-	RunningVersion   string `gorm:"-:all"`
+	Platform          string `gorm:"primaryKey;uniqueIndex"`
+	Notifications     int
+	Commands          int
+	Callbacks         int
+	V2Commands        int // Combined commands + callbacks for pre-v3
+	ApiRequests       int
+	LimitsAverage     float64 // Track average enforced limit duration
+	LimitsEnforced    int64   // Track count of enforced limits
+	LastApiUpdate     time.Time
+	NextApiUpdate     time.Time
+	NextNotification  time.Time
+	StartedAt         time.Time
+	Subscribers       int64  `gorm:"-:all"`
+	WeeklyActiveUsers int64  `gorm:"-:all"`
+	DbSize            int64  `gorm:"-:all"`
+	RunningVersion    string `gorm:"-:all"`
 }
 
 // Embedded chat-level statistics
@@ -70,7 +71,8 @@ func (stats *Statistics) String() string {
 		"📊 *LaunchBot global statistics*\n"+
 			"Notifications delivered: %s\n"+
 			"Commands parsed: %s\n"+
-			"Active subscribers: %s\n\n"+
+			"Active subscribers: %s\n"+
+			"Weekly active users: %s\n\n"+
 
 			"🛰️ *Database information*\n"+
 			"Updated %s ago\n"+
@@ -85,7 +87,7 @@ func (stats *Statistics) String() string {
 		// General statistics
 		humanize.Comma(int64(stats.Notifications)),
 		humanize.Comma(int64(stats.Commands+stats.Callbacks+stats.V2Commands)),
-		humanize.Comma(stats.Subscribers),
+		humanize.Comma(stats.Subscribers), humanize.Comma(stats.WeeklyActiveUsers),
 
 		// API update information
 		dbLastUpdated, nextNotification, humanize.Bytes(uint64(stats.DbSize)),
@@ -105,6 +107,7 @@ func (stats *Statistics) String() string {
 	return text
 }
 
+// Update global statistics
 func (stats *Statistics) Update(isCommand bool) {
 	if isCommand {
 		stats.Commands++
@@ -113,6 +116,7 @@ func (stats *Statistics) Update(isCommand bool) {
 	}
 }
 
+// Update user-specific statistics
 func (userStats *User) Update(isCommand bool) {
 	if isCommand {
 		userStats.SentCommands++
