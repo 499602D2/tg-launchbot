@@ -23,7 +23,7 @@ import (
 // Injected at build-time
 var GitSHA = "0000000000"
 
-const version = "3.1.24"
+const version = "3.1.25"
 
 // Listens for incoming interrupt signals
 func signalListener(session *config.Session) {
@@ -101,9 +101,9 @@ func main() {
 	if !debug {
 		// If not debugging, log to file
 		logf := logs.SetupLogFile("data")
-		defer logf.Close()
-
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: logf, NoColor: true, TimeFormat: time.RFC822Z})
+
+		defer logf.Close()
 	} else {
 		// If debugging, output to console
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC822Z})
