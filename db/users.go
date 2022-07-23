@@ -130,7 +130,8 @@ func (cache *Cache) UserOrInsertAt(user *users.User) (*users.User, int) {
 	return nil, i
 }
 
-// Finds a user from the user-cache and returns the user and the index the user was found at
+// Finds a user from the user-cache and returns it. If user is not found in the
+// cache, the user will be loaded from the on-disk database.
 func (cache *Cache) FindUser(id string, platform string) *users.User {
 	// Set userCache ptr
 	userCache := cache.Users

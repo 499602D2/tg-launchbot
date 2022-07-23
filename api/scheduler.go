@@ -43,14 +43,6 @@ func Notify(launch *db.Launch, database *db.Database, username string) *sendable
 		},
 	}
 
-	// Send silently if not a 1-hour or 5-minute notification
-	// switch thisNotif.Type {
-	// case "24hour", "12hour":
-	// 	msg.SendOptions.DisableNotification = true
-	// case "1hour", "5min":
-	// 	msg.SendOptions.DisableNotification = false
-	// }
-
 	// Get list of recipients
 	platform := "tg"
 	log.Debug().Msgf("Calling NotificationRecipients from scheduler.Notify()")

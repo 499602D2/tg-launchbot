@@ -264,7 +264,7 @@ func (launch *Launch) BoosterInformation() string {
 		// Symbol to indicate reuse: also check for potentially errenous data
 		reuseSymbol = reuseIcon[core.Reused]
 
-		if core.Reused == false && core.FlightNumber > 1 {
+		if !core.Reused && core.FlightNumber > 1 {
 			reuseSymbol = "♻️"
 		}
 
@@ -277,7 +277,7 @@ func (launch *Launch) BoosterInformation() string {
 		if core.LandingType.Abbrev == "" {
 			// Unknown landing type, avoid an empty string
 			landingString = "Unknown"
-		} else if core.LandingAttempt == false {
+		} else if !core.LandingAttempt {
 			// No landing attempt: core being expended
 			landingString = "Expend 💥"
 		} else {
@@ -346,7 +346,7 @@ func (launch *Launch) MessageBodyText(expanded bool, isNotification bool) string
 		// If not a notification, add the "Launch time" section with date and time
 		if launch.Status.Abbrev == "TBD" {
 			// If launch-time is still TBD, add a Not-earlier-than date and reduce time accuracy
-			timeUntil = fmt.Sprintf("%s", durafmt.Parse(untilLaunch).LimitFirstN(2))
+			timeUntil = fmt.Sprint(durafmt.Parse(untilLaunch).LimitFirstN(2))
 
 			launchTimeSection = fmt.Sprintf(
 				"🕙 *Launch time*\n"+
@@ -358,10 +358,10 @@ func (launch *Launch) MessageBodyText(expanded bool, isNotification bool) string
 		} else {
 			// Otherwise, the date is close enough
 			if untilLaunch.Seconds() >= 60.0 {
-				timeUntil = fmt.Sprintf("%s", durafmt.Parse(untilLaunch).LimitFirstN(2))
+				timeUntil = fmt.Sprint(durafmt.Parse(untilLaunch).LimitFirstN(2))
 			} else {
 				// We don't need millisecond-precision for the launch time
-				timeUntil = fmt.Sprintf("%s", durafmt.Parse(untilLaunch).LimitFirstN(1))
+				timeUntil = fmt.Sprint(durafmt.Parse(untilLaunch).LimitFirstN(1))
 			}
 
 			launchTimeSection = fmt.Sprintf(
@@ -667,18 +667,18 @@ func (cache *Cache) LaunchUserHasSubscribedToAtIndex(user *users.User, index int
 
 	// If user has all enabled notifications, verify this ID is not in disabled IDs
 	var (
-		ok     bool
-		status bool
+		ok        bool
+		isEnabled bool
 	)
 
 	for _, launch := range cache.Launches {
 		// Load launch from notification states
-		status, ok = userNotifStates[launch.LaunchProvider.Id]
+		isEnabled, ok = userNotifStates[launch.LaunchProvider.Id]
 
 		if user.SubscribedAll && !ok {
 			// If user has subscribed to all, and launch is not found, then it has not been disabled
 			subscribedTo = append(subscribedTo, launch)
-		} else if !user.SubscribedAll && status == true {
+		} else if !user.SubscribedAll && isEnabled {
 			// If user has not subscribed to all launches and state is enabled, add
 			subscribedTo = append(subscribedTo, launch)
 		}
@@ -899,7 +899,7 @@ func (launch *Launch) NextNotification(db *Database) Notification {
 	// Loop over the valid notification classes (24h, 12h, 1h, 5min)
 	for _, notifType := range notificationClasses {
 		// If notification of this type has not been sent, check when it should be sent
-		if launch.NotificationState.Map[notifType] == false {
+		if !launch.NotificationState.Map[notifType] {
 			// How many seconds before NET the notification is sent
 			secBeforeNet, ok := NotificationSendTimes[notifType]
 
@@ -913,11 +913,14 @@ func (launch *Launch) NextNotification(db *Database) Notification {
 			sendTime := launch.NETUnix - int64(secBeforeNet.Seconds()) - int64(preSendBy.Seconds())
 
 			if sendTime-time.Now().Unix() < 0 {
-				// Calculate how many minutes the notification was missed by
+				// Notification was missed: calculate by how much
 				missedBy := time.Duration(math.Abs(float64(time.Now().Unix()-sendTime))) * time.Second
 
-				// TODO implement launch.ClearMissedNotifications + database update
 				if missedBy > allowedSlip {
+					// Check if the NET moved forwards or backwards
+					// TODO
+
+					// If notification was genuinely missed, by more than allowedSlip, mark as sent
 					log.Warn().Msgf("Missed type=%s notification by %.2f minutes, id=%s; marking as sent...",
 						notifType, missedBy.Minutes(), launch.Slug)
 
@@ -933,6 +936,7 @@ func (launch *Launch) NextNotification(db *Database) Notification {
 
 					continue
 				} else {
+					// Notification was missed by less than the allowed maximum slip: continue as usual
 					log.Info().Msgf("[launch.NextNotification] [%s] Missed type=%s by under %.1f min (%.2f min): modifying send-time",
 						launch.Slug, notifType, allowedSlip.Minutes(), missedBy.Minutes())
 
