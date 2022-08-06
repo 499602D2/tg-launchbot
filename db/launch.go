@@ -699,10 +699,15 @@ func (cache *Cache) LaunchUserHasSubscribedToAtIndex(user *users.User, index int
 }
 
 // Creates the text content and Telegram reply keyboard for the /next command.
+// Returns the generated text, and how many launches we can show for this user.
 func (cache *Cache) NextLaunchMessage(user *users.User, index int) (string, int) {
 	// Ensure index doesn't go over the max index
 	if index >= len(cache.Launches) {
-		index = len(cache.Launches) - 1
+		if len(cache.Launches) == 0 {
+			return "⚠️ No launches to display: please contact the admin using the feedback command", 0
+		} else {
+			index = len(cache.Launches) - 1
+		}
 	}
 
 	// Pull launch from cache at index
@@ -872,7 +877,7 @@ func (launch *Launch) HeaderName() string {
 	return name
 }
 
-//  Returns the first unsent notification type for a launch
+// Returns the first unsent notification type for a launch
 func (launch *Launch) NextNotification(db *Database) Notification {
 	// Not ordered, so we re-declare the list below
 	NotificationSendTimes := map[string]time.Duration{

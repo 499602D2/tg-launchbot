@@ -9,6 +9,7 @@ import (
 	"launchbot/stats"
 	"launchbot/users"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,6 +41,29 @@ type Quit struct {
 	Mutex         sync.Mutex
 }
 
+// A valid command for the bot and associated named interactions (interaction.name)
+type Command string
+
+const (
+	Next       Command = "next"
+	Schedule   Command = "schedule"
+	Statistics Command = "statistics"
+	Settings   Command = "settings"
+	Feedback   Command = "feedback"
+)
+
+// Command descriptions, in case we need to manually register them
+var commandDescriptions = map[Command]string{
+	Next:       "🚀 Upcoming launches",
+	Schedule:   "📆 Launch schedule",
+	Statistics: "📊 LaunchBot statistics",
+	Settings:   "🔔 Notification settings",
+	Feedback:   "✍️ Send feedback to developer",
+}
+
+// A list of all registered (public) commands: we may still handle non-public commands.
+var Commands = [5]Command{Next, Schedule, Statistics, Settings, Feedback}
+
 // Simple method to initialize the TelegramBot object
 func (tg *Bot) Initialize(token string) {
 	// Init keyboard-holder struct
@@ -60,6 +84,9 @@ func (tg *Bot) Initialize(token string) {
 
 	// Set bot's username
 	tg.Username = tg.Bot.Me.Username
+
+	// Ensure all commands are registered
+	tg.ensureCommands()
 
 	// Set-up command handlers
 	tg.Bot.Handle("/start", tg.permissionedStart)
@@ -85,10 +112,10 @@ func (tg *Bot) Initialize(token string) {
 	tg.Bot.Handle(&tb.InlineButton{Unique: "expand"}, tg.expandMessageContent)
 	tg.Bot.Handle(&tb.InlineButton{Unique: "admin"}, tg.adminCommand)
 
-	// A generic callback handler to help with migrations/callback data changes
+	// A generic, catch-all callback handler to help with migrations/deprecations
 	tg.Bot.Handle(tb.OnCallback, tg.genericCallbackHandler)
 
-	// Handle incoming locations for time zone setup messages
+	// Handle incoming locations for time-zone setup messages
 	tg.Bot.Handle(tb.OnLocation, tg.locationReplyHandler)
 
 	// Catch service messages as they happen
@@ -96,8 +123,150 @@ func (tg *Bot) Initialize(token string) {
 	tg.Bot.Handle(tb.OnAddedToGroup, tg.unpermissionedStart)
 	tg.Bot.Handle(tb.OnGroupCreated, tg.unpermissionedStart)
 	tg.Bot.Handle(tb.OnSuperGroupCreated, tg.unpermissionedStart)
-	tg.Bot.Handle(tb.OnChannelCreated, tg.unpermissionedStart)
 	tg.Bot.Handle(tb.OnMyChatMember, tg.botMemberChangeHandler)
+
+	// Handle Telegram channel related events
+	tg.Bot.Handle(tb.OnChannelCreated, tg.unpermissionedStart)
+	tg.Bot.Handle(tb.OnChannelPost, tg.channelProcessor)
+}
+
+// Ensures all required commands are registered properly
+func (tg *Bot) ensureCommands() {
+	// Load available commands
+	registeredCommands, err := tg.Bot.Commands()
+
+	if err != nil {
+		log.Fatal().Err(err).Msg("Loading available commands failed")
+	}
+
+	// If zero commands are registed, do it manually
+	if len(registeredCommands) == 0 {
+		tgCommands := []tb.Command{}
+
+		for _, cmd := range Commands {
+			// Load the description
+			cmdDescription, ok := commandDescriptions[cmd]
+
+			if !ok {
+				log.Fatal().Msgf("Could not load description for command=%s", string(cmd))
+			}
+
+			// Add to the command list
+			tgCommands = append(tgCommands, tb.Command{
+				Text:        string(cmd),
+				Description: cmdDescription,
+			})
+		}
+
+		// Set the commands
+		err := tg.Bot.SetCommands(tgCommands)
+
+		if err != nil {
+			log.Error().Err(err).Msg("Setting commands for the bot failed")
+		} else {
+			log.Debug().Msgf("Commands set for the bot successfully!")
+		}
+
+		return
+	}
+
+	foundCommandCount := 0
+
+	// Parse available commands, assign to bot
+	for _, registeredCommand := range registeredCommands {
+		for _, expectedCommand := range Commands {
+			if registeredCommand.Text == string(expectedCommand) {
+				foundCommandCount++
+				// TODO register commands not found (do a map[Command]bool (found/not))
+			}
+		}
+	}
+
+	if foundCommandCount != len(Commands) {
+		log.Warn().Msgf("Expected to find %d commands, but only %d are registered",
+			len(Commands), foundCommandCount)
+	}
+}
+
+// A channel post processor: channels do not support "native" bot commands,
+// thus we need to do some manual processing to get commands we are interested in.
+// TODO set sendable.sendSilently=true for channel posts we do -> add handling
+func (tg *Bot) channelProcessor(ctx tb.Context) error {
+	// Extract the message pointer from the context
+	msg := ctx.Message()
+
+	// Pre-init variables for the possible valid command we may find
+	var foundValidCommand Command
+	var validCommandFound bool
+
+	// See if any of the entitites contain a bot command
+	for _, entity := range msg.Entities {
+		if entity.Type == tb.EntityCommand {
+			// Process command: remove the slash-prefix, split by a (possible) @-symbol
+			cmdSplit := strings.Split(msg.EntityText(entity)[1:], "@")
+
+			if len(cmdSplit) > 1 {
+				// If the length is greater than one (ie. it contains an '@'), check that the command is for us
+				if cmdSplit[1] != tg.Username {
+					return nil
+				}
+			}
+
+			// Check that the command is in the list of known valid commands
+			for _, validCommand := range Commands {
+				if strings.ToLower(cmdSplit[0]) == string(validCommand) {
+					foundValidCommand = validCommand
+					validCommandFound = true
+					break
+				}
+			}
+		}
+
+		if validCommandFound {
+			break
+		}
+	}
+
+	if !validCommandFound {
+		// If no (valid) command found, return
+		return nil
+	}
+
+	// Get bot's member status
+	bot, err := tg.Bot.ChatMemberOf(ctx.Chat(), tg.Bot.Me)
+
+	if err != nil {
+		log.Error().Msg("Loading bot's permissions in channel failed")
+		tg.handleError(ctx, nil, err, ctx.Chat().ID)
+		return nil
+	}
+
+	// Check if we can post in this channel
+	if !bot.CanPostMessages {
+		log.Debug().Msgf("Found a valid command (%s) in channel=%d, but we cannot post there",
+			foundValidCommand, ctx.Chat().ID)
+		return nil
+	}
+
+	// We found a valid command, and we can post in the channel: switch-case the command
+	switch foundValidCommand {
+	case Next:
+		_ = tg.nextHandler(ctx)
+	case Schedule:
+		_ = tg.scheduleHandler(ctx)
+	case Statistics:
+		_ = tg.statsHandler(ctx)
+	case Settings:
+		_ = tg.settingsHandler(ctx)
+	case Feedback:
+		_ = tg.feedbackHandler(ctx)
+	default:
+		log.Error().Msgf(
+			"Tried to switch-case found valid command in chan-processor, but defaulted (cmd=%s)",
+			string(foundValidCommand))
+	}
+
+	return nil
 }
 
 // A generic callback handler, to notify users of the bot having been migrated/upgraded.
@@ -171,6 +340,7 @@ func (tg *Bot) buildInteraction(ctx tb.Context, adminOnly bool, name string) (*u
 	senderIsAdmin := false
 
 	// If chat is a group AND (command is admin-only OR users cannot send commands)
+	// We can ignore any channel-specific logic, as channels are permissioned.
 	if isGroup(ctx.Chat()) && (adminOnly || !chat.AnyoneCanSendCommands) {
 		// Call senderIsAdmin separately, as it's an API call and may fail due to e.g. migration
 		var err error
@@ -189,6 +359,7 @@ func (tg *Bot) buildInteraction(ctx tb.Context, adminOnly bool, name string) (*u
 	tokens := map[bool]int{true: 2, false: 1}[isCommand]
 
 	// Build interaction for spam handling
+	// TODO in channels, send commands quietly
 	interaction := bots.Interaction{
 		IsAdminOnly:   adminOnly,
 		IsCommand:     isCommand,
@@ -198,8 +369,8 @@ func (tg *Bot) buildInteraction(ctx tb.Context, adminOnly bool, name string) (*u
 		Tokens:        tokens,
 	}
 
-	// Allow any user to expand notification messages
-	if name == "expandMessage" {
+	// Allow any user to expand notification messages in groups
+	if name == "expandMessage" && interaction.IsGroup {
 		interaction.AnyoneCanUse = true
 	}
 
@@ -222,7 +393,7 @@ func (tg *Bot) tryRemovingMessage(ctx tb.Context) error {
 		return nil
 	}
 
-	if bot.CanDeleteMessages || !isGroup(ctx.Chat()) {
+	if bot.CanDeleteMessages || (!isGroup(ctx.Chat()) && !isChannel(ctx.Chat())) {
 		// If we have permission to delete messages, delete the command message
 		err = tg.Bot.Delete(ctx.Message())
 	} else {
@@ -279,7 +450,7 @@ func (tg *Bot) botMemberChangeHandler(ctx tb.Context) error {
 // Return a chat user's admin status
 // FUTURE: cache, and keep track of member status changes as they happen
 func (tg *Bot) senderIsAdmin(ctx tb.Context) (bool, error) {
-	// If not a group, return true
+	// If not a group, return true (channels are by default admin-only)
 	if !isGroup(ctx.Chat()) {
 		return true, nil
 	}
@@ -299,9 +470,13 @@ func (tg *Bot) senderIsAdmin(ctx tb.Context) (bool, error) {
 }
 
 // Return true if chat is a group
-// TODO determine whether this works in channels or not
 func isGroup(chat *tb.Chat) bool {
 	return (chat.Type == tb.ChatGroup) || (chat.Type == tb.ChatSuperGroup)
+}
+
+// Return true if chat is a channel
+func isChannel(chat *tb.Chat) bool {
+	return (chat.Type == tb.ChatChannel) || (chat.Type == tb.ChatChannelPrivate)
 }
 
 // Is the sender the owner of the bot?
