@@ -153,6 +153,9 @@ func (tg *Bot) unpermissionedStart(ctx tb.Context) error {
 		},
 	}
 
+	// Disable notification for channels
+	sendable.Message.SendOptions.DisableNotification = isChannel(ctx.Chat())
+
 	// Add the user
 	sendable.AddRecipient(chat, false)
 
@@ -270,6 +273,9 @@ func (tg *Bot) scheduleHandler(ctx tb.Context) error {
 			SendOptions: sendOptions,
 		}
 
+		// Disable notification for channels
+		msg.SendOptions.DisableNotification = isChannel(ctx.Chat())
+
 		// Wrap into a sendable
 		sendable := sendables.Sendable{
 			Type:    sendables.Command,
@@ -319,6 +325,15 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 
 	// Get text, send-options for the message
 	textContent, cacheLength := tg.Cache.NextLaunchMessage(chat, index)
+
+	if cacheLength == 0 {
+		// If cache-length is zero, send a warning to the user
+		sendable := sendables.TextOnlySendable(textContent, chat)
+		tg.Enqueue(sendable, true)
+		return nil
+	}
+
+	// Load the keyboard and the send-options
 	sendOptions, _ := tg.Template.Keyboard.Command.Next(index, cacheLength)
 
 	if interaction.IsCommand {
@@ -329,6 +344,9 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 			RefTime:     tg.Cache.Launches[0].NETUnix,
 			SendOptions: sendOptions,
 		}
+
+		// Check if we need to send it silently
+		msg.SendOptions.DisableNotification = isChannel(ctx.Chat())
 
 		// Wrap into a sendable
 		sendable := sendables.Sendable{
@@ -406,9 +424,11 @@ func (tg *Bot) statsHandler(ctx tb.Context) error {
 			},
 		}
 
-		sendable.AddRecipient(chat, false)
+		// Disable notification for channels
+		sendable.Message.SendOptions.DisableNotification = isChannel(ctx.Chat())
 
 		// Add to send queue as high-priority
+		sendable.AddRecipient(chat, false)
 		tg.Enqueue(&sendable, true)
 		return nil
 	}
@@ -444,8 +464,9 @@ func (tg *Bot) settingsHandler(ctx tb.Context) error {
 	msg := sendables.Message{
 		TextContent: message,
 		SendOptions: tb.SendOptions{
-			ParseMode:   "MarkdownV2",
-			ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
+			ParseMode:           "MarkdownV2",
+			ReplyMarkup:         &tb.ReplyMarkup{InlineKeyboard: kb},
+			DisableNotification: isChannel(ctx.Chat()),
 		},
 	}
 
@@ -738,6 +759,9 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 				SendOptions: sendOptions,
 			}
 
+			// Disable notification for channels
+			msg.SendOptions.DisableNotification = isChannel(ctx.Chat())
+
 			// Wrap into a sendable
 			sendable := sendables.Sendable{
 				Type:    sendables.Command,
@@ -971,8 +995,9 @@ func (tg *Bot) locationReplyHandler(ctx tb.Context) error {
 	msg := sendables.Message{
 		TextContent: successText,
 		SendOptions: tb.SendOptions{
-			ParseMode:   "MarkdownV2",
-			ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
+			ParseMode:           "MarkdownV2",
+			ReplyMarkup:         &tb.ReplyMarkup{InlineKeyboard: kb},
+			DisableNotification: isChannel(ctx.Chat()),
 		},
 	}
 
