@@ -121,7 +121,7 @@ func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds 
 	tg.Quit.WaitGroup.Done()
 }
 
-// Process a notification or old notification removal. This path is not used
+// Process a notification or old notification removal. This code path is not used
 // for command messages.
 func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan MessageJob) {
 	// Add a deferred function that runs if we panic
