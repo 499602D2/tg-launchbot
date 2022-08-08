@@ -94,7 +94,7 @@ func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds 
 
 			if !userFound {
 				// User not found in recipients: persist the id-pair
-				log.Debug().Msgf("Persisting user=%s in sent notification ids (message=%s)", userId, msgId)
+				// log.Debug().Msgf("Persisting user=%s in sent notification ids (message=%s)", userId, msgId)
 				filteredNotificationIds = append(filteredNotificationIds, fmt.Sprintf("%s:%s", userId, msgId))
 			}
 		}
@@ -324,6 +324,7 @@ func (tg *Bot) SendNotification(sendable *sendables.Sendable, user *users.User, 
 	}
 
 	var text string
+
 	if sendable.Message.AddUserTime {
 		text = sendables.SetTime(sendable.Message.TextContent, user, sendable.Message.RefTime, true, monospaced, false)
 	} else {
@@ -496,22 +497,17 @@ func (tg *Bot) ThreadedSender() {
 		select {
 		case sendable, ok := <-tg.NotificationQueue:
 			if ok {
-				// In the case of notifications, pre-process them first
 				switch sendable.Type {
 				case sendables.Delete:
 					tg.Quit.WaitGroup.Add(1)
-					log.Debug().Msg("Case sendables.Delete: adding 1 to waitgroup...")
 				case sendables.Notification:
-					log.Debug().Msg("Case sendables.Notification: adding 2 to waitgroup...")
 					tg.Quit.WaitGroup.Add(2)
 				default:
 					log.Warn().Msgf("Unknown sendable type in ThreadedSender: %s", sendable.Type)
 				}
 
 				tg.ProcessSendable(sendable, workPool)
-				log.Debug().Msg("Exited from ProcessSendable()")
 				tg.Quit.WaitGroup.Done()
-				log.Debug().Msg("WaitGroup done (ThreadedSender)")
 			}
 
 		case sendable, ok := <-tg.CommandQueue:
