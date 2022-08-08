@@ -323,17 +323,21 @@ func (user *User) SetTimeZone() {
 		return
 	}
 
-	// Create time field for user
+	// Create time field for user, initialize with "UTC"
 	user.Time = UserTime{
 		Location:  tz,
 		UtcOffset: "UTC",
 	}
 
 	// Get offset from user's current time
-	userTime := time.Now().In(tz)
-	_, offset := userTime.Zone()
+	_, offset := time.Now().In(tz).Zone()
 
-	// Add a plus if the offset is positive
+	// If offset is zero, we can leave it as "UTC"
+	if offset == 0 {
+		return
+	}
+
+	// Append a plus to UtcOffset string if the offset is positive
 	user.Time.UtcOffset += map[bool]string{true: "+", false: ""}[offset >= 0]
 
 	if offset%3600 == 0 {
