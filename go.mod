@@ -39,7 +39,7 @@ require (
 	github.com/procyon-projects/chrono v1.1.0
 	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa // indirect
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e
-	golang.org/x/sys v0.0.0-20220804214406-8e32c043e418
+	golang.org/x/sys v0.0.0-20220808155132-1c4a2a72c664
 	golang.org/x/time v0.0.0-20220722155302-e5dcc9cfc0b9
 	gorm.io/driver/sqlite v1.3.6
 	gorm.io/gorm v1.23.8
