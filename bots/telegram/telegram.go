@@ -359,7 +359,6 @@ func (tg *Bot) buildInteraction(ctx tb.Context, adminOnly bool, name string) (*u
 	tokens := map[bool]int{true: 2, false: 1}[isCommand]
 
 	// Build interaction for spam handling
-	// TODO in channels, send commands quietly
 	interaction := bots.Interaction{
 		IsAdminOnly:   adminOnly,
 		IsCommand:     isCommand,

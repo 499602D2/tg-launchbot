@@ -18,7 +18,7 @@ type Sendable struct {
 	Platform         string            // tg, dg
 	Type             Type              // sendables.Type (Notification, Command, Delete)
 	IsHighPriority   bool              // High-priority flag (anything that's not a notification)
-	NotificationType string            // 24h, 12h, 1h, 5min
+	NotificationType string            // "24h", "12h", "1h", "5min", "postpone"
 	LaunchId         string            // Launch ID associated with this sendable
 	Message          *Message          // Message (may be nil)
 	MessageIDs       map[string]string // Message ids in the form chat:msg_id for deletions
