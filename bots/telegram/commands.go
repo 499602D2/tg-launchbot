@@ -937,8 +937,7 @@ func (tg *Bot) locationReplyHandler(ctx tb.Context) error {
 		return nil
 	}
 
-	// If the message we are replying to is from LaunchBot, check the text content
-	if ctx.Message().ReplyTo.Sender.ID == tg.Bot.Me.ID {
+	if isChannel(ctx.Chat()) || ctx.Message().ReplyTo.Sender.ID == tg.Bot.Me.ID {
 		// Verify the text content matches a tz setup message
 		if !strings.Contains(ctx.Message().ReplyTo.Text, "🌍 LaunchBot | Time zone set-up") {
 			log.Debug().Msg("Location reply to a message that is not a tz setup message")

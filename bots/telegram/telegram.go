@@ -9,6 +9,7 @@ import (
 	"launchbot/stats"
 	"launchbot/users"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -188,12 +189,17 @@ func (tg *Bot) ensureCommands() {
 	}
 }
 
-// A channel post processor: channels do not support "native" bot commands,
-// thus we need to do some manual processing to get commands we are interested in.
-// TODO set sendable.sendSilently=true for channel posts we do -> add handling
+// Channels do not support "native" bot commands, thus we need to do some manual
+// processing to get commands we are interested in.
 func (tg *Bot) channelProcessor(ctx tb.Context) error {
 	// Extract the message pointer from the context
 	msg := ctx.Message()
+
+	// If the message is a location, check if it is a reply to the bot
+	if msg.Location != nil {
+		// A location and a command cannot coexist, so check if it's valid -> return
+		return tg.locationReplyHandler(ctx)
+	}
 
 	// Pre-init variables for the possible valid command we may find
 	var foundValidCommand Command
@@ -466,6 +472,37 @@ func (tg *Bot) senderIsAdmin(ctx tb.Context) (bool, error) {
 
 	// Return true if user is admin or creator
 	return member.Role == tb.Administrator || member.Role == tb.Creator, nil
+}
+
+// Loads a Telegram chat object from a user ID
+func (tg *Bot) LoadChatFromUser(user *users.User) *tb.Chat {
+	id, err := strconv.ParseInt(user.Id, 10, 64)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Converting str user ID to int64 failed")
+		return nil
+	}
+
+	// Load chat
+	chat, err := tg.Bot.ChatByID(id)
+
+	if err != nil {
+		log.Error().Err(err).Msgf("Loading user=%s failed", user.Id)
+		return nil
+	}
+
+	return chat
+}
+
+// Map Telegram chat type to user chat type
+func TelegramChatToUserType(chat *tb.Chat) users.ChatType {
+	if isGroup(chat) {
+		return users.Group
+	} else if isChannel(chat) {
+		return users.Channel
+	} else {
+		return users.Private
+	}
 }
 
 // Return true if chat is a group
