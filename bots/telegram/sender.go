@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"launchbot/sendables"
 	"launchbot/users"
+	"launchbot/utils"
 	"os"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -329,6 +331,23 @@ func (tg *Bot) SendNotification(sendable *sendables.Sendable, user *users.User, 
 		text = sendables.SetTime(sendable.Message.TextContent, user, sendable.Message.RefTime, true, monospaced, false)
 	} else {
 		text = sendable.Message.TextContent
+	}
+
+	// If user has no type, load it: we only need to do this once for each user
+	if user.Type == "" {
+		chat := tg.LoadChatFromUser(user)
+
+		if chat != nil {
+			user.Type = TelegramChatToUserType(chat)
+			log.Debug().Msgf("Loaded user-type=%s for chat=%s", user.Type, user.Id)
+		}
+	}
+
+	// If this is a channel-post, replace the "Stop with /settings@bot" footer
+	if user.Type == users.Channel {
+		text = strings.ReplaceAll(text,
+			utils.PrepareInputForMarkdown(fmt.Sprintf("🔕 *Stop with /settings@%s*", tg.Username), "text"),
+			utils.PrepareInputForMarkdown(fmt.Sprintf("🚀 *Powered by @%s*", tg.Username), "text"))
 	}
 
 	// Send message
