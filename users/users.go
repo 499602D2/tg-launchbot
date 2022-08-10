@@ -13,8 +13,9 @@ import (
 )
 
 type User struct {
-	Id                    string   `gorm:"primaryKey;index:enabled;index:disabled"`
-	Platform              string   `gorm:"primaryKey"`
+	Id                    string `gorm:"primaryKey;index:enabled;index:disabled"`
+	Platform              string `gorm:"primaryKey"` // "tg", "dg"
+	Type                  ChatType
 	Locale                string   // E.g. "Europe/Berlin"
 	Time                  UserTime `gorm:"-:all"`
 	Enabled24h            bool     `gorm:"index:enabled;index:disabled;default:1"`
@@ -36,9 +37,13 @@ type User struct {
 	LastActivityType      LastActivityType `gorm:"-:all"`
 }
 
+type ChatType string
 type LastActivityType string
 
 const (
+	Private      ChatType         = "private"
+	Group        ChatType         = "group"
+	Channel      ChatType         = "channel"
 	Notification LastActivityType = "notification"
 	Interaction  LastActivityType = "interaction"
 )
