@@ -71,7 +71,12 @@ func notifyAdminOfError(tg *Bot, err error, wasGeneric bool) {
 
 	// Wrap in a sendable
 	sendable := sendables.Sendable{
-		Message: &sendables.Message{TextContent: errMsg, SendOptions: tb.SendOptions{}},
+		Platform:       "tg",
+		IsHighPriority: true,
+		Type:           sendables.Command,
+		Message: &sendables.Message{
+			TextContent: errMsg, SendOptions: tb.SendOptions{},
+		},
 	}
 
 	// Add owner as recipient
