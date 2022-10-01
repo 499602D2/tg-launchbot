@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"launchbot/api"
 	"launchbot/config"
-	"launchbot/logs"
+	"launchbot/logging"
 	"launchbot/sendables"
 	"os"
 	"os/signal"
@@ -100,7 +100,7 @@ func main() {
 	// Set-up logging
 	if !debug {
 		// If not debugging, log to file
-		logf := logs.SetupLogFile("data")
+		logf := logging.SetupLogFile("data")
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: logf, NoColor: true, TimeFormat: time.RFC822Z})
 
 		defer logf.Close()
