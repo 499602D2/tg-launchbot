@@ -421,6 +421,7 @@ func (tg *Bot) NotificationWorker(id int, jobChannel chan MessageJob) {
 
 		default:
 			log.Warn().Msgf("Invalide sendable type in NotificationWorker: %s", job.Sendable.Type)
+			tg.Quit.WaitGroup.Done()
 		}
 
 		// log.Debug().Msgf("[Worker=%d] Processed job (%s)", id, job.Id)
