@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"launchbot/db"
-	"launchbot/logs"
+	"launchbot/logging"
 	"launchbot/sendables"
 	"launchbot/utils"
 	"strconv"
@@ -32,7 +32,7 @@ func (tg *Bot) adminCommand(ctx tb.Context) error {
 		len(tg.Cache.Launches),
 		len(tg.Cache.Users.InCache),
 		tg.Spam.NotificationSendUnderway,
-		humanize.Bytes(uint64(logs.GetLogSize(""))),
+		humanize.Bytes(uint64(logging.GetLogSize(""))),
 	)
 
 	text = utils.PrepareInputForMarkdown(text, "text")
