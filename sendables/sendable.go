@@ -182,3 +182,10 @@ func SendableForMessageRemoval(senderSendable *Sendable, msgIdMap map[string]str
 
 	return &sendable
 }
+
+// Modifies the footer of a notification message for usage in channels
+func SetChannelNotificationFooter(text string, uname string) string {
+	return strings.ReplaceAll(text,
+		utils.PrepareInputForMarkdown(fmt.Sprintf("🔕 *Stop with /settings@%s*", uname), "text"),
+		utils.PrepareInputForMarkdown(fmt.Sprintf("🚀 *Powered by @%s*", uname), "text"))
+}
