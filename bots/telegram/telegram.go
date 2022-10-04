@@ -343,12 +343,17 @@ func (tg *Bot) editCbMessage(cb *tb.Callback, text string, sendOptions tb.SendOp
 func (tg *Bot) buildInteraction(ctx tb.Context, adminOnly bool, name string) (*users.User, *bots.Interaction, error) {
 	// Load chat
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+
+	if chat.Type == "" {
+		tg.loadChatType(chat)
+	}
+
+	// Request is a command if the callback is nil
+	isCommand := (ctx.Callback() == nil)
 	senderIsAdmin := false
 
-	// If chat is a group AND (command is admin-only OR users cannot send commands)
-	// We can ignore any channel-specific logic, as channels are permissioned.
-	if isGroup(ctx.Chat()) && (adminOnly || !chat.AnyoneCanSendCommands) {
-		// Call senderIsAdmin separately, as it's an API call and may fail due to e.g. migration
+	// If (is group OR is a callback in a channel) AND (command is admin-only OR users cannot send commands)
+	if (isGroup(ctx.Chat()) || (isChannel(ctx.Chat()) && !isCommand)) && (adminOnly || !chat.AnyoneCanSendCommands) {
 		var err error
 		senderIsAdmin, err = tg.senderIsAdmin(ctx)
 
@@ -356,26 +361,26 @@ func (tg *Bot) buildInteraction(ctx tb.Context, adminOnly bool, name string) (*u
 			log.Error().Err(err).Msg("Loading sender's admin status failed")
 			return nil, nil, err
 		}
+	} else if isChannel(ctx.Chat()) && isCommand {
+		// Special edge case for channel posts: in this case, sender is always an admin
+		senderIsAdmin = true
 	}
-
-	// Request is a command if the callback is nil
-	isCommand := (ctx.Callback() == nil)
 
 	// Take tokens depending on interaction type
 	tokens := map[bool]int{true: 2, false: 1}[isCommand]
 
 	// Build interaction for spam handling
 	interaction := bots.Interaction{
-		IsAdminOnly:   adminOnly,
-		IsCommand:     isCommand,
-		IsGroup:       isGroup(ctx.Chat()),
-		CallerIsAdmin: senderIsAdmin,
-		Name:          name,
-		Tokens:        tokens,
+		IsAdminOnly:    adminOnly,
+		IsCommand:      isCommand,
+		IsPermissioned: !isPrivate(ctx.Chat()),
+		CallerIsAdmin:  senderIsAdmin,
+		Name:           name,
+		Tokens:         tokens,
 	}
 
-	// Allow any user to expand notification messages in groups
-	if name == "expandMessage" && interaction.IsGroup {
+	// Allow any user to expand notification messages in groups and channels
+	if name == "expandMessage" && !isPrivate(ctx.Chat()) {
 		interaction.AnyoneCanUse = true
 	}
 
@@ -398,7 +403,7 @@ func (tg *Bot) tryRemovingMessage(ctx tb.Context) error {
 		return nil
 	}
 
-	if bot.CanDeleteMessages || (!isGroup(ctx.Chat()) && !isChannel(ctx.Chat())) {
+	if bot.CanDeleteMessages || isPrivate(ctx.Chat()) {
 		// If we have permission to delete messages, delete the command message
 		err = tg.Bot.Delete(ctx.Message())
 	} else {
@@ -455,8 +460,8 @@ func (tg *Bot) botMemberChangeHandler(ctx tb.Context) error {
 // Return a chat user's admin status
 // FUTURE: cache, and keep track of member status changes as they happen
 func (tg *Bot) senderIsAdmin(ctx tb.Context) (bool, error) {
-	// If not a group, return true (channels are by default admin-only)
-	if !isGroup(ctx.Chat()) {
+	// If a private chat, return early
+	if isPrivate(ctx.Chat()) {
 		return true, nil
 	}
 
@@ -515,6 +520,11 @@ func isChannel(chat *tb.Chat) bool {
 	return (chat.Type == tb.ChatChannel) || (chat.Type == tb.ChatChannelPrivate)
 }
 
+// Returns true if chat is a private chat
+func isPrivate(chat *tb.Chat) bool {
+	return chat.Type == tb.ChatPrivate
+}
+
 // Is the sender the owner of the bot?
 func (tg *Bot) senderIsOwner(ctx tb.Context) bool {
 	if ctx.Callback() == nil {
@@ -522,4 +532,15 @@ func (tg *Bot) senderIsOwner(ctx tb.Context) bool {
 	}
 
 	return ctx.Callback().Sender.ID == tg.Owner
+}
+
+// Loads and sets the Telebot chat type for a Launchbot user
+func (tg *Bot) loadChatType(chat *users.User) {
+	// Load Telebot chat object
+	tbChat := tg.LoadChatFromUser(chat)
+
+	if chat != nil {
+		chat.Type = TelegramChatToUserType(tbChat)
+		log.Debug().Msgf("Loaded user-type=%s for chat=%s", chat.Type, chat.Id)
+	}
 }

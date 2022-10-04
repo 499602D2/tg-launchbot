@@ -22,14 +22,14 @@ type Spam struct {
 
 // An interaction handled by preHandler
 type Interaction struct {
-	IsAdminOnly   bool
-	IsCommand     bool
-	IsGroup       bool   // Called from a group?
-	AnyoneCanUse  bool   // An interaction that is one-off (message expansions)
-	CallerIsAdmin bool   // Is the caller an admin?
-	Name          string // Name of command or callback
-	CbData        string // Callback data for more accurate logging
-	Tokens        int    // Token-count this call requires
+	IsAdminOnly    bool   // Only set to true for administrative commands
+	IsCommand      bool   // Is this interaction a command?
+	IsPermissioned bool   // If interaction originates from group or channel
+	AnyoneCanUse   bool   // An interaction that is one-off (message expansions)
+	CallerIsAdmin  bool   // Is the caller an admin?
+	Name           string // Name of command or callback
+	CbData         string // Callback data for more accurate logging
+	Tokens         int    // Token-count this call requires
 }
 
 // Initialize the spam struct
@@ -112,7 +112,7 @@ func (spam *Spam) PreHandler(interaction *Interaction, chat *users.User, stats *
 	chat.LastActive = time.Now()
 	chat.LastActivityType = users.Interaction
 
-	if interaction.IsGroup {
+	if interaction.IsPermissioned {
 		// In groups, we need to ensure that regular users cannot do funny things
 		if interaction.IsAdminOnly || !(chat.AnyoneCanSendCommands || interaction.AnyoneCanUse) {
 			// Admin-only interaction, or group doesn't allow users to interact with the bot

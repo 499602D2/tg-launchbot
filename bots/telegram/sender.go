@@ -333,12 +333,7 @@ func (tg *Bot) SendNotification(sendable *sendables.Sendable, user *users.User, 
 
 	// If user has no type, load it: we only need to do this once for each user
 	if user.Type == "" {
-		chat := tg.LoadChatFromUser(user)
-
-		if chat != nil {
-			user.Type = TelegramChatToUserType(chat)
-			log.Debug().Msgf("Loaded user-type=%s for chat=%s", user.Type, user.Id)
-		}
+		tg.loadChatType(user)
 	}
 
 	// If this is a channel-post, replace the "Stop with /settings@bot" footer
