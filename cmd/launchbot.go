@@ -23,7 +23,7 @@ import (
 // Injected at build-time
 var GitSHA = "0000000000"
 
-const version = "3.2.3"
+const version = "3.2.4"
 
 // Listens for incoming interrupt signals
 func signalListener(session *config.Session) {
