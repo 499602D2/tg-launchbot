@@ -6,6 +6,7 @@ import (
 	"launchbot/db"
 	"launchbot/logging"
 	"launchbot/sendables"
+	"launchbot/users"
 	"launchbot/utils"
 	"strconv"
 	"strings"
@@ -895,6 +896,11 @@ func (tg *Bot) expandMessageContent(ctx tb.Context) error {
 	// Get text for this launch
 	newText := launch.NotificationMessage(notification, true, tg.Username)
 	newText = sendables.SetTime(newText, chat, launch.NETUnix, true, false, false)
+
+	// For channels, replace the footer with a "Powered by LaunchBot" text
+	if chat.Type == users.Channel {
+		newText = sendables.SetChannelNotificationFooter(newText, tg.Username)
+	}
 
 	// Load mute status
 	muted := chat.HasMutedLaunch(launch.Id)

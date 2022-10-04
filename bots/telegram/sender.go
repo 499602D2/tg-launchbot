@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"launchbot/sendables"
 	"launchbot/users"
-	"launchbot/utils"
 	"os"
 	"runtime/debug"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -345,9 +343,7 @@ func (tg *Bot) SendNotification(sendable *sendables.Sendable, user *users.User, 
 
 	// If this is a channel-post, replace the "Stop with /settings@bot" footer
 	if user.Type == users.Channel {
-		text = strings.ReplaceAll(text,
-			utils.PrepareInputForMarkdown(fmt.Sprintf("🔕 *Stop with /settings@%s*", tg.Username), "text"),
-			utils.PrepareInputForMarkdown(fmt.Sprintf("🚀 *Powered by @%s*", tg.Username), "text"))
+		text = sendables.SetChannelNotificationFooter(text, tg.Username)
 	}
 
 	// Send message
