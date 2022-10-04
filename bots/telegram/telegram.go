@@ -535,12 +535,12 @@ func (tg *Bot) senderIsOwner(ctx tb.Context) bool {
 }
 
 // Loads and sets the Telebot chat type for a Launchbot user
-func (tg *Bot) loadChatType(chat *users.User) {
+func (tg *Bot) loadChatType(user *users.User) {
 	// Load Telebot chat object
-	tbChat := tg.LoadChatFromUser(chat)
+	tbChat := tg.LoadChatFromUser(user)
 
-	if chat != nil {
-		chat.Type = TelegramChatToUserType(tbChat)
-		log.Debug().Msgf("Loaded user-type=%s for chat=%s", chat.Type, chat.Id)
+	if tbChat != nil {
+		user.Type = TelegramChatToUserType(tbChat)
+		log.Debug().Msgf("Loaded user-type=%s for chat=%s", user.Type, user.Id)
 	}
 }
