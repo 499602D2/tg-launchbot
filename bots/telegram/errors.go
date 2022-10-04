@@ -166,6 +166,9 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 		return false
 	}
 
+	// Custom errors that are not present in Telebot, for whatever reason
+	tbGroupDeleterErr := tb.NewError(403, "telegram: Forbidden: the group chat was deleted (403)")
+
 	switch err {
 	// General errors
 	// https://github.com/go-telebot/telebot/blob/8ad1e044ee330c22eb24e2ff9fdd0ed92e523648/errors.go#L69
@@ -266,6 +269,10 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 
 	case tb.ErrUserIsDeactivated:
 		log.Debug().Msgf("User=%s has been deactivated, removing from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
+
+	case tbGroupDeleterErr:
+		log.Warn().Msgf("Caught custom error tbGroupDeleterErr, deleting chat...")
 		tg.Db.RemoveUser(chat)
 
 	default:
