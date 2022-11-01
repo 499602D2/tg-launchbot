@@ -87,17 +87,19 @@ func notifyAdminOfError(tg *Bot, err error, wasGeneric bool) {
 }
 
 // Wrapper for warning of unhandled errors */
-func warnUnhandled(tg *Bot, err error, wasGeneric bool) {
+func warnUnhandled(err error, wasGeneric bool) {
 	if wasGeneric {
 		log.Error().Err(err).Msgf("Unhandled error in handleGenericError")
 	} else {
 		log.Error().Err(err).Msg("Unhandled Telegram error")
 	}
+
+	log.Debug().Msgf("Unhandled error: %+v", err)
 }
 
 // A generic error handler
-func (tg *Bot) handleGenericError(err error) bool {
-	warnUnhandled(tg, err, true)
+func handleGenericError(err error) bool {
+	warnUnhandled(err, true)
 	return false
 }
 
@@ -167,34 +169,35 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	}
 
 	// Custom errors that are not present in Telebot, for whatever reason
-	tbGroupDeleterErr := tb.NewError(403, "telegram: Forbidden: the group chat was deleted (403)")
+	tbGroupDeleterErr := tb.NewError(403, "telegram: Forbidden: the group chat was deleted")
+	tbGroupDeleterErr2 := tb.NewError(403, "Forbidden: the group chat was deleted")
 
 	switch err {
 	// General errors
 	// https://github.com/go-telebot/telebot/blob/8ad1e044ee330c22eb24e2ff9fdd0ed92e523648/errors.go#L69
 	case tb.ErrTooLarge:
 		log.Error().Err(err).Msgf("Message too large, isSendError=%v", isSendError)
-		warnUnhandled(tg, err, false)
+		warnUnhandled(err, false)
 
 	case tb.ErrUnauthorized:
 		log.Error().Err(err).Msgf("Unauthorized in sender, isSendError=%v", isSendError)
-		warnUnhandled(tg, err, false)
+		warnUnhandled(err, false)
 
 	case tb.ErrNotFound:
 		log.Error().Err(err).Msgf("Not found, isSendError=%v", isSendError)
-		warnUnhandled(tg, err, false)
+		warnUnhandled(err, false)
 
 	case tb.ErrInternal:
 		log.Error().Err(err).Msgf("Internal server error, isSendError=%v", isSendError)
-		warnUnhandled(tg, err, false)
+		warnUnhandled(err, false)
 
 	// Bad request errors (relevant cases handled)
 	// https://github.com/go-telebot/telebot/blob/8ad1e044ee330c22eb24e2ff9fdd0ed92e523648/errors.go#L77
 	case tb.ErrBadButtonData:
-		warnUnhandled(tg, err, false)
+		warnUnhandled(err, false)
 
 	case tb.ErrCantEditMessage:
-		warnUnhandled(tg, err, false)
+		warnUnhandled(err, false)
 
 	case tb.ErrQueryTooOld:
 		// Nothing we can de about too old queries
@@ -209,16 +212,16 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 		return true
 
 	case tb.ErrChatNotFound:
-		warnUnhandled(tg, err, false)
+		warnUnhandled(err, false)
 
 	case tb.ErrEmptyChatID:
-		warnUnhandled(tg, err, false)
+		warnUnhandled(err, false)
 
 	case tb.ErrEmptyMessage:
-		warnUnhandled(tg, err, false)
+		warnUnhandled(err, false)
 
 	case tb.ErrEmptyText:
-		warnUnhandled(tg, err, false)
+		warnUnhandled(err, false)
 
 	case tb.ErrGroupMigrated:
 		log.Error().Err(err).Msg("Caught a tb.ErrGroupMigrated in the switch-case?")
@@ -238,16 +241,16 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 		return false
 
 	case tb.ErrTooLongMarkup:
-		warnUnhandled(tg, err, false)
+		warnUnhandled(err, false)
 
 	case tb.ErrTooLongMessage:
-		warnUnhandled(tg, err, false)
+		warnUnhandled(err, false)
 
 	case tb.ErrWrongURL:
-		warnUnhandled(tg, err, false)
+		warnUnhandled(err, false)
 
 	case tb.ErrNotFoundToReply:
-		warnUnhandled(tg, err, false)
+		warnUnhandled(err, false)
 
 	// Forbidden errors
 	// https://github.com/go-telebot/telebot/blob/8ad1e044ee330c22eb24e2ff9fdd0ed92e523648/errors.go#L122
@@ -275,9 +278,13 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 		log.Warn().Msgf("Caught custom error tbGroupDeleterErr, deleting chat...")
 		tg.Db.RemoveUser(chat)
 
+	case tbGroupDeleterErr2:
+		log.Warn().Msgf("Caught custom error tbGroupDeleterErr2, deleting chat...")
+		tg.Db.RemoveUser(chat)
+
 	default:
 		// If none of the earlier switch-cases caught the error, default here
-		tg.handleGenericError(err)
+		handleGenericError(err)
 	}
 
 	return false
