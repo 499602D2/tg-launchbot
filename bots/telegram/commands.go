@@ -712,11 +712,11 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 	}
 
 	// Respond to callback
-	return tg.respondToCallback(ctx, cbResponseText, true)
+	return tg.respondToCallback(ctx, cbResponseText, false)
 }
 
 // Handler for settings callback requests. Returns a callback response and showAlert bool.
-// TODO use the "Unique" property of inline buttons to do better callback handling
+// TODO use the "Unique" property of inline buttons to do better callback handling, as is done with all other functions
 func (tg *Bot) settingsCallback(ctx tb.Context) error {
 	// Load chat and generate the interaction
 	chat, interaction, err := tg.buildInteraction(ctx, true, "settings")
@@ -1082,7 +1082,7 @@ func (tg *Bot) fauxNotification(ctx tb.Context) error {
 	}
 
 	// Flip to use actual recipients (here be dragons)
-	useRealRecipients := true
+	useRealRecipients := false
 
 	if useRealRecipients {
 		sendable.Recipients = launch.NotificationRecipients(tg.Db, notifType, "tg")
