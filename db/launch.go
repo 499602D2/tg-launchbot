@@ -99,9 +99,10 @@ type Rocket struct {
 	Id     int                 `json:"id"`
 	Config RocketConfiguration `json:"configuration" gorm:"embedded;embeddedPrefix:config_"`
 
-	// Unparsed and parsed launcher info: JSON is unpacked into the unparsed struct
-	UnparsedLauncherInfo []FirstStage `json:"launcher_stage" gorm:"-:all"`
-	Launchers            Launchers    `gorm:"embedded;embeddedPrefix:launcher_"`
+	// Unparsed and parsed launcher info: JSON is unpacked into the "unparsed" field,
+	// while the info embedded in the DB gets stored in the "Launchers" field
+	UnparsedLauncherInfo []FirstStage `json:"launcher_stage" gorm:"-:all"`       // JSON, not in DB
+	Launchers            Launchers    `gorm:"embedded;embeddedPrefix:launcher_"` // Gorm, in DB
 
 	// TODO
 	// Spacecraft SpacecraftStage     `json:"spacecraft_stage"`
@@ -112,7 +113,8 @@ type Rocket struct {
 type Launchers struct {
 	Count    int
 	Core     Launcher `gorm:"embedded;embeddedPrefix:core_"`
-	Boosters Launcher `gorm:"embedded;embeddedPrefix:boosters_"` // Comma-separated values
+	Booster1 Launcher `gorm:"embedded;embeddedPrefix:booster1_"`
+	Booster2 Launcher `gorm:"embedded;embeddedPrefix:booster2_"`
 }
 
 // A parsed launcher info struct
@@ -228,79 +230,141 @@ var landingLocName = map[string]string{
 	"N/A": "Unknown",
 }
 
+// Returns a string of booster information for a launch vehicle
 func (launch *Launch) BoosterInformation() string {
 	var (
 		boosterText         string
 		landingLocationName string
+		landingPrefix       string
 		landingString       string
 		reuseSymbol         string
 	)
 
-	if launch.Rocket.Launchers.Count == 1 {
-		var boosterNamePrefix string
-		core := &launch.Rocket.Launchers.Core
+	var boosterNamePrefix string
+	core := &launch.Rocket.Launchers.Core
 
-		if launch.LaunchProvider.Name == "SpaceX" && !strings.Contains(core.Serial, "Unknown F9") {
-			// For SpaceX launches, add a booster prefix (e.g. B1060.1)
-			boosterNamePrefix = fmt.Sprintf(".%d", core.FlightNumber)
-		}
-
-		// Get a nice icon for the landing type
-		landingIcon, ok := landingLocIcon[core.LandingLocation.Abbrev]
-
-		if !ok {
-			if core.LandingType.Abbrev == "ASDS" {
-				landingIcon = " 🌊"
-			}
-		}
-
-		// Check if there's a friendlier name for the landing location
-		landingLocationName, ok = landingLocName[core.LandingLocation.Abbrev]
-
-		if !ok {
-			landingLocationName = core.LandingLocation.Abbrev
-		}
-
-		// Symbol to indicate reuse: also check for potentially errenous data
-		reuseSymbol = reuseIcon[core.Reused]
-
-		if !core.Reused && core.FlightNumber > 1 {
-			reuseSymbol = "♻️"
-		}
-
-		// E.g. (7th flight ♻️)
-		flightCountString := fmt.Sprintf("(%s flight %s)", humanize.Ordinal(core.FlightNumber), reuseSymbol)
-
-		// E.g. (Pacific Ocean 🌊)
-		landingNameString := fmt.Sprintf("(%s%s)", core.LandingType.Abbrev, landingIcon)
-
-		if core.LandingType.Abbrev == "" {
-			// Unknown landing type, avoid an empty string
-			landingString = "Unknown"
-		} else if !core.LandingAttempt {
-			// No landing attempt: core being expended
-			landingString = "Expend 💥"
-		} else {
-			// All good: build a string
-			landingString = fmt.Sprintf("%s %s", landingLocationName, landingNameString)
-		}
-
-		boosterText = fmt.Sprintf(
-			"🚀 *Booster information*\n"+
-				"*Core* %s %s\n"+
-				"*Landing* %s\n\n",
-
-			// Core
-			utils.Monospaced(core.Serial+boosterNamePrefix), utils.Monospaced(flightCountString),
-
-			// Landing
-			utils.Monospaced(landingString),
-		)
+	if launch.LaunchProvider.Name == "SpaceX" && !strings.Contains(core.Serial, "Unknown F9") {
+		// For SpaceX launches, add a booster prefix (e.g. B1060.1)
+		boosterNamePrefix = fmt.Sprintf(".%d", core.FlightNumber)
 	}
+
+	// Symbol to indicate reuse: also check for potentially errenous data
+	reuseSymbol = reuseIcon[core.Reused]
+
+	if !core.Reused && core.FlightNumber > 1 {
+		reuseSymbol = "♻️"
+	}
+
+	// E.g. (7th flight ♻️)
+	flightCountString := fmt.Sprintf("(%s flight %s)", humanize.Ordinal(core.FlightNumber), reuseSymbol)
+
+	// Get a nice icon for the landing type
+	landingIcon, ok := landingLocIcon[core.LandingLocation.Abbrev]
+
+	if !ok {
+		if core.LandingType.Abbrev == "ASDS" {
+			landingIcon = " 🌊"
+		}
+	}
+
+	// Check if there's a friendlier name for the landing location
+	landingLocationName, ok = landingLocName[core.LandingLocation.Abbrev]
+
+	if !ok {
+		landingLocationName = core.LandingLocation.Abbrev
+	}
+
+	// E.g. (Pacific Ocean 🌊)
+	landingNameString := fmt.Sprintf("(%s%s)", core.LandingType.Abbrev, landingIcon)
+
+	if core.LandingType.Abbrev == "" {
+		// Unknown landing type, avoid an empty string
+		landingPrefix = "Recovery"
+		landingString = "Unknown"
+	} else if !core.LandingAttempt {
+		// No landing attempt: core being expended
+		landingPrefix = "Expendable"
+		landingString = "Last flight 🌠"
+	} else {
+		// All good: build a string
+		landingPrefix = "Landing"
+		landingString = fmt.Sprintf("%s %s", landingLocationName, landingNameString)
+	}
+
+	boosterText = fmt.Sprintf(
+		"🚀 *Vehicle information*\n"+
+			"*Core* %s %s\n"+
+			"*%s* %s\n",
+
+		// Core
+		utils.Monospaced(core.Serial+boosterNamePrefix), utils.Monospaced(flightCountString),
+
+		// Landing
+		landingPrefix, utils.Monospaced(landingString),
+	)
+
+	if launch.Rocket.Launchers.Booster1 != (Launcher{}) && launch.Rocket.Launchers.Booster2 != (Launcher{}) {
+		boosterText += "*Boosters* " + utils.Monospaced(launch.sideBoosterInformation()) + "\n"
+	}
+
+	// Add final newline
+	boosterText += "\n"
 
 	return boosterText
 }
 
+// Generates name and reuse information for a single booster
+func (booster *Launcher) boosterNameString(provider string) string {
+	// String to return
+	boosterString := booster.Serial
+
+	if provider == "SpaceX" && !strings.Contains(booster.Serial, "Unknown F9") {
+		// For SpaceX launches, add a booster prefix (e.g. B1060.1)
+		boosterString += fmt.Sprintf(".%d", booster.FlightNumber)
+	}
+
+	reused := booster.Reused
+
+	// If data is errenous, default to booster being reused
+	if !booster.Reused && booster.FlightNumber > 1 {
+		reused = true
+	}
+
+	// Indicate if booster is new or reused
+	if reused {
+		// Indicate reuse count: ex. 3rd flight -> '♻️x2'
+		boosterString += fmt.Sprintf(" (♻️x%d)", booster.FlightNumber-1)
+	} else {
+		boosterString += " (🌟)"
+	}
+
+	return boosterString
+}
+
+// Generates landing information for a single booster
+func (booster *Launcher) boosterRecoveryString() string {
+	return ""
+}
+
+// Returns a single-liner of side-booster information for a launch
+func (launch *Launch) sideBoosterInformation() string {
+	// *Boosters* B1010 (reuseStr), B1020 (reuseStr)
+	var boosterText1, boosterText2 string
+
+	if launch.Rocket.Launchers.Booster1 != (Launcher{}) {
+		boosterText1 = launch.Rocket.Launchers.Booster1.boosterNameString(launch.LaunchProvider.Name)
+	}
+
+	if launch.Rocket.Launchers.Booster2 != (Launcher{}) {
+		boosterText2 = launch.Rocket.Launchers.Booster2.boosterNameString(launch.LaunchProvider.Name)
+	}
+
+	return fmt.Sprintf(
+		"%s, %s", boosterText1, boosterText2,
+	)
+}
+
+// Returns a launch information string
 func (launch *Launch) DescriptionText() string {
 	var description string
 
@@ -646,17 +710,16 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool, botUser
 	return utils.PrepareInputForMarkdown(message, "italictext")
 }
 
-// Load the launch at index=i from launches the user has subscribed to.
-// Returns the launch at index, length of cache, and if user is subscribed to this launch (does not indicate notification states)
-func (cache *Cache) LaunchUserHasSubscribedToAtIndex(user *users.User, index int) (*Launch, int, bool) {
+// Returns all currently cached launches that the user has subscribed to
+func (cache *Cache) LaunchesUserHasSubscribedTo(user *users.User) []*Launch {
 	if user.SubscribedAll && user.UnsubscribedFrom == "" {
-		// If user has subscribed to all launches, and unsubscribed from none
-		return cache.Launches[index], len(cache.Launches), true
+		// User has subscribed to all launches, and unsubscribed from none
+		return cache.Launches
 	}
 
 	if user.SubscribedTo == "" && user.UnsubscribedFrom == "" {
-		// user has subscribed to nothing, and unsubscribed from nothing
-		return cache.Launches[index], len(cache.Launches), false
+		// User has subscribed to nothing
+		return []*Launch{}
 	}
 
 	// Load user states
@@ -683,6 +746,25 @@ func (cache *Cache) LaunchUserHasSubscribedToAtIndex(user *users.User, index int
 			subscribedTo = append(subscribedTo, launch)
 		}
 	}
+
+	return subscribedTo
+}
+
+// Load the launch at index=i from launches the user has subscribed to.
+// Returns the launch at index, length of cache, and if user is subscribed to this launch (does not indicate notification states)
+func (cache *Cache) LaunchUserHasSubscribedToAtIndex(user *users.User, index int) (*Launch, int, bool) {
+	if user.SubscribedAll && user.UnsubscribedFrom == "" {
+		// If user has subscribed to all launches, and unsubscribed from none
+		return cache.Launches[index], len(cache.Launches), true
+	}
+
+	if user.SubscribedTo == "" && user.UnsubscribedFrom == "" {
+		// User has subscribed to nothing, and unsubscribed from nothing
+		return cache.Launches[index], len(cache.Launches), false
+	}
+
+	// Load list of all launches this user has subscribed to
+	subscribedTo := cache.LaunchesUserHasSubscribedTo(user)
 
 	if len(subscribedTo) == 0 {
 		// If zero launches that user has subscribed to are coming up, show all launches
