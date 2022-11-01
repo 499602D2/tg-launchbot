@@ -38,7 +38,11 @@ func getHighestPriorityVideoLink(links []db.ContentURL) *db.ContentURL {
 func parseLauncherInfo(launch *db.Launch) {
 	launch.Rocket.Launchers.Count = len(launch.Rocket.UnparsedLauncherInfo)
 	launch.Rocket.Launchers.Core = db.Launcher{}
-	launch.Rocket.Launchers.Boosters = db.Launcher{}
+
+	// Ugly init for boosters
+	launch.Rocket.Launchers.Booster1 = db.Launcher{}
+	launch.Rocket.Launchers.Booster2 = db.Launcher{}
+	boosterCount := 0
 
 	for _, launcher := range launch.Rocket.UnparsedLauncherInfo {
 		if strings.ToLower(launcher.Type) == "core" {
@@ -56,8 +60,37 @@ func parseLauncherInfo(launch *db.Launch) {
 				LandingType:     launcher.Landing.Type,
 			}
 		} else {
-			log.Warn().Msgf("TODO: not parsing a launcher that is not a core (type=%s)",
-				launcher.Type)
+			if boosterCount == 0 {
+				launch.Rocket.Launchers.Booster1 = db.Launcher{
+					Serial:          launcher.Detailed.Serial,
+					Reused:          launcher.Reused,
+					FlightNumber:    launcher.FlightNumber,
+					Flights:         launcher.Detailed.Flights,
+					FirstLaunchDate: launcher.Detailed.FirstLaunchDate,
+					LastLaunchData:  launcher.Detailed.LastLaunchDate,
+					LandingAttempt:  launcher.Landing.Attempt,
+					LandingSuccess:  launcher.Landing.Success,
+					LandingLocation: launcher.Landing.Location,
+					LandingType:     launcher.Landing.Type,
+				}
+			} else if boosterCount == 1 {
+				launch.Rocket.Launchers.Booster2 = db.Launcher{
+					Serial:          launcher.Detailed.Serial,
+					Reused:          launcher.Reused,
+					FlightNumber:    launcher.FlightNumber,
+					Flights:         launcher.Detailed.Flights,
+					FirstLaunchDate: launcher.Detailed.FirstLaunchDate,
+					LastLaunchData:  launcher.Detailed.LastLaunchDate,
+					LandingAttempt:  launcher.Landing.Attempt,
+					LandingSuccess:  launcher.Landing.Success,
+					LandingLocation: launcher.Landing.Location,
+					LandingType:     launcher.Landing.Type,
+				}
+			} else {
+				log.Warn().Msgf("Booster-count reached %d", boosterCount)
+			}
+
+			boosterCount++
 		}
 	}
 }
