@@ -1,9 +1,5 @@
 package api
 
-/*
-	The updater updates the local database.
-*/
-
 import (
 	"encoding/json"
 	"fmt"
