@@ -221,8 +221,9 @@ var reuseIcon = map[bool]string{
 	true: "♻️", false: "🌟",
 }
 
+// Map landing location to a nice little emoji
 var landingLocIcon = map[string]string{
-	"ATL": " 🌊", "PAC": " 🌊", "CR": " 🤠",
+	"ATL": " 🌊", "PAC": " 🌊", "CR": " 🤠", "HC": " 🚁",
 }
 
 var landingLocName = map[string]string{
