@@ -465,6 +465,13 @@ func (tg *Bot) senderIsAdmin(ctx tb.Context) (bool, error) {
 		return true, nil
 	}
 
+	// Ensure chat and sender are present
+	if ctx.Chat() == nil || ctx.Sender() == nil {
+		log.Error().Msgf("[senderIsAdmin] Attempted loading ChatMemberOf, but chat or sender is not present")
+		log.Error().Msgf("Context: %+v", ctx)
+		return false, fmt.Errorf("Chat or sender not present")
+	}
+
 	// Load member
 	member, err := tg.Bot.ChatMemberOf(ctx.Chat(), ctx.Sender())
 
