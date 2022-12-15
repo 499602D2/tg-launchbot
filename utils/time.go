@@ -41,7 +41,7 @@ func FriendlyETA(userNow time.Time, eta time.Duration) string {
 	var daysUntil float64
 
 	// If, even after adding the remainder, the day is still today, calculating days is simple
-	if time.Now().Add(time.Second*time.Duration(mod)).Day() == time.Now().Day() {
+	if userNow.Add(time.Second*time.Duration(mod)).Day() == userNow.Day() {
 		daysUntil = eta.Hours() / 24
 	} else {
 		// If the remained, e.g. .25 days, causes us to jump over to tomorrow, add a +1 to the days
