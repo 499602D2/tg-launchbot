@@ -150,9 +150,9 @@ func processLaunch(launch *db.Launch, update *db.LaunchUpdate, idx int, cache *d
 	// Convert to unix time, store
 	launch.NETUnix = time.Time.Unix(utcTime)
 
-	// Set launched status, 3: success, 4: failure, 6: in-flight, 7: partial failure
+	// Set launched status, 3: success, 4: failure, 7: partial failure
 	switch launch.Status.Id {
-	case 3, 4, 6, 7:
+	case 3, 4, 7:
 		launch.Launched = true
 	}
 
