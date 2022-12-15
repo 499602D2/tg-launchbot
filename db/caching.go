@@ -46,7 +46,7 @@ func (cache *Cache) UpdateWithNew(launches []*Launch) {
 	for _, launch := range launches {
 		// If launch has launched, ignore
 		if launch.Launched {
-			log.Warn().Msgf("Ignoring launch with launched=1 or NETUnix < now in cache.Update(), slug=%s", launch.Slug)
+			log.Warn().Msgf("Ignoring launch with launched=1 in cache.Update(), slug=%s", launch.Slug)
 			continue
 		}
 
@@ -111,10 +111,13 @@ func (cache *Cache) Populate() {
 	cache.Mutex.Unlock()
 }
 
-/* Finds the next notification send-time from the launch cache.
+/*
+	Finds the next notification send-time from the launch cache.
+
 Function goes over the notification states, finding the next notification
 to send. Returns a Notification-type, with the send-time and all launch
-IDs associated with this send-time. */
+IDs associated with this send-time.
+*/
 func (cache *Cache) FindNextNotification() *Notification {
 	// Find first send-time from the launch cache
 	var (
@@ -302,8 +305,11 @@ func (cache *Cache) NextScheduledUpdateIn() (time.Duration, *Notification) {
 	return autoUpdateIn, notification
 }
 
-/* Finds a launch from the cache by a launch ID. If not present in the cache,
-checks the disk. */
+/*
+	Finds a launch from the cache by a launch ID. If not present in the cache,
+
+checks the disk.
+*/
 func (cache *Cache) FindLaunchById(id string) (*Launch, error) {
 	// Find the launch from the LaunchMap
 	launch, ok := cache.LaunchMap[id]
