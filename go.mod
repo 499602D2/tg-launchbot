@@ -18,8 +18,8 @@ require (
 	github.com/mingrammer/commonregex v1.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
-	golang.org/x/image v0.1.0 // indirect
-	golang.org/x/net v0.1.0 // indirect
+	golang.org/x/image v0.2.0 // indirect
+	golang.org/x/net v0.4.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	gonum.org/v1/gonum v0.12.0 // indirect
 	gopkg.in/neurosnap/sentences.v1 v1.0.7 // indirect
@@ -28,7 +28,7 @@ require (
 require (
 	github.com/bradfitz/latlong v0.0.0-20170410180902-f3db6d0dff40
 	github.com/dustin/go-humanize v1.0.0
-	github.com/go-co-op/gocron v1.17.1
+	github.com/go-co-op/gocron v1.18.0
 	github.com/go-resty/resty/v2 v2.7.0
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
@@ -36,10 +36,10 @@ require (
 	github.com/jdkato/prose/v2 v2.0.0
 	github.com/mattn/go-sqlite3 v1.14.16 // indirect
 	github.com/procyon-projects/chrono v1.1.2
-	golang.org/x/crypto v0.1.0 // indirect
-	golang.org/x/exp v0.0.0-20221031165847-c99f073a8326
-	golang.org/x/sys v0.1.0
-	golang.org/x/time v0.1.0
+	golang.org/x/crypto v0.4.0 // indirect
+	golang.org/x/exp v0.0.0-20221212164502-fae10dda9338
+	golang.org/x/sys v0.3.0
+	golang.org/x/time v0.3.0
 	gorm.io/driver/sqlite v1.4.3
-	gorm.io/gorm v1.24.0
+	gorm.io/gorm v1.24.2
 )
