@@ -231,6 +231,8 @@ var landingLocName = map[string]string{
 	"N/A": "Unknown",
 }
 
+const MAX_FLIGHTS_PER_DAY = 4
+
 // Returns a string of booster information for a launch vehicle
 func (launch *Launch) BoosterInformation() string {
 	var (
@@ -614,6 +616,7 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool, botUser
 	for _, launch := range cache.Launches {
 		// Ignore bad launches (only really with LL2's development endpoint)
 		delta := time.Until(time.Unix(launch.NETUnix, 0))
+
 		if delta.Seconds() < 0 && launch.Status.Abbrev != "In Flight" {
 			continue
 		}
@@ -670,7 +673,8 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool, botUser
 		// Loop over launches, add
 		var row string
 		for i, launch := range launchList {
-			if i == 3 {
+			if i == MAX_FLIGHTS_PER_DAY {
+				// If we have already added max number of flights for this day, skip the rest
 				message += fmt.Sprintf("*+ %d more %s*\n",
 					len(launchList)-i,
 					english.PluralWord(int(len(launchList)-i), "flight", "flights"),
