@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -48,11 +49,11 @@ func FriendlyETA(userNow time.Time, eta time.Duration) string {
 		daysUntil = eta.Hours()/24 + 1
 	}
 
-	if daysUntil < 2.0 {
+	if daysUntil <= float64(1) {
 		// The case of the date being today has already been caught, therefore it's tomorrow
 		return "tomorrow"
 	}
 
 	// Otherwise, just count the days
-	return fmt.Sprintf("in %s", english.Plural(int(daysUntil), "day", "days"))
+	return fmt.Sprintf("in %s", english.Plural(int(math.Ceil(daysUntil)), "day", "days"))
 }
