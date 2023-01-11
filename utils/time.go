@@ -29,31 +29,31 @@ func DateInUserLocation(refTime int64, userLocation *time.Location) string {
 
 // Return a user-friendly ETA string, e.g. "today", "tomorrow", or "in 5 days"
 func FriendlyETA(userNow time.Time, eta time.Duration) string {
-	// See if eta + userNow is still the same day
 	if userNow.Add(eta).Day() == userNow.Day() {
 		// Same day: launch is today
 		return "today"
 	}
 
-	// Remove seconds that are not contributing to a whole day.
-	// As in, TTL might be 1.25 days: extract the .25 days
-	mod := int64(eta.Seconds()) % (24 * 3600)
+	// Extract seconds that are not contributing to a whole day in the ETA.
+	// Example: ETA might be 1.25 days -> extract the .25 days.
+	remainder := int64(eta.Seconds()) % (24 * 3600)
 
-	var daysUntil float64
+	// Seconds left in today
+	secondsRemainingToday := 24*3600 - userNow.Hour()*3600 + userNow.Minute()*60 + userNow.Second()
 
-	// If, even after adding the remainder, the day is still today, calculating days is simple
-	if userNow.Add(time.Second*time.Duration(mod)).Day() == userNow.Day() {
-		daysUntil = eta.Hours() / 24
-	} else {
-		// If the remained, e.g. .25 days, causes us to jump over to tomorrow, add a +1 to the days
-		daysUntil = eta.Hours()/24 + 1
-	}
-
-	if daysUntil <= float64(1) {
-		// The case of the date being today has already been caught, therefore it's tomorrow
+	// If ETA is within the range of today's remaining seconds + tomorrow's
+	// seconds, the ETA is tomorrow
+	if int(eta.Seconds()) <= 24*3600+secondsRemainingToday {
 		return "tomorrow"
 	}
 
-	// Otherwise, just count the days
+	// Floating point whole days until ETA
+	daysUntil := (eta.Seconds() - float64(secondsRemainingToday) - float64(remainder)) / (24 * 3600)
+
+	if userNow.Add(time.Second*time.Duration(remainder)).Day() != userNow.Day() {
+		// If remainder is enough to kick us off into the next day, account for it
+		daysUntil += 1
+	}
+
 	return fmt.Sprintf("in %s", english.Plural(int(math.Ceil(daysUntil)), "day", "days"))
 }
