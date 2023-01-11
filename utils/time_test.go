@@ -33,4 +33,8 @@ func TestFriendlyETA(t *testing.T) {
 	// Test with one week
 	eta = FriendlyETA(userNow, time.Hour*24*7)
 	fmt.Printf("7-day ETA: %s\n\n", eta)
+
+	// Test with one week
+	eta = FriendlyETA(userNow, time.Hour*24+time.Hour*12)
+	fmt.Printf("1 day + 12 hours ETA: %s\n\n", eta)
 }
