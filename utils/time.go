@@ -38,8 +38,8 @@ func FriendlyETA(userNow time.Time, eta time.Duration) string {
 	// Example: ETA might be 1.25 days -> extract the .25 days.
 	remainder := int64(eta.Seconds()) % (24 * 3600)
 
-	// Seconds left in today
-	secondsRemainingToday := 24*3600 - userNow.Hour()*3600 + userNow.Minute()*60 + userNow.Second()
+	// Seconds left in today: 24 hours, minus time elapsed
+	secondsRemainingToday := 24*3600 - (userNow.Hour()*3600 + userNow.Minute()*60 + userNow.Second())
 
 	// If ETA is within the range of today's remaining seconds + tomorrow's
 	// seconds, the ETA is tomorrow
