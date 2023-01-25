@@ -78,6 +78,11 @@ func updateWrapper(session *config.Session, scheduleNext bool) {
 			// If updater failed, do exponential back-off
 			retryAfter := math.Pow(2.0, float64(i))
 
+			if retryAfter >= 64 {
+				// Limit wait to 60 seconds
+				retryAfter = 60
+			}
+
 			log.Warn().Msgf("Re-try number %d failed, trying again in %.1f seconds", i, retryAfter)
 
 			// Sleep, continue loop
