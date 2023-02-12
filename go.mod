@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/bwmarrin/discordgo v0.27.0
-	github.com/rs/zerolog v1.28.0
+	github.com/rs/zerolog v1.29.0
 	gopkg.in/telebot.v3 v3.1.2
 )
 
@@ -19,7 +19,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	golang.org/x/image v0.2.0 // indirect
-	golang.org/x/net v0.5.0 // indirect
+	golang.org/x/net v0.6.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	gonum.org/v1/gonum v0.12.0 // indirect
 	gopkg.in/neurosnap/sentences.v1 v1.0.7 // indirect
@@ -36,10 +36,10 @@ require (
 	github.com/jdkato/prose/v2 v2.0.0
 	github.com/mattn/go-sqlite3 v1.14.16 // indirect
 	github.com/procyon-projects/chrono v1.1.2
-	golang.org/x/crypto v0.5.0 // indirect
-	golang.org/x/exp v0.0.0-20230124195608-d38c7dcee874
-	golang.org/x/sys v0.4.0
+	golang.org/x/crypto v0.6.0 // indirect
+	golang.org/x/exp v0.0.0-20230210204819-062eb4c674ab
+	golang.org/x/sys v0.5.0
 	golang.org/x/time v0.3.0
 	gorm.io/driver/sqlite v1.4.4
-	gorm.io/gorm v1.24.3
+	gorm.io/gorm v1.24.5
 )
