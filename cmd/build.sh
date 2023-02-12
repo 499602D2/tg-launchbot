@@ -7,8 +7,12 @@ LDFLAGS=(
 )
 
 echo "Current head at $SHA"
-echo "Building LaunchBot..."
 
+echo "Ensuring packages are up to date..."
+go get all
+echo "Packages updated"
+
+echo "Building LaunchBot..."
 go build -o ../launchbot -ldflags="${LDFLAGS[*]}"
 
-echo "Build finished"
+echo "Build finished!"
