@@ -621,6 +621,12 @@ func (cache *Cache) ScheduleMessage(user *users.User, showMissions bool, botUser
 			continue
 		}
 
+		if user.Time == (users.UserTime{}) {
+			// If user's time property has not been initialized, ensure we don't trip over it
+			log.Warn().Msgf("User=%s does not have Time field set in ScheduleMessage: setting...", user.Id)
+			user.SetTimeZone()
+		}
+
 		// Get launch date in user's time zone
 		yy, mm, dd := time.Unix(launch.NETUnix, 0).In(user.Time.Location).Date()
 		dateStr := fmt.Sprintf("%d-%d-%d", yy, mm, dd)

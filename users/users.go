@@ -324,7 +324,22 @@ func (user *User) SetTimeZone() {
 	tz, err := time.LoadLocation(user.Locale)
 
 	if err != nil {
-		log.Error().Err(err).Msg("Error loading time zone for user")
+		log.Error().Err(err).Msgf("Error loading time zone for user with locale='%s': defaulting...", user.Locale)
+
+		// Default to UTC
+		tz, err = time.LoadLocation("")
+
+		if err != nil {
+			// This should never happen, but handle it anyway
+			log.Error().Err(err).Msgf("Loading default location for user failed in SetTimeZone()")
+		}
+
+		// Set defaults
+		user.Time = UserTime{
+			Location:  tz,
+			UtcOffset: "UTC",
+		}
+
 		return
 	}
 
