@@ -104,8 +104,7 @@ type Rocket struct {
 	UnparsedLauncherInfo []FirstStage `json:"launcher_stage" gorm:"-:all"`       // JSON, not in DB
 	Launchers            Launchers    `gorm:"embedded;embeddedPrefix:launcher_"` // Gorm, in DB
 
-	// TODO
-	// Spacecraft SpacecraftStage     `json:"spacecraft_stage"`
+	SpacecraftStage SpacecraftStage `json:"spacecraft_stage" gorm:"embedded;embeddedPrefix:spacecraft_"`
 }
 
 // Contains multiple launchers packed into one (e.g. Falcon 9 vs. Falcon Heavy).
@@ -161,8 +160,8 @@ type LauncherDetailed struct {
 type Landing struct {
 	Attempt  bool            `json:"attempt"`
 	Success  bool            `json:"success"`
-	Location LandingLocation `json:"location"`
-	Type     LandingType     `json:"type"`
+	Location LandingLocation `json:"location" gorm:"embedded;embeddedPrefix:landinglocation_"`
+	Type     LandingType     `json:"type" gorm:"embedded;embeddedPrefix:type_"`
 }
 
 type LandingLocation struct {
@@ -182,7 +181,30 @@ type LandingType struct {
 	Description string `json:"description"`
 }
 
-// type SpacecraftStage struct {}
+// TODO add crew for launch/onboard/landing (additional parsing required)
+type SpacecraftStage struct {
+	Id          int        `json:"id"`
+	Destination string     `json:"destination"`
+	Spacecraft  Spacecraft `json:"spacecraft" gorm:"embedded;embeddedPrefix:spacecraft_"`
+	Landing     Landing    `json:"landing" gorm:"embedded;embeddedPrefix:landing_"`
+}
+
+type Spacecraft struct {
+	Id     int    `json:"id"`
+	Name   string `json:"name"`
+	Serial string `json:"serial_number"`
+}
+
+type SpacecraftLanding struct {
+	Attempt  bool                      `json:"attempt"`
+	Success  bool                      `json:"success"`
+	Location SpacecraftLandingLocation `json:"location" gorm:"embedded;embeddedPrefix:location_"`
+}
+
+type SpacecraftLandingLocation struct {
+	Name   string `json:"name"`
+	Abbrev string `json:"abbrev"`
+}
 
 type Mission struct {
 	Name        string `json:"name"`
@@ -294,20 +316,74 @@ func (launch *Launch) BoosterInformation() string {
 		landingString = fmt.Sprintf("%s %s", landingLocationName, landingNameString)
 	}
 
+	// Old boosterText format
 	boosterText = fmt.Sprintf(
 		"🚀 *Vehicle information*\n"+
 			"*Core* %s %s\n"+
 			"*%s* %s\n",
 
-		// Core
+		// Core: ex. "Core B1071 (1st flight 🌟)"
 		utils.Monospaced(core.Serial+boosterNamePrefix), utils.Monospaced(flightCountString),
 
-		// Landing
+		// Landing: ex. "Expendable Last flight 🌠"
 		landingPrefix, utils.Monospaced(landingString),
 	)
 
+	// Add booster information if there are any, using sideBoosterInformation()
 	if launch.Rocket.Launchers.Booster1 != (Launcher{}) && launch.Rocket.Launchers.Booster2 != (Launcher{}) {
 		boosterText += "*Boosters* " + utils.Monospaced(launch.sideBoosterInformation()) + "\n"
+	}
+
+	////////////////////////////////////////
+	// Starship-specific vehicle information
+	if launch.Rocket.Config.Name == "Starship" {
+		// New flight count string for Super Heavy
+		superHeavyReuseCountText := ""
+		if core.Reused {
+			superHeavyReuseCountText = fmt.Sprintf("x%d", core.FlightNumber-1)
+		} else {
+			superHeavyReuseCountText = "new "
+		}
+		superHeavyFlightCountString := fmt.Sprintf("[%s%s]", superHeavyReuseCountText, reuseSymbol)
+
+		superHeavyReuseString := ""
+		if core.LandingType.Abbrev == "" {
+			// Unknown landing type, avoid an empty string
+			superHeavyReuseString = ""
+		} else if !core.LandingAttempt {
+			// No landing attempt: core being expended
+			superHeavyReuseString = "[expendable 🌠]"
+		} else {
+			// All good: build a string
+			superHeavyReuseString = fmt.Sprintf("[%s %s]", landingLocationName, landingNameString)
+		}
+
+		starshipReuseString := ""
+		if launch.Rocket.SpacecraftStage.Landing.Location.Abbrev == "" {
+			// Unknown landing type, avoid an empty string
+			starshipReuseString = "[unknown recovery]"
+		} else if !core.LandingAttempt {
+			// No landing attempt: core being expended
+			starshipReuseString = "[expendable 🌠]"
+		} else {
+			// All good: build a string
+			starshipReuseString = fmt.Sprintf("[%s %s]", landingLocationName, landingNameString)
+		}
+
+		// Add spacecraft stage information
+		boosterText = fmt.Sprintf(
+			"🚀 *Starship configuration*\n"+
+				"*Starship* %s %s\n"+
+				"*Super Heavy* %s %s %s\n",
+
+			// Ex. Starship S24 (🌟 new) [expendable]
+			utils.Monospaced(launch.Rocket.SpacecraftStage.Spacecraft.Serial),
+			utils.Monospaced(starshipReuseString),
+
+			utils.Monospaced(strings.Replace(launch.Rocket.Launchers.Core.Serial, "Booster ", "B", 1)),
+			utils.Monospaced(superHeavyFlightCountString),
+			utils.Monospaced(superHeavyReuseString),
+		)
 	}
 
 	// Add final newline
