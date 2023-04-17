@@ -689,11 +689,19 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 			Data:   fmt.Sprintf("%s/%s/%s", data[0+migrationIdx], utils.ToggleBoolStateAsString[toggleTo], data[2+migrationIdx]),
 		}
 
+		// Get the message to modify
+		msg := ctx.Message()
+
+		if msg == nil {
+			log.Warn().Msg("Could not find message to modify")
+			return nil
+		}
+
 		// Set the existing mute button to the new one (always at zeroth index, regardless of expansion status)
-		ctx.Message().ReplyMarkup.InlineKeyboard[0] = []tb.InlineButton{muteBtn}
+		msg.ReplyMarkup.InlineKeyboard[0] = []tb.InlineButton{muteBtn}
 
 		// Edit message's reply markup, since we don't need to touch the message content itself
-		modified, err := tg.Bot.EditReplyMarkup(ctx.Message(), &tb.ReplyMarkup{InlineKeyboard: ctx.Message().ReplyMarkup.InlineKeyboard})
+		modified, err := tg.Bot.EditReplyMarkup(msg, &tb.ReplyMarkup{InlineKeyboard: msg.ReplyMarkup.InlineKeyboard})
 
 		if err != nil {
 			// If not recoverable, return
