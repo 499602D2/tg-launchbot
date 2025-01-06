@@ -1,0 +1,55 @@
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
+
+# Store question papers
+QUESTION_PAPERS = {
+    "9": {"Math": "link_to_class9_math", "Science": "link_to_class9_science"},
+    "10": {"Math": "link_to_class10_math", "Science": "link_to_class10_science"},
+    "11": {"Physics": "link_to_class11_physics", "Chemistry": "link_to_class11_chemistry"},
+    "12": {"Physics": "link_to_class12_physics", "Chemistry": "link_to_class12_chemistry"},
+}
+
+# Start command handler
+def start(update: Update, context: CallbackContext):
+    keyboard = [
+        [InlineKeyboardButton("Class 9", callback_data="class_9")],
+        [InlineKeyboardButton("Class 10", callback_data="class_10")],
+        [InlineKeyboardButton("Class 11", callback_data="class_11")],
+        [InlineKeyboardButton("Class 12", callback_data="class_12")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    update.message.reply_text("Select your class:", reply_markup=reply_markup)
+
+# Callback for class selection
+def handle_class_selection(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()
+    selected_class = query.data.split("_")[1]
+    subjects = QUESTION_PAPERS.get(selected_class, {})
+    
+    if not subjects:
+        query.edit_message_text("No question papers available for this class.")
+        return
+
+    keyboard = [
+        [InlineKeyboardButton(subject, url=link)]
+        for subject, link in subjects.items()
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    query.edit_message_text(f"Select a subject for Class {selected_class}:", reply_markup=reply_markup)
+
+def main():
+    # Replace 'YOUR_BOT_TOKEN' with your bot token
+    updater = Updater("7942460858:AAFf4-pLv4bYYcQPlvJS8SGdiFG1-K9jPC4")
+    dispatcher = updater.dispatcher
+
+    # Handlers
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CallbackQueryHandler(handle_class_selection))
+
+    # Start the Bot
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == "__main__":
+    main()
