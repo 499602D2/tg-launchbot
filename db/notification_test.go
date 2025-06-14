@@ -26,15 +26,37 @@ func TestRecipientLoading(t *testing.T) {
 	}
 
 	db.Cache = cache
-	db.Cache.Populate()
 
-	launch, err := db.Cache.FindLaunchById("949421ac-3802-499b-b383-d8274de7e147")
-
-	if err != nil {
-		log.Fatal().Err(err).Msg("Loading launch failed")
+	// Insert a launch and user manually for the test
+	launch := &Launch{
+		Id:             "test-launch",
+		Slug:           "test-launch",
+		Name:           "Test Launch",
+		LaunchProvider: LaunchProvider{Id: 123, Name: "Provider"},
+		Status:         LaunchStatus{Abbrev: "Go"},
+		NETUnix:        time.Now().Add(time.Hour).Unix(),
 	}
 
-	user := db.Cache.FindUser("12345", "tg")
+	if err := db.Update([]*Launch{launch}, true, false); err != nil {
+		t.Fatalf("failed to insert launch: %v", err)
+	}
+
+	cache.UpdateWithNew([]*Launch{launch})
+
+	user := &users.User{
+		Id:              "12345",
+		Platform:        "tg",
+		SubscribedTo:    "123",
+		Enabled24h:      true,
+		Enabled12h:      false,
+		Enabled1h:       false,
+		Enabled5min:     false,
+		EnabledPostpone: true,
+	}
+
+	db.SaveUser(user)
+
+	user = db.Cache.FindUser("12345", "tg")
 	log.Debug().Msgf("User=%s pre-loaded into the cache", user.Id)
 
 	notificationType := "24h"
