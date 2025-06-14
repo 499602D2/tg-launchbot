@@ -53,11 +53,18 @@ var (
 	ErrWrongFileIDSymbol      = NewError(400, "Bad Request: wrong remote file id specified: can't unserialize it. Wrong last symbol")
 	ErrWrongTypeOfContent     = NewError(400, "Bad Request: wrong type of the web page content")
 	ErrWrongURL               = NewError(400, "Bad Request: wrong HTTP URL specified")
-	ErrForwardMessage         = NewError(400, "Bad Request: administrators of the chat restricted message forwarding")
+       ErrForwardMessage         = NewError(400, "Bad Request: administrators of the chat restricted message forwarding")
 )
 
 https://github.com/go-telebot/telebot/blob/v3.0.0/errors.go#L33
 */
+
+// Extra errors not covered by telebot
+var (
+	ErrNoRightsToSendText = tb.NewError(400, "Bad Request: not enough rights to send text messages to the chat")
+	ErrChatRestricted     = tb.NewError(400, "Bad Request: CHAT_RESTRICTED")
+	ErrChatAdminRequired  = tb.NewError(400, "Bad Request: CHAT_ADMIN_REQUIRED")
+)
 
 // On unhandled errors, send a notification to the administrator
 func notifyAdminOfError(tg *Bot, err error, wasGeneric bool) {
@@ -212,7 +219,12 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 		return true
 
 	case tb.ErrChatNotFound:
-		warnUnhandled(err, false)
+		log.Debug().Msgf("Chat=%s not found, removing from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
+		return false
+	case ErrNoRightsToSendText, ErrChatRestricted, ErrChatAdminRequired:
+		log.Debug().Msgf("Lost permissions in chat=%s, ignoring", chat.Id)
+		return false
 
 	case tb.ErrEmptyChatID:
 		warnUnhandled(err, false)
