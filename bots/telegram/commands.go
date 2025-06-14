@@ -660,6 +660,7 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 
 	if err != nil {
 		log.Warn().Msg("Running muteCallback failed")
+		tg.respondToCallback(ctx, "⚠️ Request failed!", false)
 		return nil
 	}
 
@@ -697,8 +698,18 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 			return nil
 		}
 
-		// Set the existing mute button to the new one (always at zeroth index, regardless of expansion status)
-		msg.ReplyMarkup.InlineKeyboard[0] = []tb.InlineButton{muteBtn}
+		// Ensure the message has an inline keyboard before attempting to modify it
+		if msg.ReplyMarkup == nil || len(msg.ReplyMarkup.InlineKeyboard) == 0 {
+			log.Warn().Msg("muteCallback: message has no inline keyboard")
+		} else {
+			// Ensure the first row exists
+			if len(msg.ReplyMarkup.InlineKeyboard[0]) == 0 {
+				log.Warn().Msg("muteCallback: inline keyboard row is empty")
+			} else {
+				// Set the existing mute button to the new one (always at zeroth index, regardless of expansion status)
+				msg.ReplyMarkup.InlineKeyboard[0] = []tb.InlineButton{muteBtn}
+			}
+		}
 
 		// Edit message's reply markup, since we don't need to touch the message content itself
 		modified, err := tg.Bot.EditReplyMarkup(msg, &tb.ReplyMarkup{InlineKeyboard: msg.ReplyMarkup.InlineKeyboard})
