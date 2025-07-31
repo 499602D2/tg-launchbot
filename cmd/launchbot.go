@@ -130,6 +130,9 @@ func main() {
 	if !noUpdates {
 		// Create a new task scheduler, assign to session
 		session.Scheduler = gocron.NewScheduler(time.UTC)
+		
+		// Start the scheduler async
+		session.Scheduler.StartAsync()
 
 		// Populate the cache
 		session.Cache.Populate()
