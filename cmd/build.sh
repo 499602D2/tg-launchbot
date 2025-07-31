@@ -1,6 +1,8 @@
 #!/bin/bash
+set -e  # Exit on any error
 
-SHA=$(git rev-parse --short HEAD)
+# Get git SHA for version info
+SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 LDFLAGS=(
 	"-X 'main.GitSHA=$SHA'"
@@ -8,11 +10,19 @@ LDFLAGS=(
 
 echo "Current head at $SHA"
 
-echo "Ensuring packages are up to date..."
-go get all
-echo "Packages updated"
+echo "Downloading dependencies..."
+if go mod download; then
+    echo "Dependencies downloaded"
+else
+    echo "Failed to download dependencies"
+    exit 1
+fi
 
 echo "Building LaunchBot..."
-go build -o ../launchbot -ldflags="${LDFLAGS[*]}"
-
-echo "Build finished!"
+if go build -o ../launchbot -ldflags="${LDFLAGS[*]}"; then
+    echo "Build finished successfully!"
+    echo "Binary created at: ../launchbot"
+else
+    echo "Build failed!"
+    exit 1
+fi
