@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"launchbot/sendables"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -35,6 +36,7 @@ var (
 	ErrNoRightsToSendPhoto    = NewError(400, "Bad Request: not enough rights to send photos to the chat")
 	ErrNoRightsToSendStickers = NewError(400, "Bad Request: not enough rights to send stickers to the chat")
 	ErrNotFoundToDelete       = NewError(400, "Bad Request: message to delete not found")
+	ErrNotFoundToEdit         = NewError(400, "Bad Request: message to edit not found")
 	ErrNotFoundToForward      = NewError(400, "Bad Request: message to forward not found")
 	ErrNotFoundToReply        = NewError(400, "Bad Request: reply message not found")
 	ErrQueryTooOld            = NewError(400, "Bad Request: query is too old and response timeout expired or query ID is invalid")
@@ -172,6 +174,12 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	tbGroupDeleterErr := tb.NewError(403, "telegram: Forbidden: the group chat was deleted")
 	tbGroupDeleterErr2 := tb.NewError(403, "Forbidden: the group chat was deleted")
 
+	// Check for specific error messages in string form
+	if err != nil && strings.Contains(err.Error(), "message to edit not found") {
+		log.Warn().Msg("Message not found to edit - it may have been deleted or is too old")
+		return true
+	}
+
 	switch err {
 	// General errors
 	// https://github.com/go-telebot/telebot/blob/8ad1e044ee330c22eb24e2ff9fdd0ed92e523648/errors.go#L69
@@ -210,6 +218,7 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	case tb.ErrSameMessageContent:
 		// No error, message may not be modified following an edit
 		return true
+	
 
 	case tb.ErrChatNotFound:
 		warnUnhandled(err, false)
