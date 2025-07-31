@@ -28,6 +28,9 @@ type User struct {
 	SubscribedTo          string   // List of comma-separated LSP IDs
 	UnsubscribedFrom      string   // List of comma-separated LSP IDs
 	MutedLaunches         string   // A comma-separated string of muted launches by ID
+	MutedKeywords         string   // Comma-separated keywords to exclude from notifications
+	SubscribedKeywords    string   // Comma-separated keywords to include in notifications
+	FilterMode            string   // "exclude" (default), "include", or "hybrid"
 	SubscribedNewsletter  bool
 	MigratedFromId        string     // If the chat has been migrated, keep its original id
 	Stats                 stats.User `gorm:"embedded"`
@@ -154,6 +157,175 @@ func (user *User) HasMutedLaunch(id string) bool {
 	}
 
 	return false
+}
+
+// Add a keyword to muted keywords list
+func (user *User) AddMutedKeyword(keyword string) bool {
+	// Check if keyword already exists
+	if user.HasMutedKeyword(keyword) {
+		return false
+	}
+
+	if user.MutedKeywords == "" {
+		user.MutedKeywords = keyword
+	} else {
+		user.MutedKeywords = strings.Join(append(strings.Split(user.MutedKeywords, ","), keyword), ",")
+	}
+	return true
+}
+
+// Remove a keyword from muted keywords list
+func (user *User) RemoveMutedKeyword(keyword string) bool {
+	if !user.HasMutedKeyword(keyword) {
+		return false
+	}
+
+	keywords := strings.Split(user.MutedKeywords, ",")
+	for idx, k := range keywords {
+		if strings.EqualFold(k, keyword) {
+			keywords = append(keywords[:idx], keywords[idx+1:]...)
+			break
+		}
+	}
+
+	if len(keywords) > 0 {
+		user.MutedKeywords = strings.Join(keywords, ",")
+	} else {
+		user.MutedKeywords = ""
+	}
+	return true
+}
+
+// Check if user has muted a keyword
+func (user *User) HasMutedKeyword(keyword string) bool {
+	if user.MutedKeywords == "" {
+		return false
+	}
+
+	for _, k := range strings.Split(user.MutedKeywords, ",") {
+		if strings.EqualFold(k, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+// Add a keyword to subscribed keywords list
+func (user *User) AddSubscribedKeyword(keyword string) bool {
+	// Check if keyword already exists
+	if user.HasSubscribedKeyword(keyword) {
+		return false
+	}
+
+	if user.SubscribedKeywords == "" {
+		user.SubscribedKeywords = keyword
+	} else {
+		user.SubscribedKeywords = strings.Join(append(strings.Split(user.SubscribedKeywords, ","), keyword), ",")
+	}
+	return true
+}
+
+// Remove a keyword from subscribed keywords list
+func (user *User) RemoveSubscribedKeyword(keyword string) bool {
+	if !user.HasSubscribedKeyword(keyword) {
+		return false
+	}
+
+	keywords := strings.Split(user.SubscribedKeywords, ",")
+	for idx, k := range keywords {
+		if strings.EqualFold(k, keyword) {
+			keywords = append(keywords[:idx], keywords[idx+1:]...)
+			break
+		}
+	}
+
+	if len(keywords) > 0 {
+		user.SubscribedKeywords = strings.Join(keywords, ",")
+	} else {
+		user.SubscribedKeywords = ""
+	}
+	return true
+}
+
+// Check if user has subscribed to a keyword
+func (user *User) HasSubscribedKeyword(keyword string) bool {
+	if user.SubscribedKeywords == "" {
+		return false
+	}
+
+	for _, k := range strings.Split(user.SubscribedKeywords, ",") {
+		if strings.EqualFold(k, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+// Check if a launch matches user's keyword filters
+func (user *User) MatchesKeywordFilter(launchName, vehicleName, missionName string) bool {
+	// Get filter mode, defaulting to exclude if not set
+	filterMode := user.FilterMode
+	if filterMode == "" {
+		filterMode = "exclude"
+	}
+
+	// Combine all text to search
+	searchText := strings.ToLower(launchName + " " + vehicleName + " " + missionName)
+
+	switch filterMode {
+	case "exclude":
+		// Check if any muted keyword matches
+		if user.MutedKeywords != "" {
+			for _, keyword := range strings.Split(user.MutedKeywords, ",") {
+				if strings.Contains(searchText, strings.ToLower(keyword)) {
+					return false // Exclude this launch
+				}
+			}
+		}
+		return true // Include by default in exclude mode
+
+	case "include":
+		// Only include if subscribed keyword matches
+		if user.SubscribedKeywords == "" {
+			return true // If no keywords set, include all
+		}
+		for _, keyword := range strings.Split(user.SubscribedKeywords, ",") {
+			if strings.Contains(searchText, strings.ToLower(keyword)) {
+				return true // Include this launch
+			}
+		}
+		return false // Exclude by default in include mode
+
+	case "hybrid":
+		// First check subscribed keywords (include takes precedence)
+		hasSubscribedMatch := false
+		if user.SubscribedKeywords != "" {
+			for _, keyword := range strings.Split(user.SubscribedKeywords, ",") {
+				if strings.Contains(searchText, strings.ToLower(keyword)) {
+					hasSubscribedMatch = true
+					break
+				}
+			}
+			// If we have subscribed keywords but no match, exclude
+			if !hasSubscribedMatch {
+				return false
+			}
+		}
+
+		// Then check muted keywords
+		if user.MutedKeywords != "" {
+			for _, keyword := range strings.Split(user.MutedKeywords, ",") {
+				if strings.Contains(searchText, strings.ToLower(keyword)) {
+					return false // Exclude this launch
+				}
+			}
+		}
+		return true
+
+	default:
+		// Invalid mode, default to include
+		return true
+	}
 }
 
 // Return a bool indicating if user has any notification subscription times enabled

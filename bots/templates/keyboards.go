@@ -10,6 +10,7 @@ import (
 	"launchbot/db"
 	"launchbot/users"
 	"launchbot/utils"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 	tb "gopkg.in/telebot.v3"
@@ -25,6 +26,7 @@ type Keyboard struct {
 type SettingsKeyboard struct {
 	TimeZone     TimeZoneKeyboard
 	Subscription SubscriptionKeyboard
+	Keywords     KeywordsKeyboard
 }
 
 // Extend Settings{} with time-zone settings
@@ -33,6 +35,10 @@ type TimeZoneKeyboard struct {
 
 // Extend Settings{} with subscription settings
 type SubscriptionKeyboard struct {
+}
+
+// Extend Settings{} with keyword filter settings
+type KeywordsKeyboard struct {
 }
 
 // Command templates
@@ -44,6 +50,12 @@ func (settings *SettingsKeyboard) Main(isGroup bool) (tb.SendOptions, [][]tb.Inl
 		Unique: "settings",
 		Text:   "🚀 Subscribe to launches",
 		Data:   "sub/bycountry",
+	}
+
+	keywordBtn := tb.InlineButton{
+		Unique: "settings",
+		Text:   "🔍 Filter by keywords",
+		Data:   "keywords/main",
 	}
 
 	timesBtn := tb.InlineButton{
@@ -59,7 +71,7 @@ func (settings *SettingsKeyboard) Main(isGroup bool) (tb.SendOptions, [][]tb.Inl
 	}
 
 	// Construct the keyboard and send-options
-	kb := [][]tb.InlineButton{{subscribeBtn}, {timesBtn}, {tzBtn}}
+	kb := [][]tb.InlineButton{{subscribeBtn}, {keywordBtn}, {timesBtn}, {tzBtn}}
 
 	// If chat is a group, show the group-specific settings
 	if isGroup {
@@ -530,6 +542,147 @@ func (command *CommandKeyboard) Admin() (tb.SendOptions, [][]tb.InlineButton) {
 	sendOptions := tb.SendOptions{
 		ParseMode:   "MarkdownV2",
 		ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
+	}
+
+	return sendOptions, kb
+}
+
+func (keywords *KeywordsKeyboard) Main(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
+	// Get current filter mode label
+	filterModeLabel := map[string]string{
+		"exclude": "📛 Mode: Exclude keywords",
+		"include": "✅ Mode: Include only keywords",
+		"hybrid":  "🔀 Mode: Hybrid filtering",
+		"":        "📛 Mode: Exclude keywords", // Default
+	}[chat.FilterMode]
+
+	filterModeBtn := tb.InlineButton{
+		Unique: "keywords",
+		Text:   filterModeLabel,
+		Data:   "mode/toggle",
+	}
+
+	mutedBtn := tb.InlineButton{
+		Unique: "keywords",
+		Text:   "🚫 Muted keywords",
+		Data:   "muted/view",
+	}
+
+	subscribedBtn := tb.InlineButton{
+		Unique: "keywords",
+		Text:   "✅ Subscribed keywords",
+		Data:   "subscribed/view",
+	}
+
+	helpBtn := tb.InlineButton{
+		Unique: "keywords",
+		Text:   "❓ Help & examples",
+		Data:   "help",
+	}
+
+	retBtn := tb.InlineButton{
+		Unique: "settings",
+		Text:   "⬅️ Back to settings",
+		Data:   "main",
+	}
+
+	kb := [][]tb.InlineButton{{filterModeBtn}, {mutedBtn}, {subscribedBtn}, {helpBtn}, {retBtn}}
+
+	sendOptions := tb.SendOptions{
+		ParseMode:             "MarkdownV2",
+		DisableWebPagePreview: true,
+		ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+		Protected:             true,
+	}
+
+	return sendOptions, kb
+}
+
+func (keywords *KeywordsKeyboard) ViewMuted(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
+	addBtn := tb.InlineButton{
+		Unique: "keywords",
+		Text:   "➕ Add muted keyword",
+		Data:   "muted/add",
+	}
+
+	clearBtn := tb.InlineButton{
+		Unique: "keywords",
+		Text:   "🗑️ Clear all",
+		Data:   "muted/clear",
+	}
+
+	retBtn := tb.InlineButton{
+		Unique: "keywords",
+		Text:   "⬅️ Back",
+		Data:   "main",
+	}
+
+	kb := [][]tb.InlineButton{{addBtn}}
+
+	// Add remove buttons for each keyword
+	if chat.MutedKeywords != "" {
+		for _, keyword := range strings.Split(chat.MutedKeywords, ",") {
+			kb = append(kb, []tb.InlineButton{{
+				Unique: "keywords",
+				Text:   fmt.Sprintf("❌ %s", keyword),
+				Data:   fmt.Sprintf("muted/remove/%s", keyword),
+			}})
+		}
+		kb = append(kb, []tb.InlineButton{clearBtn})
+	}
+
+	kb = append(kb, []tb.InlineButton{retBtn})
+
+	sendOptions := tb.SendOptions{
+		ParseMode:             "MarkdownV2",
+		DisableWebPagePreview: true,
+		ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+		Protected:             true,
+	}
+
+	return sendOptions, kb
+}
+
+func (keywords *KeywordsKeyboard) ViewSubscribed(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
+	addBtn := tb.InlineButton{
+		Unique: "keywords",
+		Text:   "➕ Add subscribed keyword",
+		Data:   "subscribed/add",
+	}
+
+	clearBtn := tb.InlineButton{
+		Unique: "keywords",
+		Text:   "🗑️ Clear all",
+		Data:   "subscribed/clear",
+	}
+
+	retBtn := tb.InlineButton{
+		Unique: "keywords",
+		Text:   "⬅️ Back",
+		Data:   "main",
+	}
+
+	kb := [][]tb.InlineButton{{addBtn}}
+
+	// Add remove buttons for each keyword
+	if chat.SubscribedKeywords != "" {
+		for _, keyword := range strings.Split(chat.SubscribedKeywords, ",") {
+			kb = append(kb, []tb.InlineButton{{
+				Unique: "keywords",
+				Text:   fmt.Sprintf("❌ %s", keyword),
+				Data:   fmt.Sprintf("subscribed/remove/%s", keyword),
+			}})
+		}
+		kb = append(kb, []tb.InlineButton{clearBtn})
+	}
+
+	kb = append(kb, []tb.InlineButton{retBtn})
+
+	sendOptions := tb.SendOptions{
+		ParseMode:             "MarkdownV2",
+		DisableWebPagePreview: true,
+		ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+		Protected:             true,
 	}
 
 	return sendOptions, kb
