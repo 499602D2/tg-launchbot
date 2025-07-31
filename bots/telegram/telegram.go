@@ -519,7 +519,12 @@ func (tg *Bot) LoadChatFromUser(user *users.User) *tb.Chat {
 	chat, err := tg.Bot.ChatByID(id)
 
 	if err != nil {
-		log.Error().Err(err).Msgf("Loading user=%s failed", user.Id)
+		// Check if this is a "chat not found" error
+		if strings.Contains(err.Error(), "chat not found") {
+			log.Warn().Err(err).Msgf("Chat not found when loading user=%s - chat may have been deleted", user.Id)
+		} else {
+			log.Error().Err(err).Msgf("Loading user=%s failed", user.Id)
+		}
 		return nil
 	}
 
@@ -569,5 +574,7 @@ func (tg *Bot) loadChatType(user *users.User) {
 	if tbChat != nil {
 		user.Type = TelegramChatToUserType(tbChat)
 		log.Debug().Msgf("Loaded user-type=%s for chat=%s", user.Type, user.Id)
+	} else {
+		log.Debug().Msgf("Failed to load chat type for user=%s - continuing without type", user.Id)
 	}
 }

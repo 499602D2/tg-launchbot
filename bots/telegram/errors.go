@@ -173,6 +173,8 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	// Custom errors that are not present in Telebot, for whatever reason
 	tbGroupDeleterErr := tb.NewError(403, "telegram: Forbidden: the group chat was deleted")
 	tbGroupDeleterErr2 := tb.NewError(403, "Forbidden: the group chat was deleted")
+	tbNoRightsToSendText := tb.NewError(400, "telegram: Bad Request: not enough rights to send text messages to the chat")
+	tbNoRightsToSendText2 := tb.NewError(400, "Bad Request: not enough rights to send text messages to the chat")
 
 	// Check for specific error messages in string form
 	if err != nil && strings.Contains(err.Error(), "message to edit not found") {
@@ -221,7 +223,8 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	
 
 	case tb.ErrChatNotFound:
-		warnUnhandled(err, false)
+		log.Info().Msgf("Chat not found (chat=%s), likely deleted - removing from database", chat.Id)
+		tg.Db.RemoveUser(chat)
 
 	case tb.ErrEmptyChatID:
 		warnUnhandled(err, false)
@@ -284,12 +287,20 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 		tg.Db.RemoveUser(chat)
 
 	case tbGroupDeleterErr:
-		log.Warn().Msgf("Caught custom error tbGroupDeleterErr, deleting chat...")
+		log.Warn().Msgf("Caught custom error tbGroupDeleterErr, deleting chat=%s", chat.Id)
 		tg.Db.RemoveUser(chat)
 
 	case tbGroupDeleterErr2:
-		log.Warn().Msgf("Caught custom error tbGroupDeleterErr2, deleting chat...")
+		log.Warn().Msgf("Caught custom error tbGroupDeleterErr2, deleting chat=%s", chat.Id)
 		tg.Db.RemoveUser(chat)
+
+	case tbNoRightsToSendText:
+		log.Info().Msgf("No rights to send text messages to chat=%s (bot may have been removed or permissions changed), skipping", chat.Id)
+		return false
+
+	case tbNoRightsToSendText2:
+		log.Info().Msgf("No rights to send text messages to chat=%s (bot may have been removed or permissions changed), skipping", chat.Id)
+		return false
 
 	default:
 		// If none of the earlier switch-cases caught the error, default here

@@ -396,8 +396,8 @@ func (tg *Bot) NotificationWorker(id int, jobChannel chan MessageJob) {
 			if success {
 				job.Recipient.Stats.ReceivedNotifications++
 			} else {
-				log.Warn().Msgf("[Worker=%d] Sending notification to chat=%s failed [%s]",
-					id, job.Recipient.Id, job.Id)
+				log.Warn().Msgf("[Worker=%d] Sending notification to chat=%s failed [%s] - type=%s",
+					id, job.Recipient.Id, job.Id, job.Recipient.Type)
 			}
 
 			job.Results <- idPair
