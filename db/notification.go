@@ -146,25 +146,13 @@ func (launch *Launch) NotificationRecipients(db *Database, notificationType stri
 
 	// Filter all users from the list
 	for _, user := range usersWithNotificationEnabled {
-		// Check if user is subscribed to this provider
-		if !user.GetNotificationStatusById(launch.LaunchProvider.Id) {
-			// User is not subscribed to this provider
+		// Check if user should receive this launch notification
+		if !user.ShouldReceiveLaunch(launch.Id, launch.LaunchProvider.Id, launch.Name, launch.Rocket.Config.Name, launch.Mission.Name) {
+			log.Debug().Msgf("➙ User=%s filtered out launch=%s", user.Id, launch.Name)
 			continue
 		}
 
-		// Check if user has this specific launch muted
-		if user.HasMutedLaunch(launch.Id) {
-			log.Debug().Msgf("➙ User=%s has muted launch with id=%s", user.Id, launch.Id)
-			continue
-		}
-
-		// Check keyword filters
-		if !user.MatchesKeywordFilter(launch.Name, launch.Rocket.Config.Name, launch.Mission.Name) {
-			log.Debug().Msgf("➙ User=%s filtered out launch=%s by keyword filter", user.Id, launch.Name)
-			continue
-		}
-
-		/* User has subscribed to this launch, and has not muted it: add to recipients.
+		/* User should receive this launch notification: add to recipients.
 		However, first check if this user has already been cached, in order to avoid
 		overlapping database writes. */
 		cachedUser, _ := db.Cache.UseCachedUserIfExists(user, false)

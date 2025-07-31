@@ -550,10 +550,12 @@ func (command *CommandKeyboard) Admin() (tb.SendOptions, [][]tb.InlineButton) {
 func (keywords *KeywordsKeyboard) Main(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
 	// Get current filter mode label
 	filterModeLabel := map[string]string{
-		"exclude": "📛 Mode: Exclude keywords",
-		"include": "✅ Mode: Include only keywords",
-		"hybrid":  "🔀 Mode: Hybrid filtering",
-		"":        "📛 Mode: Exclude keywords", // Default
+		"exclude": "📛 Mode: Keywords filter",
+		"keywords_filter": "📛 Mode: Keywords filter",
+		"include": "✅ Mode: Include only",
+		"hybrid":  "🔀 Mode: Keywords add",
+		"keywords_add": "🔀 Mode: Keywords add",
+		"":        "📛 Mode: Keywords filter", // Default
 	}[chat.FilterMode]
 
 	filterModeBtn := tb.InlineButton{

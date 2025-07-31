@@ -273,11 +273,12 @@ func (user *User) MatchesKeywordFilter(launchName, vehicleName, missionName stri
 	searchText := strings.ToLower(launchName + " " + vehicleName + " " + missionName)
 
 	switch filterMode {
-	case "exclude":
+	case "exclude", "keywords_filter":
 		// Check if any muted keyword matches
 		if user.MutedKeywords != "" {
 			for _, keyword := range strings.Split(user.MutedKeywords, ",") {
-				if strings.Contains(searchText, strings.ToLower(keyword)) {
+				keyword = strings.TrimSpace(keyword)
+				if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
 					return false // Exclude this launch
 				}
 			}
@@ -290,7 +291,8 @@ func (user *User) MatchesKeywordFilter(launchName, vehicleName, missionName stri
 			return true // If no keywords set, include all
 		}
 		for _, keyword := range strings.Split(user.SubscribedKeywords, ",") {
-			if strings.Contains(searchText, strings.ToLower(keyword)) {
+			keyword = strings.TrimSpace(keyword)
+			if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
 				return true // Include this launch
 			}
 		}
@@ -301,7 +303,8 @@ func (user *User) MatchesKeywordFilter(launchName, vehicleName, missionName stri
 		hasSubscribedMatch := false
 		if user.SubscribedKeywords != "" {
 			for _, keyword := range strings.Split(user.SubscribedKeywords, ",") {
-				if strings.Contains(searchText, strings.ToLower(keyword)) {
+				keyword = strings.TrimSpace(keyword)
+				if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
 					hasSubscribedMatch = true
 					break
 				}
@@ -315,12 +318,19 @@ func (user *User) MatchesKeywordFilter(launchName, vehicleName, missionName stri
 		// Then check muted keywords
 		if user.MutedKeywords != "" {
 			for _, keyword := range strings.Split(user.MutedKeywords, ",") {
-				if strings.Contains(searchText, strings.ToLower(keyword)) {
+				keyword = strings.TrimSpace(keyword)
+				if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
 					return false // Exclude this launch
 				}
 			}
 		}
 		return true
+
+	case "keywords_add":
+		// This mode is handled in ShouldReceiveLaunch method
+		// When called from there, we're already past provider checks
+		// So just check if not muted
+		return !user.matchesMutedKeywords(searchText)
 
 	default:
 		// Invalid mode, default to include
@@ -388,6 +398,75 @@ func (user *User) GetNotificationStatusById(id int) bool {
 	}
 
 	// Otherwise, return false
+	return false
+}
+
+// Check if user should receive a launch notification based on provider and keyword subscriptions
+func (user *User) ShouldReceiveLaunch(launchId string, providerId int, launchName, vehicleName, missionName string) bool {
+	// Check if explicitly muted
+	if user.HasMutedLaunch(launchId) {
+		return false
+	}
+	
+	// Build search text for keyword matching
+	searchText := strings.ToLower(launchName + " " + vehicleName + " " + missionName)
+	
+	// Check muted keywords first (always exclude)
+	if user.matchesMutedKeywords(searchText) {
+		return false
+	}
+	
+	// Get filter mode, defaulting to exclude if not set
+	filterMode := user.FilterMode
+	if filterMode == "" {
+		filterMode = "exclude"
+	}
+	
+	// Check subscription status based on mode
+	switch filterMode {
+	case "keywords_add":
+		// Keywords can add launches beyond provider subscriptions
+		subscribedViaProvider := user.GetNotificationStatusById(providerId)
+		subscribedViaKeyword := user.matchesSubscribedKeywords(searchText)
+		return subscribedViaProvider || subscribedViaKeyword
+		
+	default:
+		// Legacy modes: keywords only filter provider subscriptions
+		if !user.GetNotificationStatusById(providerId) {
+			return false // Must be subscribed to provider first
+		}
+		// Apply keyword filter using existing logic
+		return user.MatchesKeywordFilter(launchName, vehicleName, missionName)
+	}
+}
+
+// Check if text matches any muted keywords
+func (user *User) matchesMutedKeywords(searchText string) bool {
+	if user.MutedKeywords == "" {
+		return false
+	}
+	
+	for _, keyword := range strings.Split(user.MutedKeywords, ",") {
+		keyword = strings.TrimSpace(keyword)
+		if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
+			return true
+		}
+	}
+	return false
+}
+
+// Check if text matches any subscribed keywords
+func (user *User) matchesSubscribedKeywords(searchText string) bool {
+	if user.SubscribedKeywords == "" {
+		return false // No keywords means no keyword-based subscription
+	}
+	
+	for _, keyword := range strings.Split(user.SubscribedKeywords, ",") {
+		keyword = strings.TrimSpace(keyword)
+		if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
+			return true
+		}
+	}
 	return false
 }
 
