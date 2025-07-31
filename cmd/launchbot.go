@@ -15,7 +15,6 @@ import (
 	"github.com/go-co-op/gocron"
 	"github.com/rs/zerolog/pkgerrors"
 
-	"github.com/procyon-projects/chrono"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -130,7 +129,7 @@ func main() {
 
 	if !noUpdates {
 		// Create a new task scheduler, assign to session
-		session.Scheduler = chrono.NewDefaultTaskScheduler()
+		session.Scheduler = gocron.NewScheduler(time.UTC)
 
 		// Populate the cache
 		session.Cache.Populate()

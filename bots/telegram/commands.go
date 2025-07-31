@@ -221,7 +221,7 @@ func (tg *Bot) feedbackHandler(ctx tb.Context) error {
 
 	// Command has parameters: log feedback, send to owner
 	feedbackLog := fmt.Sprintf("✍️ *Got feedback from %s:* %s", chat.Id, ctx.Data())
-	log.Info().Msgf(feedbackLog)
+	log.Info().Msg(feedbackLog)
 
 	tg.Enqueue(
 		sendables.TextOnlySendable(

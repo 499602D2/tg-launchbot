@@ -66,7 +66,7 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 
 - `dustin/go-humanize`: used to produce various human-friendly strings, such as time- and unit-related ones.
 
-- `go-co-op/gocron`: used to schedule regular function calls, for e.g. dumping statistics to the disk.
+- `go-co-op/gocron`: used to schedule API calls, notifications at specific times, and regular function calls like dumping statistics to disk.
 
 - `go-resty/resty/v2`: a great alternative to the standard http library, with exponential back-off baked in.
 
@@ -76,7 +76,6 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 
 - `jdkato/prose/v2`: natural language parsing for LL2's launch descriptions.
 
-- `procyon-projects/chrono`: used to schedule API calls and notifications to a specific point in time.
 
 - `gorm`: a fantastic ORM library for Go, used with the main SQLite database.
 
