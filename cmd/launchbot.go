@@ -22,7 +22,7 @@ import (
 // Injected at build-time
 var GitSHA = "0000000000"
 
-const version = "3.2.17"
+const version = "3.3.0"
 
 // Listens for incoming interrupt signals
 func signalListener(session *config.Session) {
@@ -130,7 +130,7 @@ func main() {
 	if !noUpdates {
 		// Create a new task scheduler, assign to session
 		session.Scheduler = gocron.NewScheduler(time.UTC)
-		
+
 		// Start the scheduler async
 		session.Scheduler.StartAsync()
 
