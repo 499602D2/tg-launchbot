@@ -182,6 +182,12 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 		return true
 	}
 
+	// Check for specific error messages in string form
+	if err != nil && strings.Contains(err.Error(), "message to edit not found") {
+		log.Warn().Msg("Message not found to edit - it may have been deleted or is too old")
+		return true
+	}
+
 	switch err {
 	// General errors
 	// https://github.com/go-telebot/telebot/blob/8ad1e044ee330c22eb24e2ff9fdd0ed92e523648/errors.go#L69
