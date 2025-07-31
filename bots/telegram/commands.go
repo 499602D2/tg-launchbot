@@ -928,10 +928,19 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 	case "mode":
 		if callbackData[1] == "toggle" {
 			// Toggle filter mode
-			modes := []string{"exclude", "include", "hybrid"}
+			// Map legacy modes to new modes
+			currentMode := chat.FilterMode
+			if currentMode == "exclude" {
+				currentMode = "keywords_filter"
+			} else if currentMode == "hybrid" {
+				currentMode = "keywords_add"
+			}
+			
+			// Define available modes
+			modes := []string{"keywords_filter", "keywords_add", "include"}
 			currentIdx := 0
 			for i, mode := range modes {
-				if chat.FilterMode == mode {
+				if currentMode == mode {
 					currentIdx = i
 					break
 				}

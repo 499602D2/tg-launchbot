@@ -58,8 +58,22 @@ func TestChatMethods(t *testing.T) {
 
 	// Open db
 	db := Database{}
-	dbFolder := "/test"
-	db.Open(dbFolder)
+	dbFolder := "test"
+	
+	// Initialize cache
+	cache := &Cache{
+		Database:  &db,
+		Launches:  []*Launch{},
+		LaunchMap: make(map[string]*Launch),
+		Users:     &users.UserCache{},
+	}
+	db.Cache = cache
+	
+	success := db.Open(dbFolder)
+	if !success {
+		t.Fatal("Failed to open database")
+	}
+	cache.Database = &db
 
 	// Add a whole bunch of users, then remove them
 	for i := 0; i < 10; i++ {

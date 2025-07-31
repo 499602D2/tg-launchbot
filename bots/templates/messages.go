@@ -154,10 +154,12 @@ func (keywords *KeywordsMessage) Main(chat *users.User) string {
 
 	// Add current mode info
 	modeInfo := map[string]string{
-		"exclude": "*Current mode:* Exclude keywords - You'll receive all launches EXCEPT those matching your muted keywords.",
+		"exclude": "*Current mode:* Keywords filter - You'll receive all launches EXCEPT those matching your muted keywords.",
+		"keywords_filter": "*Current mode:* Keywords filter - You'll receive all launches EXCEPT those matching your muted keywords.",
 		"include": "*Current mode:* Include only - You'll ONLY receive launches matching your subscribed keywords.",
-		"hybrid":  "*Current mode:* Hybrid - You'll receive launches matching subscribed keywords, excluding any that also match muted keywords.",
-		"":        "*Current mode:* Exclude keywords (default)",
+		"hybrid":  "*Current mode:* Keywords add - Keywords can subscribe you to launches beyond your provider settings.",
+		"keywords_add": "*Current mode:* Keywords add - Keywords can subscribe you to launches beyond your provider settings.",
+		"":        "*Current mode:* Keywords filter (default)",
 	}[chat.FilterMode]
 
 	return base + modeInfo + "\n\n" +
@@ -196,9 +198,9 @@ func (keywords *KeywordsMessage) ViewSubscribed(chat *users.User) string {
 func (keywords *KeywordsMessage) Help() string {
 	return "❓ *LaunchBot* | *Keyword Filtering Help*\n\n" +
 		"*Filter Modes:*\n" +
-		"• *Exclude mode:* Get all launches except those matching muted keywords\n" +
-		"• *Include mode:* Only get launches matching subscribed keywords\n" +
-		"• *Hybrid mode:* Combination of both (subscribed takes precedence)\n\n" +
+		"• *Keywords filter:* Get launches from subscribed providers, excluding those matching muted keywords\n" +
+		"• *Keywords add:* Keywords can add launches even from unsubscribed providers\n" +
+		"• *Include only:* Only get launches matching subscribed keywords (legacy mode)\n\n" +
 		"*Examples:*\n" +
 		"• Mute \"Starlink\" to skip all Starlink launches\n" +
 		"• Subscribe to \"Falcon Heavy\" for only heavy-lift launches\n" +
@@ -270,9 +272,11 @@ func (keywords *KeywordsMessage) Cleared(keywordType string) string {
 // Keywords.ModeChanged
 func (keywords *KeywordsMessage) ModeChanged(newMode string) string {
 	modeDesc := map[string]string{
-		"exclude": "Exclude mode - You'll receive all launches except those matching muted keywords",
-		"include": "Include mode - You'll only receive launches matching subscribed keywords",
-		"hybrid":  "Hybrid mode - Subscribed keywords take precedence, then muted keywords are applied",
+		"exclude": "Keywords filter - You'll receive launches from subscribed providers except those matching muted keywords",
+		"keywords_filter": "Keywords filter - You'll receive launches from subscribed providers except those matching muted keywords",
+		"include": "Include only - You'll only receive launches matching subscribed keywords",
+		"hybrid":  "Keywords add - Keywords can subscribe you to launches beyond your provider settings",
+		"keywords_add": "Keywords add - Keywords can subscribe you to launches beyond your provider settings",
 	}[newMode]
 
 	return fmt.Sprintf("✅ Filter mode changed to: *%s*", modeDesc)
