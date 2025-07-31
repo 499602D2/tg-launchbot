@@ -175,8 +175,12 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification, 
 		log.Warn().Msgf("Found already scheduled task for this send-time: %+v", scheduled)
 	}
 
-	// Create task
-	job, err := session.Scheduler.At(scheduledTime).Do(notificationWrapper, session, notifTime.IDs, refresh)
+	// Create task - use StartAt for one-time scheduling at specific time
+	job, err := session.Scheduler.Every(1).Second().StartAt(scheduledTime).Do(notificationWrapper, session, notifTime.IDs, refresh)
+	if err == nil && job != nil {
+		// Make it a one-time job
+		job.LimitRunsTo(1)
+	}
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error creating notification task!")
@@ -259,7 +263,11 @@ func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunc
 	}
 
 	// Schedule next auto-update, since no notifications are incoming soon
-	job, err := session.Scheduler.At(autoUpdateTime).Do(updateWrapper, session, true)
+	job, err := session.Scheduler.Every(1).Second().StartAt(autoUpdateTime).Do(updateWrapper, session, true)
+	if err == nil && job != nil {
+		// Make it a one-time job
+		job.LimitRunsTo(1)
+	}
 
 	if err != nil {
 		log.Error().Err(err).Msgf("Scheduling next update failed")
@@ -294,8 +302,12 @@ func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunc
 			if untilNotification > time.Duration(2)*time.Hour && postLaunchCheck == nil {
 				/* More than two hours until next notif, more than an hour until next API
 				update, no post-launch check scheduled. Schedule a cache flush for later */
-				_, err := session.Scheduler.At(time.Now().Add(time.Minute*time.Duration(15))).Do(
+				job, err := session.Scheduler.Every(1).Second().StartAt(time.Now().Add(time.Minute*time.Duration(15))).Do(
 					session.Cache.CleanUserCache, session.Db, false, false)
+				if err == nil && job != nil {
+					// Make it a one-time job
+					job.LimitRunsTo(1)
+				}
 
 				if err != nil {
 					log.Error().Err(err).Msg("Scheduling user-cache flush for later failed")
