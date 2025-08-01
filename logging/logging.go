@@ -8,13 +8,18 @@ import (
 )
 
 func SetupLogFile(logFolder string) *os.File {
-	// Logpath relative to current working directory
-	wd, _ := os.Getwd()
-	logPath := filepath.Join(wd, logFolder)
+	// Determine absolute path for log folder
+	var logPath string
+	if filepath.IsAbs(logFolder) {
+		logPath = logFolder
+	} else {
+		wd, _ := os.Getwd()
+		logPath = filepath.Join(wd, logFolder)
+	}
 
 	// If folders do not exist, create them
 	if _, err := os.Stat(logPath); os.IsNotExist(err) {
-		_ = os.Mkdir(logPath, os.ModePerm)
+		_ = os.MkdirAll(logPath, os.ModePerm)
 	}
 
 	logFilePath := filepath.Join(logPath, "launchbot-logs.log")
