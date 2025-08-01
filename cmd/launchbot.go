@@ -82,6 +82,8 @@ func main() {
 		updateNow      bool
 		useDevEndpoint bool
 		verboseSpamLog bool
+		configPath     string
+		dataPath       string
 	)
 
 	// Command line arguments
@@ -90,8 +92,18 @@ func main() {
 	flag.BoolVar(&updateNow, "update-now", false, "Specify to run an API update now")
 	flag.BoolVar(&useDevEndpoint, "dev-endpoint", false, "Specify to use LL2's dev endpoint")
 	flag.BoolVar(&verboseSpamLog, "verbose-spam-log", false, "Specify to enable verbose spam and permission logging ")
+	flag.StringVar(&configPath, "config", "", "Path to config file (defaults to $LAUNCHBOT_CONFIG or ./data/config.json)")
+	flag.StringVar(&dataPath, "data", "", "Path to data directory (defaults to $LAUNCHBOT_DATA_DIR or ./data)")
 
 	flag.Parse()
+
+	// Check environment variables if flags not set
+	if configPath == "" {
+		configPath = os.Getenv("LAUNCHBOT_CONFIG")
+	}
+	if dataPath == "" {
+		dataPath = os.Getenv("LAUNCHBOT_DATA_DIR")
+	}
 
 	// Enable stack traces
 	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
@@ -99,7 +111,12 @@ func main() {
 	// Set-up logging
 	if !debug {
 		// If not debugging, log to file
-		logf := logging.SetupLogFile("data")
+		// Use custom data path if specified, otherwise default to "data"
+		logPath := dataPath
+		if logPath == "" {
+			logPath = "data"
+		}
+		logf := logging.SetupLogFile(logPath)
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: logf, NoColor: true, TimeFormat: time.RFC822Z})
 
 		defer logf.Close()
@@ -121,8 +138,8 @@ func main() {
 	// Signal handler (ctrl+c, etc.)
 	signalListener(session)
 
-	// Initialize session
-	session.Initialize()
+	// Initialize session with custom paths
+	session.InitializeWithPaths(configPath, dataPath)
 
 	// Assign remaining CLI flags
 	session.Spam.VerboseLog = verboseSpamLog

@@ -42,16 +42,19 @@ func (db *Database) SetSize() {
 }
 
 func (db *Database) Open(dbFolder string) bool {
-	// Current working directory
-	wd, _ := os.Getwd()
-
-	// Verify the path exists
-	relDbFolder := filepath.Join(wd, dbFolder)
+	// Determine absolute path for database folder
+	var absDbFolder string
+	if filepath.IsAbs(dbFolder) {
+		absDbFolder = dbFolder
+	} else {
+		wd, _ := os.Getwd()
+		absDbFolder = filepath.Join(wd, dbFolder)
+	}
 
 	// Create folders
-	if _, err := os.Stat(relDbFolder); os.IsNotExist(err) {
-		log.Info().Msgf("Database folder [%s] does not exist: creating", relDbFolder)
-		err = os.Mkdir(relDbFolder, os.ModePerm)
+	if _, err := os.Stat(absDbFolder); os.IsNotExist(err) {
+		log.Info().Msgf("Database folder [%s] does not exist: creating", absDbFolder)
+		err = os.MkdirAll(absDbFolder, os.ModePerm)
 
 		if err != nil {
 			log.Fatal().Err(err).Msg("Error creating database folder")
@@ -60,14 +63,14 @@ func (db *Database) Open(dbFolder string) bool {
 
 	// Database path
 	dbName := "launchbot.db"
-	relDbPath := filepath.Join(relDbFolder, dbName)
+	absDbPath := filepath.Join(absDbFolder, dbName)
 
 	// Verify the database file exists
-	if _, err := os.Stat(relDbPath); os.IsNotExist(err) {
+	if _, err := os.Stat(absDbPath); os.IsNotExist(err) {
 		log.Info().Msg("Database file does not exist: creating")
 
 		// Create SQLite file
-		file, err := os.Create(relDbPath)
+		file, err := os.Create(absDbPath)
 
 		if err != nil {
 			log.Fatal().Err(err).Msg("Error creating database file")
@@ -78,7 +81,7 @@ func (db *Database) Open(dbFolder string) bool {
 	}
 
 	// Open DB connection
-	log.Debug().Msgf("Opening sqlite3 database at %s", filepath.Join(dbFolder, dbName))
+	log.Debug().Msgf("Opening sqlite3 database at %s", absDbPath)
 
 	gormZerolog := logger.New(
 		&log.Logger,
@@ -92,7 +95,7 @@ func (db *Database) Open(dbFolder string) bool {
 
 	// Open connection
 	var err error
-	db.Conn, err = gorm.Open(sqlite.Open(relDbPath), &gorm.Config{
+	db.Conn, err = gorm.Open(sqlite.Open(absDbPath), &gorm.Config{
 		CreateBatchSize: 100,
 		Logger:          gormZerolog,
 	})
@@ -117,7 +120,7 @@ func (db *Database) Open(dbFolder string) bool {
 	// Migration code removed - filter modes no longer exist
 
 	// Set size
-	db.Path = relDbPath
+	db.Path = absDbPath
 	db.SetSize()
 
 	log.Info().Msg("Database ready")
