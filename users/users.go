@@ -340,7 +340,7 @@ func (user *User) ShouldReceiveLaunch(launchId string, providerId int, launchNam
 		return false
 	}
 	
-	// Build search text for keyword matching (excluding mission description)
+	// Build search text for keyword matching (launch name + vehicle name)
 	searchText := strings.ToLower(launchName + " " + vehicleName)
 	
 	// Check blocked keywords first (always exclude)
