@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/procyon-projects/chrono"
+	"github.com/go-co-op/gocron"
 	"github.com/rs/zerolog/log"
 )
 
@@ -28,9 +28,9 @@ type Session struct {
 	Config            *Config                             // Configuration for session
 	Cache             *db.Cache                           // Launch cache
 	Db                *db.Database                        // Pointer to the database object
-	Scheduler         chrono.TaskScheduler                // Chrono scheduler
-	Tasks             []*chrono.ScheduledTask             // List of Chrono tasks
-	NotificationTasks map[time.Time]*chrono.ScheduledTask // Map a time to a scheduled Chrono task
+	Scheduler         *gocron.Scheduler                   // Gocron scheduler
+	Tasks             []*gocron.Job                       // List of Gocron jobs
+	NotificationTasks map[time.Time]*gocron.Job           // Map a time to a scheduled Gocron job
 	Scheduled         []string                            // A list of launch IDs that have a notification scheduled
 	Version           string                              // Version number
 	Started           time.Time                           // Unix timestamp of startup time
@@ -60,7 +60,7 @@ func (session *Session) Initialize() {
 	session.Config = LoadConfig()
 
 	// Init notification task map
-	session.NotificationTasks = make(map[time.Time]*chrono.ScheduledTask)
+	session.NotificationTasks = make(map[time.Time]*gocron.Job)
 
 	// Initialize cache
 	session.Cache = &db.Cache{

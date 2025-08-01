@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"launchbot/config"
 	"launchbot/db"
@@ -9,7 +8,6 @@ import (
 	"time"
 
 	"github.com/hako/durafmt"
-	"github.com/procyon-projects/chrono"
 	"github.com/rs/zerolog/log"
 	tb "gopkg.in/telebot.v3"
 )
@@ -112,7 +110,7 @@ func Notify(launch *db.Launch, database *db.Database, username string) *sendable
 }
 
 // NotificationWrapper is called when scheduled notifications are prepared for sending.
-func notificationWrapper(session *config.Session, launchIds []string, refreshData bool) bool {
+func notificationWrapper(session *config.Session, launchIds []string, refreshData bool) {
 	if refreshData {
 		// Run updater
 		updateWrapper(session, false)
@@ -121,7 +119,8 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 		_, notification := session.Cache.NextScheduledUpdateIn()
 
 		// Re-schedule notifications
-		return NotificationScheduler(session, notification, false)
+		NotificationScheduler(session, notification, false)
+		return
 	} else {
 		log.Debug().Msg("Not refreshing data before notification scheduling...")
 	}
@@ -157,8 +156,6 @@ func notificationWrapper(session *config.Session, launchIds []string, refreshDat
 
 	// Notifications processed: queue post-launch check if this is a 5-minute notification
 	Scheduler(session, false, postLaunchUpdate, false)
-
-	return true
 }
 
 // Schedules a chrono job for when the notification should be sent, with some
@@ -178,22 +175,22 @@ func NotificationScheduler(session *config.Session, notifTime *db.Notification, 
 		log.Warn().Msgf("Found already scheduled task for this send-time: %+v", scheduled)
 	}
 
-	// Create task
-	task, err := session.Scheduler.Schedule(func(ctx context.Context) {
-		// Run notification sender
-		success := notificationWrapper(session, notifTime.IDs, refresh)
-		log.Debug().Msgf("NotificationScheduler task: notificationWrapper returned %v", success)
-	}, chrono.WithTime(scheduledTime))
+	// Create task - use StartAt for one-time scheduling at specific time
+	job, err := session.Scheduler.Every(1).Second().StartAt(scheduledTime).Do(notificationWrapper, session, notifTime.IDs, refresh)
+	if err == nil && job != nil {
+		// Make it a one-time job
+		job.LimitRunsTo(1)
+	}
 
 	if err != nil {
 		log.Error().Err(err).Msg("Error creating notification task!")
 		return false
 	}
 
-	// Lock session, add task to list of scheduled tasks
+	// Lock session, add job to list of scheduled jobs
 	session.Mutex.Lock()
 
-	session.NotificationTasks[scheduledTime] = &task
+	session.NotificationTasks[scheduledTime] = job
 
 	session.Mutex.Unlock()
 
@@ -266,18 +263,20 @@ func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunc
 	}
 
 	// Schedule next auto-update, since no notifications are incoming soon
-	task, err := session.Scheduler.Schedule(func(ctx context.Context) {
-		updateWrapper(session, true)
-	}, chrono.WithTime(autoUpdateTime))
+	job, err := session.Scheduler.Every(1).Second().StartAt(autoUpdateTime).Do(updateWrapper, session, true)
+	if err == nil && job != nil {
+		// Make it a one-time job
+		job.LimitRunsTo(1)
+	}
 
 	if err != nil {
 		log.Error().Err(err).Msgf("Scheduling next update failed")
 		return false
 	}
 
-	// Lock session, add task to list of scheduled tasks
+	// Lock session, add job to list of scheduled jobs
 	session.Mutex.Lock()
-	session.Tasks = append(session.Tasks, &task)
+	session.Tasks = append(session.Tasks, job)
 	session.Mutex.Unlock()
 
 	log.Info().Msgf("Next auto-update in %s (%s)",
@@ -303,9 +302,12 @@ func Scheduler(session *config.Session, startup bool, postLaunchCheck *PostLaunc
 			if untilNotification > time.Duration(2)*time.Hour && postLaunchCheck == nil {
 				/* More than two hours until next notif, more than an hour until next API
 				update, no post-launch check scheduled. Schedule a cache flush for later */
-				_, err := session.Scheduler.Schedule(func(ctx context.Context) {
-					session.Cache.CleanUserCache(session.Db, false, false)
-				}, chrono.WithTime(time.Now().Add(time.Minute*time.Duration(15))))
+				job, err := session.Scheduler.Every(1).Second().StartAt(time.Now().Add(time.Minute*time.Duration(15))).Do(
+					session.Cache.CleanUserCache, session.Db, false, false)
+				if err == nil && job != nil {
+					// Make it a one-time job
+					job.LimitRunsTo(1)
+				}
 
 				if err != nil {
 					log.Error().Err(err).Msg("Scheduling user-cache flush for later failed")

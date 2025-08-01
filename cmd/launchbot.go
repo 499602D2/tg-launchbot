@@ -15,7 +15,6 @@ import (
 	"github.com/go-co-op/gocron"
 	"github.com/rs/zerolog/pkgerrors"
 
-	"github.com/procyon-projects/chrono"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -23,7 +22,7 @@ import (
 // Injected at build-time
 var GitSHA = "0000000000"
 
-const version = "3.2.17"
+const version = "3.3.0"
 
 // Listens for incoming interrupt signals
 func signalListener(session *config.Session) {
@@ -130,7 +129,10 @@ func main() {
 
 	if !noUpdates {
 		// Create a new task scheduler, assign to session
-		session.Scheduler = chrono.NewDefaultTaskScheduler()
+		session.Scheduler = gocron.NewScheduler(time.UTC)
+
+		// Start the scheduler async
+		session.Scheduler.StartAsync()
 
 		// Populate the cache
 		session.Cache.Populate()
