@@ -289,6 +289,58 @@ func TestMatchesKeywordFilter(t *testing.T) {
 			missionName:   "ISS Crew Rotation",
 			expectedMatch: true,
 		},
+		
+		// keywords_filter mode tests (same as exclude mode)
+		{
+			name:          "keywords_filter mode - no keywords",
+			user:          User{FilterMode: "keywords_filter"},
+			launchName:    "Starlink Mission",
+			vehicleName:   "Falcon 9",
+			missionName:   "Communications",
+			expectedMatch: true,
+		},
+		{
+			name:          "keywords_filter mode - match muted keyword",
+			user:          User{FilterMode: "keywords_filter", MutedKeywords: "Starlink"},
+			launchName:    "Starlink Mission",
+			vehicleName:   "Falcon 9",
+			missionName:   "Communications",
+			expectedMatch: false,
+		},
+		{
+			name:          "keywords_filter mode - no match",
+			user:          User{FilterMode: "keywords_filter", MutedKeywords: "OneWeb"},
+			launchName:    "Starlink Mission",
+			vehicleName:   "Falcon 9",
+			missionName:   "Communications",
+			expectedMatch: true,
+		},
+		
+		// keywords_add mode tests
+		{
+			name:          "keywords_add mode - no muted keywords",
+			user:          User{FilterMode: "keywords_add"},
+			launchName:    "Starlink Mission",
+			vehicleName:   "Falcon 9",
+			missionName:   "Communications",
+			expectedMatch: true,
+		},
+		{
+			name:          "keywords_add mode - match muted keyword",
+			user:          User{FilterMode: "keywords_add", MutedKeywords: "Starlink"},
+			launchName:    "Starlink Mission",
+			vehicleName:   "Falcon 9",
+			missionName:   "Communications",
+			expectedMatch: false,
+		},
+		{
+			name:          "keywords_add mode - multiple keywords with spaces",
+			user:          User{FilterMode: "keywords_add", MutedKeywords: " Starlink , OneWeb "},
+			launchName:    "OneWeb Mission",
+			vehicleName:   "Soyuz",
+			missionName:   "Communications",
+			expectedMatch: false,
+		},
 	}
 	
 	for _, tt := range tests {
@@ -376,4 +428,115 @@ func TestToggleLaunchMute(t *testing.T) {
 			t.Error("Only launch2 should be unmuted")
 		}
 	})
+}
+
+func TestShouldReceiveLaunch(t *testing.T) {
+	tests := []struct {
+		name          string
+		user          User
+		launchId      string
+		providerId    int
+		launchName    string
+		vehicleName   string
+		missionName   string
+		expectedResult bool
+	}{
+		// Test muted launch
+		{
+			name:          "Muted launch",
+			user:          User{MutedLaunches: "launch-123", SubscribedAll: true},
+			launchId:      "launch-123",
+			providerId:    1,
+			launchName:    "Starlink Mission",
+			vehicleName:   "Falcon 9",
+			missionName:   "Communications",
+			expectedResult: false,
+		},
+		// Test muted keyword
+		{
+			name:          "Muted keyword",
+			user:          User{MutedKeywords: "Starlink", SubscribedAll: true},
+			launchId:      "launch-456",
+			providerId:    1,
+			launchName:    "Starlink Mission",
+			vehicleName:   "Falcon 9",
+			missionName:   "Communications",
+			expectedResult: false,
+		},
+		// Test keywords_add mode - provider subscription
+		{
+			name:          "keywords_add mode - subscribed via provider",
+			user:          User{FilterMode: "keywords_add", SubscribedAll: true},
+			launchId:      "launch-789",
+			providerId:    1,
+			launchName:    "Crew-11",
+			vehicleName:   "Falcon 9",
+			missionName:   "ISS Mission",
+			expectedResult: true,
+		},
+		// Test keywords_add mode - keyword subscription
+		{
+			name:          "keywords_add mode - subscribed via keyword only",
+			user:          User{FilterMode: "keywords_add", SubscribedKeywords: "ISS", SubscribedAll: false},
+			launchId:      "launch-789",
+			providerId:    99, // Not subscribed to this provider
+			launchName:    "Crew-11",
+			vehicleName:   "Falcon 9",
+			missionName:   "ISS Mission",
+			expectedResult: true,
+		},
+		// Test keywords_add mode - neither provider nor keyword
+		{
+			name:          "keywords_add mode - no subscription match",
+			user:          User{FilterMode: "keywords_add", SubscribedKeywords: "Mars", SubscribedAll: false},
+			launchId:      "launch-789",
+			providerId:    99, // Not subscribed to this provider
+			launchName:    "Crew-11",
+			vehicleName:   "Falcon 9",
+			missionName:   "ISS Mission",
+			expectedResult: false,
+		},
+		// Test keywords_add mode - keyword match but muted
+		{
+			name:          "keywords_add mode - keyword match but muted",
+			user:          User{FilterMode: "keywords_add", SubscribedKeywords: "ISS", MutedKeywords: "Crew"},
+			launchId:      "launch-789",
+			providerId:    99,
+			launchName:    "Crew-11",
+			vehicleName:   "Falcon 9",
+			missionName:   "ISS Mission",
+			expectedResult: false,
+		},
+		// Test legacy mode - must be subscribed to provider
+		{
+			name:          "Legacy mode - not subscribed to provider",
+			user:          User{FilterMode: "exclude", SubscribedAll: false},
+			launchId:      "launch-123",
+			providerId:    99,
+			launchName:    "Starlink Mission",
+			vehicleName:   "Falcon 9",
+			missionName:   "Communications",
+			expectedResult: false,
+		},
+		// Test legacy mode - subscribed and passes filter
+		{
+			name:          "Legacy mode - subscribed and passes filter",
+			user:          User{FilterMode: "exclude", SubscribedAll: true, MutedKeywords: "OneWeb"},
+			launchId:      "launch-123",
+			providerId:    1,
+			launchName:    "Starlink Mission",
+			vehicleName:   "Falcon 9",
+			missionName:   "Communications",
+			expectedResult: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.user.ShouldReceiveLaunch(tt.launchId, tt.providerId, tt.launchName, tt.vehicleName, tt.missionName)
+			if result != tt.expectedResult {
+				t.Errorf("Expected %v, got %v", tt.expectedResult, result)
+			}
+		})
+	}
 }
