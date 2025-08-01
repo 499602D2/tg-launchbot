@@ -10,3 +10,4 @@ launchbot
 config/bot-config.json
 db/migration/v2-database.db
 db/migration/launchbot.db
+CLAUDE.md

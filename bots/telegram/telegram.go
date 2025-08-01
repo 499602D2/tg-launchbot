@@ -110,6 +110,7 @@ func (tg *Bot) Initialize(token string) {
 	tg.Bot.Handle(&tb.InlineButton{Unique: "countryCodeView"}, tg.settingsCountryCodeView)
 	tg.Bot.Handle(&tb.InlineButton{Unique: "notificationToggle"}, tg.notificationToggleCallback)
 	tg.Bot.Handle(&tb.InlineButton{Unique: "muteToggle"}, tg.muteCallback)
+	tg.Bot.Handle(&tb.InlineButton{Unique: "keywords"}, tg.keywordsCallback)
 	tg.Bot.Handle(&tb.InlineButton{Unique: "expand"}, tg.expandMessageContent)
 	tg.Bot.Handle(&tb.InlineButton{Unique: "admin"}, tg.adminCommand)
 
@@ -118,6 +119,9 @@ func (tg *Bot) Initialize(token string) {
 
 	// Handle incoming locations for time-zone setup messages
 	tg.Bot.Handle(tb.OnLocation, tg.locationReplyHandler)
+
+	// Handle text messages for keyword input
+	tg.Bot.Handle(tb.OnText, tg.textMessageHandler)
 
 	// Catch service messages as they happen
 	tg.Bot.Handle(tb.OnMigration, tg.migrationHandler)

@@ -158,6 +158,12 @@ func (launch *Launch) NotificationRecipients(db *Database, notificationType stri
 			continue
 		}
 
+		// Check keyword filters
+		if !user.MatchesKeywordFilter(launch.Name, launch.Rocket.Config.Name, launch.Mission.Name) {
+			log.Debug().Msgf("➙ User=%s filtered out launch=%s by keyword filter", user.Id, launch.Name)
+			continue
+		}
+
 		/* User has subscribed to this launch, and has not muted it: add to recipients.
 		However, first check if this user has already been cached, in order to avoid
 		overlapping database writes. */
