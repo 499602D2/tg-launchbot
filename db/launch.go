@@ -899,22 +899,48 @@ func (cache *Cache) NextLaunchMessage(user *users.User, index int) (string, int)
 		launch.MessageBodyText(true, false),
 	)
 
-	if subscribedTo && user.AnyNotificationTimesEnabled() {
-		// Check if user has muted this launch, or has any notifications at all enabled
-		if !user.HasMutedLaunch(launch.Id) {
+	// Check notification status with keyword filtering support
+	if !user.AnyNotificationTimesEnabled() {
+		// If user has not enabled any notifications
+		text += "🔕 You have disabled all notifications"
+	} else if user.HasMutedLaunch(launch.Id) {
+		// Manual mute always takes precedence
+		text += "🔇 You have muted this launch"
+	} else {
+		// Check keyword filtering
+		searchText := strings.ToLower(launch.Name + " " + launch.Rocket.Config.Name)
+		
+		if user.BlockedKeywords != "" {
+			// Check if blocked by keywords
+			for _, keyword := range strings.Split(user.BlockedKeywords, ",") {
+				keyword = strings.TrimSpace(keyword)
+				if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
+					text += "🔕 Muted by your keyword filters"
+					goto timeSection
+				}
+			}
+		}
+		
+		if user.AllowedKeywords != "" {
+			// Check if allowed by keywords (overrides subscription settings)
+			for _, keyword := range strings.Split(user.AllowedKeywords, ",") {
+				keyword = strings.TrimSpace(keyword)
+				if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
+					text += "🔔 Subscribed to by your keyword filters"
+					goto timeSection
+				}
+			}
+		}
+		
+		// Fall back to provider subscription logic
+		if subscribedTo {
 			text += "🔔 You are subscribed to this launch"
 		} else {
-			text += "🔇 You have muted this launch"
-		}
-	} else {
-		if !user.AnyNotificationTimesEnabled() {
-			// If user has not enabled any notifications
-			text += "🔕 You have disabled all notifications"
-		} else {
-			// If user is not subscribed to this launch
 			text += "🔕 You are not subscribed to this launch"
 		}
 	}
+	
+	timeSection:
 
 	// Check if the launch date is TBD, and we should use the low-accuracy NET date
 	dateOnly := false

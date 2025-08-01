@@ -252,9 +252,9 @@ func TestShouldReceiveLaunch(t *testing.T) {
 			user:          User{AllowedKeywords: "ISS", SubscribedAll: false},
 			launchId:      "launch-789",
 			providerId:    99, // Not subscribed to this provider
-			launchName:    "Crew-11",
+			launchName:    "Crew-11 ISS",
 			vehicleName:   "Falcon 9",
-			missionName:   "ISS Mission",
+			missionName:   "Mission",
 			expectedResult: true,
 		},
 		// Test blocked keyword takes precedence over allowed
@@ -263,9 +263,9 @@ func TestShouldReceiveLaunch(t *testing.T) {
 			user:          User{BlockedKeywords: "Crew", AllowedKeywords: "ISS"},
 			launchId:      "launch-789",
 			providerId:    99,
-			launchName:    "Crew-11",
+			launchName:    "Crew-11 ISS",
 			vehicleName:   "Falcon 9",
-			missionName:   "ISS Mission",
+			missionName:   "Mission",
 			expectedResult: false,
 		},
 		// Test no keywords - follows provider subscription
@@ -309,7 +309,7 @@ func TestShouldReceiveLaunch(t *testing.T) {
 			providerId:    99,
 			launchName:    "Crew-5 Mission",
 			vehicleName:   "Falcon 9",
-			missionName:   "ISS Crew Rotation",
+			missionName:   "Crew Rotation",
 			expectedResult: true,
 		},
 		// Test case insensitive matching
