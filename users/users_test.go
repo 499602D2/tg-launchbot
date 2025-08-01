@@ -300,3 +300,80 @@ func TestMatchesKeywordFilter(t *testing.T) {
 		})
 	}
 }
+
+func TestToggleLaunchMute(t *testing.T) {
+	// Create a test user
+	user := &User{
+		Id:            "123",
+		Platform:      "test",
+		MutedLaunches: "",
+	}
+
+	launchID := "test-launch-123"
+
+	// Test muting a launch
+	t.Run("Mute unmuted launch", func(t *testing.T) {
+		result := user.ToggleLaunchMute(launchID, true)
+		if !result {
+			t.Error("Expected true when muting unmuted launch")
+		}
+		if !user.HasMutedLaunch(launchID) {
+			t.Error("Launch should be muted")
+		}
+	})
+
+	// Test muting already muted launch
+	t.Run("Mute already muted launch", func(t *testing.T) {
+		result := user.ToggleLaunchMute(launchID, true)
+		if result {
+			t.Error("Expected false when muting already muted launch")
+		}
+		if !user.HasMutedLaunch(launchID) {
+			t.Error("Launch should still be muted")
+		}
+	})
+
+	// Test unmuting a muted launch
+	t.Run("Unmute muted launch", func(t *testing.T) {
+		result := user.ToggleLaunchMute(launchID, false)
+		if !result {
+			t.Error("Expected true when unmuting muted launch")
+		}
+		if user.HasMutedLaunch(launchID) {
+			t.Error("Launch should be unmuted")
+		}
+	})
+
+	// Test unmuting already unmuted launch
+	t.Run("Unmute already unmuted launch", func(t *testing.T) {
+		result := user.ToggleLaunchMute(launchID, false)
+		if result {
+			t.Error("Expected false when unmuting already unmuted launch")
+		}
+		if user.HasMutedLaunch(launchID) {
+			t.Error("Launch should still be unmuted")
+		}
+	})
+
+	// Test with multiple launches
+	t.Run("Multiple launches", func(t *testing.T) {
+		launch1 := "launch-1"
+		launch2 := "launch-2"
+		launch3 := "launch-3"
+
+		// Mute multiple launches
+		user.ToggleLaunchMute(launch1, true)
+		user.ToggleLaunchMute(launch2, true)
+		user.ToggleLaunchMute(launch3, true)
+
+		if !user.HasMutedLaunch(launch1) || !user.HasMutedLaunch(launch2) || !user.HasMutedLaunch(launch3) {
+			t.Error("All launches should be muted")
+		}
+
+		// Unmute middle launch
+		user.ToggleLaunchMute(launch2, false)
+		if !user.HasMutedLaunch(launch1) || user.HasMutedLaunch(launch2) || !user.HasMutedLaunch(launch3) {
+			t.Error("Only launch2 should be unmuted")
+		}
+	})
+}
