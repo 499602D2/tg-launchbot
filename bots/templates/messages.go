@@ -192,7 +192,7 @@ func (keywords *KeywordsMessage) Help() string {
 		"• Keywords override your launch provider subscriptions\n\n" +
 		"*Examples:*\n" +
 		"• Block \"Starlink\" to skip all Starlink launches\n" +
-		"• Allow \"Starship\" to get all Starship launches\n" +
+		"• Allow \"Starship\" to get all Starship launches\n\n" +
 		"*Tips:*\n" +
 		"• Keywords are case-insensitive\n" +
 		"• Partial matches work (\"Star\" matches \"Starship\" and \"Starlink\")\n" +
