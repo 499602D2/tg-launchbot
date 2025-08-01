@@ -463,7 +463,7 @@ func (command *CommandKeyboard) Next(index int, cacheLength int) (tb.SendOptions
 
 		returnBtn := tb.InlineButton{
 			Unique: "next",
-			Text:   "↩️ Back to first", Data: fmt.Sprintf("n/0/0"),
+			Text:   "↩️ Back to first", Data: "n/0/0",
 		}
 
 		prevBtn := tb.InlineButton{
@@ -487,7 +487,7 @@ func (command *CommandKeyboard) Next(index int, cacheLength int) (tb.SendOptions
 
 		returnBtn := tb.InlineButton{
 			Unique: "next",
-			Text:   "↩️ Back to first", Data: fmt.Sprintf("n/0/0"),
+			Text:   "↩️ Back to first", Data: "n/0/0",
 		}
 
 		nextBtn := tb.InlineButton{
