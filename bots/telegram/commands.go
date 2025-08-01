@@ -942,6 +942,7 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 				keyword := callbackData[2]
 				if chat.RemoveBlockedKeyword(keyword) {
 					tg.Db.SaveUser(chat)
+					log.Info().Str("user", chat.Id).Str("keyword", keyword).Msg("User removed blocked keyword")
 
 					// Update the keyword view
 					fullMessage := tg.Template.Messages.Settings.Keywords.ViewBlocked(chat)
@@ -958,6 +959,7 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 		case "clear":
 			chat.BlockedKeywords = ""
 			tg.Db.SaveUser(chat)
+			log.Info().Str("user", chat.Id).Msg("User cleared all blocked keywords")
 
 			// Update the keyword view
 			fullMessage := tg.Template.Messages.Settings.Keywords.ViewBlocked(chat)
@@ -1017,6 +1019,7 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 				keyword := callbackData[2]
 				if chat.RemoveAllowedKeyword(keyword) {
 					tg.Db.SaveUser(chat)
+					log.Info().Str("user", chat.Id).Str("keyword", keyword).Msg("User removed allowed keyword")
 
 					// Update the keyword view
 					fullMessage := tg.Template.Messages.Settings.Keywords.ViewAllowed(chat)
@@ -1033,6 +1036,7 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 		case "clear":
 			chat.AllowedKeywords = ""
 			tg.Db.SaveUser(chat)
+			log.Info().Str("user", chat.Id).Msg("User cleared all allowed keywords")
 
 			// Update the keyword view
 			fullMessage := tg.Template.Messages.Settings.Keywords.ViewAllowed(chat)
@@ -1340,12 +1344,14 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 			
 			// Check if we've hit the keyword count limit
 			if existingCount + len(addedKeywords) >= maxKeywordsPerType {
+				log.Debug().Str("user", chat.Id).Str("keyword", keyword).Int("limit", maxKeywordsPerType).Msg("Keyword rejected: count limit reached")
 				skippedKeywords = append(skippedKeywords, keyword+" (limit reached: max "+fmt.Sprintf("%d", maxKeywordsPerType)+" keywords)")
 				continue
 			}
 			
 			// Check individual keyword length
 			if len(keyword) > 50 {
+				log.Debug().Str("user", chat.Id).Str("keyword", keyword).Int("length", len(keyword)).Msg("Keyword rejected: too long")
 				skippedKeywords = append(skippedKeywords, keyword+" (too long)")
 				continue
 			}
@@ -1353,6 +1359,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 			// Check total length limit
 			potentialNewLength := existingLength + len(keyword) + 1 // +1 for comma
 			if existingLength > 0 && potentialNewLength > maxTotalLength {
+				log.Debug().Str("user", chat.Id).Str("keyword", keyword).Int("total_length", potentialNewLength).Msg("Keyword rejected: total length limit")
 				skippedKeywords = append(skippedKeywords, keyword+" (total length limit reached)")
 				continue
 			}
@@ -1368,6 +1375,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 		
 		if len(addedKeywords) > 0 {
 			tg.Db.SaveUser(chat)
+			log.Info().Str("user", chat.Id).Strs("keywords", addedKeywords).Msg("User added blocked keywords")
 			if len(addedKeywords) == 1 {
 				message = tg.Template.Messages.Settings.Keywords.Added(addedKeywords[0], "blocked")
 			} else {
@@ -1376,6 +1384,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 		}
 		
 		if len(skippedKeywords) > 0 {
+			log.Debug().Str("user", chat.Id).Strs("skipped", skippedKeywords).Msg("Some keywords were skipped")
 			if message != "" {
 				message += "\n"
 			}
@@ -1402,12 +1411,14 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 			
 			// Check if we've hit the keyword count limit
 			if existingCount + len(addedKeywords) >= maxKeywordsPerType {
+				log.Debug().Str("user", chat.Id).Str("keyword", keyword).Int("limit", maxKeywordsPerType).Msg("Keyword rejected: count limit reached")
 				skippedKeywords = append(skippedKeywords, keyword+" (limit reached: max "+fmt.Sprintf("%d", maxKeywordsPerType)+" keywords)")
 				continue
 			}
 			
 			// Check individual keyword length
 			if len(keyword) > 50 {
+				log.Debug().Str("user", chat.Id).Str("keyword", keyword).Int("length", len(keyword)).Msg("Keyword rejected: too long")
 				skippedKeywords = append(skippedKeywords, keyword+" (too long)")
 				continue
 			}
@@ -1415,6 +1426,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 			// Check total length limit
 			potentialNewLength := existingLength + len(keyword) + 1 // +1 for comma
 			if existingLength > 0 && potentialNewLength > maxTotalLength {
+				log.Debug().Str("user", chat.Id).Str("keyword", keyword).Int("total_length", potentialNewLength).Msg("Keyword rejected: total length limit")
 				skippedKeywords = append(skippedKeywords, keyword+" (total length limit reached)")
 				continue
 			}
@@ -1438,6 +1450,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 		}
 		
 		if len(skippedKeywords) > 0 {
+			log.Debug().Str("user", chat.Id).Strs("skipped", skippedKeywords).Msg("Some keywords were skipped")
 			if message != "" {
 				message += "\n"
 			}

@@ -162,6 +162,7 @@ func (user *User) HasMutedLaunch(id string) bool {
 func (user *User) AddBlockedKeyword(keyword string) bool {
 	// Check if keyword already exists
 	if user.HasBlockedKeyword(keyword) {
+		log.Debug().Str("user", user.Id).Str("keyword", keyword).Msg("Blocked keyword already exists")
 		return false
 	}
 
@@ -170,12 +171,14 @@ func (user *User) AddBlockedKeyword(keyword string) bool {
 	} else {
 		user.BlockedKeywords = strings.Join(append(strings.Split(user.BlockedKeywords, ","), keyword), ",")
 	}
+	log.Info().Str("user", user.Id).Str("keyword", keyword).Int("total_blocked", len(strings.Split(user.BlockedKeywords, ","))).Msg("Added blocked keyword")
 	return true
 }
 
 // Remove a keyword from blocked keywords list
 func (user *User) RemoveBlockedKeyword(keyword string) bool {
 	if !user.HasBlockedKeyword(keyword) {
+		log.Debug().Str("user", user.Id).Str("keyword", keyword).Msg("Blocked keyword not found for removal")
 		return false
 	}
 
@@ -192,6 +195,7 @@ func (user *User) RemoveBlockedKeyword(keyword string) bool {
 	} else {
 		user.BlockedKeywords = ""
 	}
+	log.Info().Str("user", user.Id).Str("keyword", keyword).Int("remaining_blocked", len(keywords)).Msg("Removed blocked keyword")
 	return true
 }
 
@@ -213,6 +217,7 @@ func (user *User) HasBlockedKeyword(keyword string) bool {
 func (user *User) AddAllowedKeyword(keyword string) bool {
 	// Check if keyword already exists
 	if user.HasAllowedKeyword(keyword) {
+		log.Debug().Str("user", user.Id).Str("keyword", keyword).Msg("Allowed keyword already exists")
 		return false
 	}
 
@@ -221,12 +226,14 @@ func (user *User) AddAllowedKeyword(keyword string) bool {
 	} else {
 		user.AllowedKeywords = strings.Join(append(strings.Split(user.AllowedKeywords, ","), keyword), ",")
 	}
+	log.Info().Str("user", user.Id).Str("keyword", keyword).Int("total_allowed", len(strings.Split(user.AllowedKeywords, ","))).Msg("Added allowed keyword")
 	return true
 }
 
 // Remove a keyword from allowed keywords list
 func (user *User) RemoveAllowedKeyword(keyword string) bool {
 	if !user.HasAllowedKeyword(keyword) {
+		log.Debug().Str("user", user.Id).Str("keyword", keyword).Msg("Allowed keyword not found for removal")
 		return false
 	}
 
@@ -243,6 +250,7 @@ func (user *User) RemoveAllowedKeyword(keyword string) bool {
 	} else {
 		user.AllowedKeywords = ""
 	}
+	log.Info().Str("user", user.Id).Str("keyword", keyword).Int("remaining_allowed", len(keywords)).Msg("Removed allowed keyword")
 	return true
 }
 
@@ -328,6 +336,7 @@ func (user *User) GetNotificationStatusById(id int) bool {
 func (user *User) ShouldReceiveLaunch(launchId string, providerId int, launchName, vehicleName, missionName string) bool {
 	// Check if explicitly muted
 	if user.HasMutedLaunch(launchId) {
+		log.Debug().Str("user", user.Id).Str("launch_id", launchId).Msg("Launch explicitly muted")
 		return false
 	}
 	
@@ -336,16 +345,20 @@ func (user *User) ShouldReceiveLaunch(launchId string, providerId int, launchNam
 	
 	// Check blocked keywords first (always exclude)
 	if user.matchesBlockedKeywords(searchText) {
+		log.Debug().Str("user", user.Id).Str("launch_id", launchId).Str("launch_name", launchName).Msg("Launch blocked by keyword filter")
 		return false
 	}
 	
 	// Check allowed keywords (always include if matched)
 	if user.matchesAllowedKeywords(searchText) {
+		log.Debug().Str("user", user.Id).Str("launch_id", launchId).Str("launch_name", launchName).Msg("Launch allowed by keyword filter")
 		return true
 	}
 	
 	// Otherwise, use normal provider subscription logic
-	return user.GetNotificationStatusById(providerId)
+	subscribed := user.GetNotificationStatusById(providerId)
+	log.Debug().Str("user", user.Id).Str("launch_id", launchId).Str("launch_name", launchName).Bool("subscribed", subscribed).Msg("Launch filtered by provider subscription")
+	return subscribed
 }
 
 // Check if text matches any blocked keywords
@@ -357,6 +370,7 @@ func (user *User) matchesBlockedKeywords(searchText string) bool {
 	for _, keyword := range strings.Split(user.BlockedKeywords, ",") {
 		keyword = strings.TrimSpace(keyword)
 		if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
+			log.Debug().Str("user", user.Id).Str("blocked_keyword", keyword).Str("search_text", searchText).Msg("Matched blocked keyword")
 			return true
 		}
 	}
@@ -372,6 +386,7 @@ func (user *User) matchesAllowedKeywords(searchText string) bool {
 	for _, keyword := range strings.Split(user.AllowedKeywords, ",") {
 		keyword = strings.TrimSpace(keyword)
 		if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
+			log.Debug().Str("user", user.Id).Str("allowed_keyword", keyword).Str("search_text", searchText).Msg("Matched allowed keyword")
 			return true
 		}
 	}
