@@ -28,9 +28,8 @@ type User struct {
 	SubscribedTo          string   // List of comma-separated LSP IDs
 	UnsubscribedFrom      string   // List of comma-separated LSP IDs
 	MutedLaunches         string   // A comma-separated string of muted launches by ID
-	MutedKeywords         string   // Comma-separated keywords to exclude from notifications
-	SubscribedKeywords    string   // Comma-separated keywords to include in notifications
-	FilterMode            string   // "exclude" (default), "include", or "hybrid"
+	BlockedKeywords       string   // Comma-separated keywords to exclude from notifications (always overrides subscriptions)
+	AllowedKeywords       string   // Comma-separated keywords to include in notifications (always overrides subscriptions)
 	SubscribedNewsletter  bool
 	MigratedFromId        string     // If the chat has been migrated, keep its original id
 	Stats                 stats.User `gorm:"embedded"`
@@ -159,28 +158,31 @@ func (user *User) HasMutedLaunch(id string) bool {
 	return false
 }
 
-// Add a keyword to muted keywords list
-func (user *User) AddMutedKeyword(keyword string) bool {
+// Add a keyword to blocked keywords list
+func (user *User) AddBlockedKeyword(keyword string) bool {
 	// Check if keyword already exists
-	if user.HasMutedKeyword(keyword) {
+	if user.HasBlockedKeyword(keyword) {
+		log.Debug().Str("user", user.Id).Str("keyword", keyword).Msg("Blocked keyword already exists")
 		return false
 	}
 
-	if user.MutedKeywords == "" {
-		user.MutedKeywords = keyword
+	if user.BlockedKeywords == "" {
+		user.BlockedKeywords = keyword
 	} else {
-		user.MutedKeywords = strings.Join(append(strings.Split(user.MutedKeywords, ","), keyword), ",")
+		user.BlockedKeywords = strings.Join(append(strings.Split(user.BlockedKeywords, ","), keyword), ",")
 	}
+	log.Info().Str("user", user.Id).Str("keyword", keyword).Int("total_blocked", len(strings.Split(user.BlockedKeywords, ","))).Msg("Added blocked keyword")
 	return true
 }
 
-// Remove a keyword from muted keywords list
-func (user *User) RemoveMutedKeyword(keyword string) bool {
-	if !user.HasMutedKeyword(keyword) {
+// Remove a keyword from blocked keywords list
+func (user *User) RemoveBlockedKeyword(keyword string) bool {
+	if !user.HasBlockedKeyword(keyword) {
+		log.Debug().Str("user", user.Id).Str("keyword", keyword).Msg("Blocked keyword not found for removal")
 		return false
 	}
 
-	keywords := strings.Split(user.MutedKeywords, ",")
+	keywords := strings.Split(user.BlockedKeywords, ",")
 	for idx, k := range keywords {
 		if strings.EqualFold(k, keyword) {
 			keywords = append(keywords[:idx], keywords[idx+1:]...)
@@ -189,20 +191,21 @@ func (user *User) RemoveMutedKeyword(keyword string) bool {
 	}
 
 	if len(keywords) > 0 {
-		user.MutedKeywords = strings.Join(keywords, ",")
+		user.BlockedKeywords = strings.Join(keywords, ",")
 	} else {
-		user.MutedKeywords = ""
+		user.BlockedKeywords = ""
 	}
+	log.Info().Str("user", user.Id).Str("keyword", keyword).Int("remaining_blocked", len(keywords)).Msg("Removed blocked keyword")
 	return true
 }
 
-// Check if user has muted a keyword
-func (user *User) HasMutedKeyword(keyword string) bool {
-	if user.MutedKeywords == "" {
+// Check if user has blocked a keyword
+func (user *User) HasBlockedKeyword(keyword string) bool {
+	if user.BlockedKeywords == "" {
 		return false
 	}
 
-	for _, k := range strings.Split(user.MutedKeywords, ",") {
+	for _, k := range strings.Split(user.BlockedKeywords, ",") {
 		if strings.EqualFold(k, keyword) {
 			return true
 		}
@@ -210,28 +213,31 @@ func (user *User) HasMutedKeyword(keyword string) bool {
 	return false
 }
 
-// Add a keyword to subscribed keywords list
-func (user *User) AddSubscribedKeyword(keyword string) bool {
+// Add a keyword to allowed keywords list
+func (user *User) AddAllowedKeyword(keyword string) bool {
 	// Check if keyword already exists
-	if user.HasSubscribedKeyword(keyword) {
+	if user.HasAllowedKeyword(keyword) {
+		log.Debug().Str("user", user.Id).Str("keyword", keyword).Msg("Allowed keyword already exists")
 		return false
 	}
 
-	if user.SubscribedKeywords == "" {
-		user.SubscribedKeywords = keyword
+	if user.AllowedKeywords == "" {
+		user.AllowedKeywords = keyword
 	} else {
-		user.SubscribedKeywords = strings.Join(append(strings.Split(user.SubscribedKeywords, ","), keyword), ",")
+		user.AllowedKeywords = strings.Join(append(strings.Split(user.AllowedKeywords, ","), keyword), ",")
 	}
+	log.Info().Str("user", user.Id).Str("keyword", keyword).Int("total_allowed", len(strings.Split(user.AllowedKeywords, ","))).Msg("Added allowed keyword")
 	return true
 }
 
-// Remove a keyword from subscribed keywords list
-func (user *User) RemoveSubscribedKeyword(keyword string) bool {
-	if !user.HasSubscribedKeyword(keyword) {
+// Remove a keyword from allowed keywords list
+func (user *User) RemoveAllowedKeyword(keyword string) bool {
+	if !user.HasAllowedKeyword(keyword) {
+		log.Debug().Str("user", user.Id).Str("keyword", keyword).Msg("Allowed keyword not found for removal")
 		return false
 	}
 
-	keywords := strings.Split(user.SubscribedKeywords, ",")
+	keywords := strings.Split(user.AllowedKeywords, ",")
 	for idx, k := range keywords {
 		if strings.EqualFold(k, keyword) {
 			keywords = append(keywords[:idx], keywords[idx+1:]...)
@@ -240,20 +246,21 @@ func (user *User) RemoveSubscribedKeyword(keyword string) bool {
 	}
 
 	if len(keywords) > 0 {
-		user.SubscribedKeywords = strings.Join(keywords, ",")
+		user.AllowedKeywords = strings.Join(keywords, ",")
 	} else {
-		user.SubscribedKeywords = ""
+		user.AllowedKeywords = ""
 	}
+	log.Info().Str("user", user.Id).Str("keyword", keyword).Int("remaining_allowed", len(keywords)).Msg("Removed allowed keyword")
 	return true
 }
 
-// Check if user has subscribed to a keyword
-func (user *User) HasSubscribedKeyword(keyword string) bool {
-	if user.SubscribedKeywords == "" {
+// Check if user has allowed a keyword
+func (user *User) HasAllowedKeyword(keyword string) bool {
+	if user.AllowedKeywords == "" {
 		return false
 	}
 
-	for _, k := range strings.Split(user.SubscribedKeywords, ",") {
+	for _, k := range strings.Split(user.AllowedKeywords, ",") {
 		if strings.EqualFold(k, keyword) {
 			return true
 		}
@@ -261,82 +268,6 @@ func (user *User) HasSubscribedKeyword(keyword string) bool {
 	return false
 }
 
-// Check if a launch matches user's keyword filters
-func (user *User) MatchesKeywordFilter(launchName, vehicleName, missionName string) bool {
-	// Get filter mode, defaulting to exclude if not set
-	filterMode := user.FilterMode
-	if filterMode == "" {
-		filterMode = "exclude"
-	}
-
-	// Combine all text to search
-	searchText := strings.ToLower(launchName + " " + vehicleName + " " + missionName)
-
-	switch filterMode {
-	case "exclude", "keywords_filter":
-		// Check if any muted keyword matches
-		if user.MutedKeywords != "" {
-			for _, keyword := range strings.Split(user.MutedKeywords, ",") {
-				keyword = strings.TrimSpace(keyword)
-				if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
-					return false // Exclude this launch
-				}
-			}
-		}
-		return true // Include by default in exclude mode
-
-	case "include":
-		// Only include if subscribed keyword matches
-		if user.SubscribedKeywords == "" {
-			return true // If no keywords set, include all
-		}
-		for _, keyword := range strings.Split(user.SubscribedKeywords, ",") {
-			keyword = strings.TrimSpace(keyword)
-			if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
-				return true // Include this launch
-			}
-		}
-		return false // Exclude by default in include mode
-
-	case "hybrid":
-		// First check subscribed keywords (include takes precedence)
-		hasSubscribedMatch := false
-		if user.SubscribedKeywords != "" {
-			for _, keyword := range strings.Split(user.SubscribedKeywords, ",") {
-				keyword = strings.TrimSpace(keyword)
-				if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
-					hasSubscribedMatch = true
-					break
-				}
-			}
-			// If we have subscribed keywords but no match, exclude
-			if !hasSubscribedMatch {
-				return false
-			}
-		}
-
-		// Then check muted keywords
-		if user.MutedKeywords != "" {
-			for _, keyword := range strings.Split(user.MutedKeywords, ",") {
-				keyword = strings.TrimSpace(keyword)
-				if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
-					return false // Exclude this launch
-				}
-			}
-		}
-		return true
-
-	case "keywords_add":
-		// This mode is handled in ShouldReceiveLaunch method
-		// When called from there, we're already past provider checks
-		// So just check if not muted
-		return !user.matchesMutedKeywords(searchText)
-
-	default:
-		// Invalid mode, default to include
-		return true
-	}
-}
 
 // Return a bool indicating if user has any notification subscription times enabled
 func (user *User) AnyNotificationTimesEnabled() bool {
@@ -405,65 +336,57 @@ func (user *User) GetNotificationStatusById(id int) bool {
 func (user *User) ShouldReceiveLaunch(launchId string, providerId int, launchName, vehicleName, missionName string) bool {
 	// Check if explicitly muted
 	if user.HasMutedLaunch(launchId) {
+		log.Debug().Str("user", user.Id).Str("launch_id", launchId).Msg("Launch explicitly muted")
 		return false
 	}
 	
-	// Build search text for keyword matching
-	searchText := strings.ToLower(launchName + " " + vehicleName + " " + missionName)
+	// Build search text for keyword matching (launch name + vehicle name)
+	searchText := strings.ToLower(launchName + " " + vehicleName)
 	
-	// Check muted keywords first (always exclude)
-	if user.matchesMutedKeywords(searchText) {
+	// Check blocked keywords first (always exclude)
+	if user.matchesBlockedKeywords(searchText) {
+		log.Debug().Str("user", user.Id).Str("launch_id", launchId).Str("launch_name", launchName).Msg("Launch blocked by keyword filter")
 		return false
 	}
 	
-	// Get filter mode, defaulting to exclude if not set
-	filterMode := user.FilterMode
-	if filterMode == "" {
-		filterMode = "exclude"
+	// Check allowed keywords (always include if matched)
+	if user.matchesAllowedKeywords(searchText) {
+		log.Debug().Str("user", user.Id).Str("launch_id", launchId).Str("launch_name", launchName).Msg("Launch allowed by keyword filter")
+		return true
 	}
 	
-	// Check subscription status based on mode
-	switch filterMode {
-	case "keywords_add":
-		// Keywords can add launches beyond provider subscriptions
-		subscribedViaProvider := user.GetNotificationStatusById(providerId)
-		subscribedViaKeyword := user.matchesSubscribedKeywords(searchText)
-		return subscribedViaProvider || subscribedViaKeyword
-		
-	default:
-		// Legacy modes: keywords only filter provider subscriptions
-		if !user.GetNotificationStatusById(providerId) {
-			return false // Must be subscribed to provider first
-		}
-		// Apply keyword filter using existing logic
-		return user.MatchesKeywordFilter(launchName, vehicleName, missionName)
-	}
+	// Otherwise, use normal provider subscription logic
+	subscribed := user.GetNotificationStatusById(providerId)
+	log.Debug().Str("user", user.Id).Str("launch_id", launchId).Str("launch_name", launchName).Bool("subscribed", subscribed).Msg("Launch filtered by provider subscription")
+	return subscribed
 }
 
-// Check if text matches any muted keywords
-func (user *User) matchesMutedKeywords(searchText string) bool {
-	if user.MutedKeywords == "" {
+// Check if text matches any blocked keywords
+func (user *User) matchesBlockedKeywords(searchText string) bool {
+	if user.BlockedKeywords == "" {
 		return false
 	}
 	
-	for _, keyword := range strings.Split(user.MutedKeywords, ",") {
+	for _, keyword := range strings.Split(user.BlockedKeywords, ",") {
 		keyword = strings.TrimSpace(keyword)
 		if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
+			log.Debug().Str("user", user.Id).Str("blocked_keyword", keyword).Str("search_text", searchText).Msg("Matched blocked keyword")
 			return true
 		}
 	}
 	return false
 }
 
-// Check if text matches any subscribed keywords
-func (user *User) matchesSubscribedKeywords(searchText string) bool {
-	if user.SubscribedKeywords == "" {
-		return false // No keywords means no keyword-based subscription
+// Check if text matches any allowed keywords
+func (user *User) matchesAllowedKeywords(searchText string) bool {
+	if user.AllowedKeywords == "" {
+		return false // No keywords means no keyword-based inclusion
 	}
 	
-	for _, keyword := range strings.Split(user.SubscribedKeywords, ",") {
+	for _, keyword := range strings.Split(user.AllowedKeywords, ",") {
 		keyword = strings.TrimSpace(keyword)
 		if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
+			log.Debug().Str("user", user.Id).Str("allowed_keyword", keyword).Str("search_text", searchText).Msg("Matched allowed keyword")
 			return true
 		}
 	}

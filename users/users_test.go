@@ -4,354 +4,137 @@ import (
 	"testing"
 )
 
-func TestAddMutedKeyword(t *testing.T) {
+func TestAddBlockedKeyword(t *testing.T) {
 	user := &User{}
 	
 	// Test adding first keyword
-	if !user.AddMutedKeyword("Starlink") {
-		t.Error("Failed to add first muted keyword")
+	if !user.AddBlockedKeyword("Starlink") {
+		t.Error("Failed to add first blocked keyword")
 	}
-	if user.MutedKeywords != "Starlink" {
-		t.Errorf("Expected MutedKeywords to be 'Starlink', got '%s'", user.MutedKeywords)
+	if user.BlockedKeywords != "Starlink" {
+		t.Errorf("Expected BlockedKeywords to be 'Starlink', got '%s'", user.BlockedKeywords)
 	}
 	
 	// Test adding second keyword
-	if !user.AddMutedKeyword("OneWeb") {
-		t.Error("Failed to add second muted keyword")
+	if !user.AddBlockedKeyword("OneWeb") {
+		t.Error("Failed to add second blocked keyword")
 	}
-	if user.MutedKeywords != "Starlink,OneWeb" {
-		t.Errorf("Expected MutedKeywords to be 'Starlink,OneWeb', got '%s'", user.MutedKeywords)
+	if user.BlockedKeywords != "Starlink,OneWeb" {
+		t.Errorf("Expected BlockedKeywords to be 'Starlink,OneWeb', got '%s'", user.BlockedKeywords)
 	}
 	
 	// Test adding duplicate keyword
-	if user.AddMutedKeyword("Starlink") {
+	if user.AddBlockedKeyword("Starlink") {
 		t.Error("Should not add duplicate keyword")
 	}
 	
 	// Test case-insensitive duplicate check
-	if user.AddMutedKeyword("starlink") {
+	if user.AddBlockedKeyword("starlink") {
 		t.Error("Should not add case-insensitive duplicate keyword")
 	}
 }
 
-func TestRemoveMutedKeyword(t *testing.T) {
-	user := &User{MutedKeywords: "Starlink,OneWeb,Falcon"}
+func TestRemoveBlockedKeyword(t *testing.T) {
+	user := &User{BlockedKeywords: "Starlink,OneWeb,Falcon"}
 	
 	// Test removing middle keyword
-	if !user.RemoveMutedKeyword("OneWeb") {
+	if !user.RemoveBlockedKeyword("OneWeb") {
 		t.Error("Failed to remove keyword")
 	}
-	if user.MutedKeywords != "Starlink,Falcon" {
-		t.Errorf("Expected MutedKeywords to be 'Starlink,Falcon', got '%s'", user.MutedKeywords)
+	if user.BlockedKeywords != "Starlink,Falcon" {
+		t.Errorf("Expected BlockedKeywords to be 'Starlink,Falcon', got '%s'", user.BlockedKeywords)
 	}
 	
 	// Test removing first keyword
-	if !user.RemoveMutedKeyword("Starlink") {
+	if !user.RemoveBlockedKeyword("Starlink") {
 		t.Error("Failed to remove first keyword")
 	}
-	if user.MutedKeywords != "Falcon" {
-		t.Errorf("Expected MutedKeywords to be 'Falcon', got '%s'", user.MutedKeywords)
+	if user.BlockedKeywords != "Falcon" {
+		t.Errorf("Expected BlockedKeywords to be 'Falcon', got '%s'", user.BlockedKeywords)
 	}
 	
 	// Test removing last keyword
-	if !user.RemoveMutedKeyword("Falcon") {
+	if !user.RemoveBlockedKeyword("Falcon") {
 		t.Error("Failed to remove last keyword")
 	}
-	if user.MutedKeywords != "" {
-		t.Errorf("Expected MutedKeywords to be empty, got '%s'", user.MutedKeywords)
+	if user.BlockedKeywords != "" {
+		t.Errorf("Expected BlockedKeywords to be empty, got '%s'", user.BlockedKeywords)
 	}
 	
 	// Test removing non-existent keyword
-	if user.RemoveMutedKeyword("NotThere") {
+	if user.RemoveBlockedKeyword("NotThere") {
 		t.Error("Should not remove non-existent keyword")
 	}
 	
 	// Test case-insensitive removal
-	user.MutedKeywords = "Starlink"
-	if !user.RemoveMutedKeyword("STARLINK") {
+	user.BlockedKeywords = "Starlink"
+	if !user.RemoveBlockedKeyword("STARLINK") {
 		t.Error("Failed to remove keyword with different case")
 	}
 }
 
-func TestHasMutedKeyword(t *testing.T) {
-	user := &User{MutedKeywords: "Starlink,OneWeb,Falcon"}
+func TestHasBlockedKeyword(t *testing.T) {
+	user := &User{BlockedKeywords: "Starlink,OneWeb,Falcon"}
 	
 	// Test existing keywords
-	if !user.HasMutedKeyword("Starlink") {
+	if !user.HasBlockedKeyword("Starlink") {
 		t.Error("Should find Starlink")
 	}
-	if !user.HasMutedKeyword("OneWeb") {
+	if !user.HasBlockedKeyword("OneWeb") {
 		t.Error("Should find OneWeb")
 	}
-	if !user.HasMutedKeyword("Falcon") {
+	if !user.HasBlockedKeyword("Falcon") {
 		t.Error("Should find Falcon")
 	}
 	
 	// Test case-insensitive check
-	if !user.HasMutedKeyword("starlink") {
+	if !user.HasBlockedKeyword("starlink") {
 		t.Error("Should find starlink (case-insensitive)")
 	}
-	if !user.HasMutedKeyword("ONEWEB") {
+	if !user.HasBlockedKeyword("ONEWEB") {
 		t.Error("Should find ONEWEB (case-insensitive)")
 	}
 	
 	// Test non-existent keyword
-	if user.HasMutedKeyword("Dragon") {
+	if user.HasBlockedKeyword("Dragon") {
 		t.Error("Should not find Dragon")
 	}
 	
 	// Test empty keywords
-	user.MutedKeywords = ""
-	if user.HasMutedKeyword("Anything") {
+	user.BlockedKeywords = ""
+	if user.HasBlockedKeyword("Anything") {
 		t.Error("Should not find anything when keywords are empty")
 	}
 }
 
-func TestSubscribedKeywordFunctions(t *testing.T) {
+func TestAllowedKeywordFunctions(t *testing.T) {
 	user := &User{}
 	
 	// Test add
-	if !user.AddSubscribedKeyword("ISS") {
-		t.Error("Failed to add subscribed keyword")
+	if !user.AddAllowedKeyword("ISS") {
+		t.Error("Failed to add allowed keyword")
 	}
-	if user.SubscribedKeywords != "ISS" {
-		t.Errorf("Expected SubscribedKeywords to be 'ISS', got '%s'", user.SubscribedKeywords)
+	if user.AllowedKeywords != "ISS" {
+		t.Errorf("Expected AllowedKeywords to be 'ISS', got '%s'", user.AllowedKeywords)
 	}
 	
 	// Test has
-	if !user.HasSubscribedKeyword("ISS") {
+	if !user.HasAllowedKeyword("ISS") {
 		t.Error("Should find ISS")
 	}
-	if !user.HasSubscribedKeyword("iss") {
+	if !user.HasAllowedKeyword("iss") {
 		t.Error("Should find iss (case-insensitive)")
 	}
 	
 	// Test remove
-	if !user.RemoveSubscribedKeyword("ISS") {
-		t.Error("Failed to remove subscribed keyword")
+	if !user.RemoveAllowedKeyword("ISS") {
+		t.Error("Failed to remove allowed keyword")
 	}
-	if user.SubscribedKeywords != "" {
-		t.Errorf("Expected SubscribedKeywords to be empty, got '%s'", user.SubscribedKeywords)
+	if user.AllowedKeywords != "" {
+		t.Errorf("Expected AllowedKeywords to be empty, got '%s'", user.AllowedKeywords)
 	}
 }
 
-func TestMatchesKeywordFilter(t *testing.T) {
-	tests := []struct {
-		name               string
-		user               User
-		launchName         string
-		vehicleName        string
-		missionName        string
-		expectedMatch      bool
-	}{
-		// Exclude mode tests
-		{
-			name:          "Exclude mode - no keywords",
-			user:          User{FilterMode: "exclude"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: true,
-		},
-		{
-			name:          "Exclude mode - match muted keyword",
-			user:          User{FilterMode: "exclude", MutedKeywords: "Starlink"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: false,
-		},
-		{
-			name:          "Exclude mode - no match",
-			user:          User{FilterMode: "exclude", MutedKeywords: "OneWeb"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: true,
-		},
-		{
-			name:          "Exclude mode - partial match",
-			user:          User{FilterMode: "exclude", MutedKeywords: "Star"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: false,
-		},
-		{
-			name:          "Exclude mode - case insensitive",
-			user:          User{FilterMode: "exclude", MutedKeywords: "starlink"},
-			launchName:    "STARLINK Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: false,
-		},
-		
-		// Include mode tests
-		{
-			name:          "Include mode - no keywords",
-			user:          User{FilterMode: "include"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: true,
-		},
-		{
-			name:          "Include mode - match subscribed keyword",
-			user:          User{FilterMode: "include", SubscribedKeywords: "Starlink"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: true,
-		},
-		{
-			name:          "Include mode - no match",
-			user:          User{FilterMode: "include", SubscribedKeywords: "ISS"},
-			launchName:    "Starlink Group 6-23",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: false,
-		},
-		{
-			name:          "Include mode - match in vehicle",
-			user:          User{FilterMode: "include", SubscribedKeywords: "Falcon"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: true,
-		},
-		{
-			name:          "Include mode - match in mission",
-			user:          User{FilterMode: "include", SubscribedKeywords: "Communications"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications Satellite",
-			expectedMatch: true,
-		},
-		
-		// Hybrid mode tests
-		{
-			name:          "Hybrid mode - match subscribed, not muted",
-			user:          User{FilterMode: "hybrid", SubscribedKeywords: "Falcon", MutedKeywords: "OneWeb"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: true,
-		},
-		{
-			name:          "Hybrid mode - match subscribed and muted",
-			user:          User{FilterMode: "hybrid", SubscribedKeywords: "Falcon", MutedKeywords: "Starlink"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: false,
-		},
-		{
-			name:          "Hybrid mode - no subscribed match",
-			user:          User{FilterMode: "hybrid", SubscribedKeywords: "ISS", MutedKeywords: "Starlink"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: false,
-		},
-		{
-			name:          "Hybrid mode - no keywords",
-			user:          User{FilterMode: "hybrid"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: true,
-		},
-		
-		// Default/empty filter mode
-		{
-			name:          "Default mode - should behave as exclude",
-			user:          User{MutedKeywords: "Starlink"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: false,
-		},
-		
-		// Multiple keywords
-		{
-			name:          "Multiple muted keywords",
-			user:          User{FilterMode: "exclude", MutedKeywords: "OneWeb,Starlink,Iridium"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: false,
-		},
-		{
-			name:          "Multiple subscribed keywords",
-			user:          User{FilterMode: "include", SubscribedKeywords: "ISS,Dragon,Crew"},
-			launchName:    "Crew-5 Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "ISS Crew Rotation",
-			expectedMatch: true,
-		},
-		
-		// keywords_filter mode tests (same as exclude mode)
-		{
-			name:          "keywords_filter mode - no keywords",
-			user:          User{FilterMode: "keywords_filter"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: true,
-		},
-		{
-			name:          "keywords_filter mode - match muted keyword",
-			user:          User{FilterMode: "keywords_filter", MutedKeywords: "Starlink"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: false,
-		},
-		{
-			name:          "keywords_filter mode - no match",
-			user:          User{FilterMode: "keywords_filter", MutedKeywords: "OneWeb"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: true,
-		},
-		
-		// keywords_add mode tests
-		{
-			name:          "keywords_add mode - no muted keywords",
-			user:          User{FilterMode: "keywords_add"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: true,
-		},
-		{
-			name:          "keywords_add mode - match muted keyword",
-			user:          User{FilterMode: "keywords_add", MutedKeywords: "Starlink"},
-			launchName:    "Starlink Mission",
-			vehicleName:   "Falcon 9",
-			missionName:   "Communications",
-			expectedMatch: false,
-		},
-		{
-			name:          "keywords_add mode - multiple keywords with spaces",
-			user:          User{FilterMode: "keywords_add", MutedKeywords: " Starlink , OneWeb "},
-			launchName:    "OneWeb Mission",
-			vehicleName:   "Soyuz",
-			missionName:   "Communications",
-			expectedMatch: false,
-		},
-	}
-	
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.user.MatchesKeywordFilter(tt.launchName, tt.vehicleName, tt.missionName)
-			if result != tt.expectedMatch {
-				t.Errorf("Expected %v, got %v", tt.expectedMatch, result)
-			}
-		})
-	}
-}
 
 func TestToggleLaunchMute(t *testing.T) {
 	// Create a test user
@@ -452,10 +235,10 @@ func TestShouldReceiveLaunch(t *testing.T) {
 			missionName:   "Communications",
 			expectedResult: false,
 		},
-		// Test muted keyword
+		// Test blocked keyword (always excludes)
 		{
-			name:          "Muted keyword",
-			user:          User{MutedKeywords: "Starlink", SubscribedAll: true},
+			name:          "Blocked keyword",
+			user:          User{BlockedKeywords: "Starlink", SubscribedAll: true},
 			launchId:      "launch-456",
 			providerId:    1,
 			launchName:    "Starlink Mission",
@@ -463,54 +246,32 @@ func TestShouldReceiveLaunch(t *testing.T) {
 			missionName:   "Communications",
 			expectedResult: false,
 		},
-		// Test keywords_add mode - provider subscription
+		// Test allowed keyword (always includes)
 		{
-			name:          "keywords_add mode - subscribed via provider",
-			user:          User{FilterMode: "keywords_add", SubscribedAll: true},
-			launchId:      "launch-789",
-			providerId:    1,
-			launchName:    "Crew-11",
-			vehicleName:   "Falcon 9",
-			missionName:   "ISS Mission",
-			expectedResult: true,
-		},
-		// Test keywords_add mode - keyword subscription
-		{
-			name:          "keywords_add mode - subscribed via keyword only",
-			user:          User{FilterMode: "keywords_add", SubscribedKeywords: "ISS", SubscribedAll: false},
+			name:          "Allowed keyword overrides provider subscription",
+			user:          User{AllowedKeywords: "ISS", SubscribedAll: false},
 			launchId:      "launch-789",
 			providerId:    99, // Not subscribed to this provider
-			launchName:    "Crew-11",
+			launchName:    "Crew-11 ISS",
 			vehicleName:   "Falcon 9",
-			missionName:   "ISS Mission",
+			missionName:   "Mission",
 			expectedResult: true,
 		},
-		// Test keywords_add mode - neither provider nor keyword
+		// Test blocked keyword takes precedence over allowed
 		{
-			name:          "keywords_add mode - no subscription match",
-			user:          User{FilterMode: "keywords_add", SubscribedKeywords: "Mars", SubscribedAll: false},
-			launchId:      "launch-789",
-			providerId:    99, // Not subscribed to this provider
-			launchName:    "Crew-11",
-			vehicleName:   "Falcon 9",
-			missionName:   "ISS Mission",
-			expectedResult: false,
-		},
-		// Test keywords_add mode - keyword match but muted
-		{
-			name:          "keywords_add mode - keyword match but muted",
-			user:          User{FilterMode: "keywords_add", SubscribedKeywords: "ISS", MutedKeywords: "Crew"},
+			name:          "Blocked keyword takes precedence",
+			user:          User{BlockedKeywords: "Crew", AllowedKeywords: "ISS"},
 			launchId:      "launch-789",
 			providerId:    99,
-			launchName:    "Crew-11",
+			launchName:    "Crew-11 ISS",
 			vehicleName:   "Falcon 9",
-			missionName:   "ISS Mission",
+			missionName:   "Mission",
 			expectedResult: false,
 		},
-		// Test legacy mode - must be subscribed to provider
+		// Test no keywords - follows provider subscription
 		{
-			name:          "Legacy mode - not subscribed to provider",
-			user:          User{FilterMode: "exclude", SubscribedAll: false},
+			name:          "No keywords - not subscribed to provider",
+			user:          User{SubscribedAll: false},
 			launchId:      "launch-123",
 			providerId:    99,
 			launchName:    "Starlink Mission",
@@ -518,16 +279,71 @@ func TestShouldReceiveLaunch(t *testing.T) {
 			missionName:   "Communications",
 			expectedResult: false,
 		},
-		// Test legacy mode - subscribed and passes filter
+		// Test no keywords - subscribed to provider
 		{
-			name:          "Legacy mode - subscribed and passes filter",
-			user:          User{FilterMode: "exclude", SubscribedAll: true, MutedKeywords: "OneWeb"},
+			name:          "No keywords - subscribed to provider",
+			user:          User{SubscribedAll: true},
 			launchId:      "launch-123",
 			providerId:    1,
 			launchName:    "Starlink Mission",
 			vehicleName:   "Falcon 9",
 			missionName:   "Communications",
 			expectedResult: true,
+		},
+		// Test multiple blocked keywords
+		{
+			name:          "Multiple blocked keywords",
+			user:          User{BlockedKeywords: "OneWeb,Starlink,Iridium", SubscribedAll: true},
+			launchId:      "launch-456",
+			providerId:    1,
+			launchName:    "Starlink Mission",
+			vehicleName:   "Falcon 9",
+			missionName:   "Communications",
+			expectedResult: false,
+		},
+		// Test multiple allowed keywords
+		{
+			name:          "Multiple allowed keywords",
+			user:          User{AllowedKeywords: "ISS,Dragon,Crew", SubscribedAll: false},
+			launchId:      "launch-789",
+			providerId:    99,
+			launchName:    "Crew-5 Mission",
+			vehicleName:   "Falcon 9",
+			missionName:   "Crew Rotation",
+			expectedResult: true,
+		},
+		// Test case insensitive matching
+		{
+			name:          "Case insensitive keyword matching",
+			user:          User{BlockedKeywords: "starlink", SubscribedAll: true},
+			launchId:      "launch-456",
+			providerId:    1,
+			launchName:    "STARLINK Mission",
+			vehicleName:   "Falcon 9",
+			missionName:   "Communications",
+			expectedResult: false,
+		},
+		// Test partial matching
+		{
+			name:          "Partial keyword matching",
+			user:          User{AllowedKeywords: "Star", SubscribedAll: false},
+			launchId:      "launch-456",
+			providerId:    99,
+			launchName:    "Starship Test Flight",
+			vehicleName:   "Starship",
+			missionName:   "Test",
+			expectedResult: true,
+		},
+		// Test keyword with spaces (trimmed)
+		{
+			name:          "Keywords with spaces are trimmed",
+			user:          User{BlockedKeywords: " Starlink , OneWeb ", SubscribedAll: true},
+			launchId:      "launch-456",
+			providerId:    1,
+			launchName:    "OneWeb Mission",
+			vehicleName:   "Soyuz",
+			missionName:   "Communications",
+			expectedResult: false,
 		},
 	}
 

@@ -36,6 +36,7 @@ func (messages *Messages) Migrated() string {
 func (settings *SettingsMessage) Main(isGroup bool) string {
 	base := "*LaunchBot* | *User settings*\n" +
 		"🚀 *Launch subscription settings* allow you to choose what launches you receive notifications for, like SpaceX's or NASA's.\n\n" +
+		"🔍 *Keyword filters* let you allow and block launch notifications with arbitrary keywords.\n\n" +
 		"⏰ *Notification settings* allow you to choose when you receive notifications.\n\n" +
 		"🌍 *Time zone settings* let you set your time zone, so all dates and times are in your local time, instead of UTC+0."
 
@@ -149,86 +150,75 @@ func (service *ServiceMessage) InteractionNotAllowed() string {
 
 // Keywords.Main
 func (keywords *KeywordsMessage) Main(chat *users.User) string {
-	base := "🔍 *LaunchBot* | *Keyword Filtering*\n" +
-		"Filter launches by keywords in the launch name, vehicle name, or mission description.\n\n"
-
-	// Add current mode info
-	modeInfo := map[string]string{
-		"exclude": "*Current mode:* Keywords filter - You'll receive all launches EXCEPT those matching your muted keywords.",
-		"keywords_filter": "*Current mode:* Keywords filter - You'll receive all launches EXCEPT those matching your muted keywords.",
-		"include": "*Current mode:* Include only - You'll ONLY receive launches matching your subscribed keywords.",
-		"hybrid":  "*Current mode:* Keywords add - Keywords can subscribe you to launches beyond your provider settings.",
-		"keywords_add": "*Current mode:* Keywords add - Keywords can subscribe you to launches beyond your provider settings.",
-		"":        "*Current mode:* Keywords filter (default)",
-	}[chat.FilterMode]
-
-	return base + modeInfo + "\n\n" +
-		"Use the buttons below to manage your keywords and change the filter mode."
+	return "🔍 *LaunchBot* | *Keyword Filtering*\n" +
+		"Control which launches you receive notifications for using keywords.\n\n" +
+		"*Allowed keywords:* Launches matching these keywords will be included, regardless of your subscriptions.\n" +
+		"*Blocked keywords:* Launches matching these keywords will be excluded, regardless of your subscriptions.\n\n" +
+		"Use the buttons below to manage your keywords."
 }
 
-// Keywords.ViewMuted
-func (keywords *KeywordsMessage) ViewMuted(chat *users.User) string {
-	base := "🚫 *LaunchBot* | *Muted Keywords*\n"
+// Keywords.ViewBlocked
+func (keywords *KeywordsMessage) ViewBlocked(chat *users.User) string {
+	base := "🚫 *LaunchBot* | *Blocked Keywords*\n"
 
-	if chat.MutedKeywords == "" {
-		return base + "You haven't muted any keywords yet.\n\n" +
-			"Add keywords to exclude launches containing those words. For example, muting \"Starlink\" will stop notifications for all Starlink launches."
+	if chat.BlockedKeywords == "" {
+		return base + "You haven't blocked any keywords yet.\n\n" +
+			"Add keywords to exclude launches containing those words. For example, blocking \"Starlink\" will stop notifications for all Starlink launches."
 	}
 
-	mutedList := strings.Split(chat.MutedKeywords, ",")
-	return base + fmt.Sprintf("You have muted %d keyword(s):\n\n", len(mutedList)) +
-		"Tap on a keyword to remove it, or add new ones."
+	blockedList := strings.Split(chat.BlockedKeywords, ",")
+	return base + fmt.Sprintf("You have blocked %d keyword(s). Tap on a keyword to remove it, or add new ones.", len(blockedList))
 }
 
-// Keywords.ViewSubscribed
-func (keywords *KeywordsMessage) ViewSubscribed(chat *users.User) string {
-	base := "✅ *LaunchBot* | *Subscribed Keywords*\n"
+// Keywords.ViewAllowed
+func (keywords *KeywordsMessage) ViewAllowed(chat *users.User) string {
+	base := "✅ *LaunchBot* | *Allowed Keywords*\n"
 
-	if chat.SubscribedKeywords == "" {
-		return base + "You haven't subscribed to any keywords yet.\n\n" +
-			"Add keywords to only receive notifications for launches containing those words. For example, subscribing to \"Falcon\" will notify you of all Falcon rocket launches."
+	if chat.AllowedKeywords == "" {
+		return base + "You haven't allowed any keywords yet.\n\n" +
+			"Add keywords to receive notifications for launches containing those words, regardless of your subscriptions. For example, allowing \"Falcon\" will notify you of all Falcon rocket launches."
 	}
 
-	subscribedList := strings.Split(chat.SubscribedKeywords, ",")
-	return base + fmt.Sprintf("You have subscribed to %d keyword(s):\n\n", len(subscribedList)) +
-		"Tap on a keyword to remove it, or add new ones."
+	allowedList := strings.Split(chat.AllowedKeywords, ",")
+	return base + fmt.Sprintf("You have allowed %d keyword(s). Tap on a keyword to remove it, or add new ones.", len(allowedList))
 }
 
 // Keywords.Help
 func (keywords *KeywordsMessage) Help() string {
-	return "❓ *LaunchBot* | *Keyword Filtering Help*\n\n" +
-		"*Filter Modes:*\n" +
-		"• *Keywords filter:* Get launches from subscribed providers, excluding those matching muted keywords\n" +
-		"• *Keywords add:* Keywords can add launches even from unsubscribed providers\n" +
-		"• *Include only:* Only get launches matching subscribed keywords (legacy mode)\n\n" +
+	return "❔ *LaunchBot* | *Keyword Filtering Help*\n\n" +
+		"*How it works:*\n" +
+		"• *Blocked keywords:* Always exclude matching launches\n" +
+		"• *Allowed keywords:* Always include matching launches\n" +
+		"• Keywords override your launch provider subscriptions\n\n" +
 		"*Examples:*\n" +
-		"• Mute \"Starlink\" to skip all Starlink launches\n" +
-		"• Subscribe to \"Falcon Heavy\" for only heavy-lift launches\n" +
-		"• Subscribe to \"ISS\" to track space station missions\n" +
-		"• Mute \"test\" to skip test flights\n\n" +
+		"• Block \"Starlink\" to skip all Starlink launches\n" +
+		"• Allow \"Starship\" to get all Starship launches\n\n" +
 		"*Tips:*\n" +
 		"• Keywords are case-insensitive\n" +
 		"• Partial matches work (\"Star\" matches \"Starship\" and \"Starlink\")\n" +
-		"• Keywords can match launch name, vehicle, or mission description"
+		"• Keywords can match launch name or vehicle name\n" +
+		"• You can add multiple keywords at once by separating them with commas"
 }
 
 // Keywords.AddPrompt
 func (keywords *KeywordsMessage) AddPrompt(keywordType string) string {
 	action := map[string]string{
-		"muted":      "mute",
-		"subscribed": "subscribe to",
+		"blocked": "block",
+		"allowed": "allow",
 	}[keywordType]
 
-	return fmt.Sprintf("Please send the keyword you want to %s.\n\n"+
-		"For example: `Starlink` or `Falcon Heavy`\n\n"+
+	return fmt.Sprintf("Please send the keyword(s) you want to %s.\n\n"+
+		"Examples:\n"+
+		"• Single: `Starlink`\n"+
+		"• Multiple: `Starlink, OneWeb, Kuiper`\n\n"+
 		"Send /cancel to cancel.", action)
 }
 
 // Keywords.Added
 func (keywords *KeywordsMessage) Added(keyword, keywordType string) string {
 	action := map[string]string{
-		"muted":      "muted",
-		"subscribed": "subscribed to",
+		"blocked": "blocked",
+		"allowed": "allowed",
 	}[keywordType]
 
 	return fmt.Sprintf("✅ Successfully %s keyword: *%s*", action, utils.PrepareInputForMarkdown(keyword, "text"))
@@ -237,8 +227,8 @@ func (keywords *KeywordsMessage) Added(keyword, keywordType string) string {
 // Keywords.Removed
 func (keywords *KeywordsMessage) Removed(keyword, keywordType string) string {
 	action := map[string]string{
-		"muted":      "unmuted",
-		"subscribed": "unsubscribed from",
+		"blocked": "unblocked",
+		"allowed": "disallowed",
 	}[keywordType]
 
 	return fmt.Sprintf("✅ Successfully %s keyword: *%s*", action, utils.PrepareInputForMarkdown(keyword, "text"))
@@ -247,8 +237,8 @@ func (keywords *KeywordsMessage) Removed(keyword, keywordType string) string {
 // Keywords.AlreadyExists
 func (keywords *KeywordsMessage) AlreadyExists(keyword, keywordType string) string {
 	action := map[string]string{
-		"muted":      "already muted",
-		"subscribed": "already subscribed to",
+		"blocked": "already blocked",
+		"allowed": "already allowed",
 	}[keywordType]
 
 	return fmt.Sprintf("⚠️ Keyword *%s* is %s.", utils.PrepareInputForMarkdown(keyword, "text"), action)
@@ -257,8 +247,8 @@ func (keywords *KeywordsMessage) AlreadyExists(keyword, keywordType string) stri
 // Keywords.NotFound
 func (keywords *KeywordsMessage) NotFound(keyword, keywordType string) string {
 	action := map[string]string{
-		"muted":      "muted",
-		"subscribed": "subscribed",
+		"blocked": "blocked",
+		"allowed": "allowed",
 	}[keywordType]
 
 	return fmt.Sprintf("⚠️ Keyword *%s* is not %s.", utils.PrepareInputForMarkdown(keyword, "text"), action)
@@ -267,17 +257,4 @@ func (keywords *KeywordsMessage) NotFound(keyword, keywordType string) string {
 // Keywords.Cleared
 func (keywords *KeywordsMessage) Cleared(keywordType string) string {
 	return fmt.Sprintf("✅ All %s keywords have been cleared.", keywordType)
-}
-
-// Keywords.ModeChanged
-func (keywords *KeywordsMessage) ModeChanged(newMode string) string {
-	modeDesc := map[string]string{
-		"exclude": "Keywords filter - You'll receive launches from subscribed providers except those matching muted keywords",
-		"keywords_filter": "Keywords filter - You'll receive launches from subscribed providers except those matching muted keywords",
-		"include": "Include only - You'll only receive launches matching subscribed keywords",
-		"hybrid":  "Keywords add - Keywords can subscribe you to launches beyond your provider settings",
-		"keywords_add": "Keywords add - Keywords can subscribe you to launches beyond your provider settings",
-	}[newMode]
-
-	return fmt.Sprintf("✅ Filter mode changed to: *%s*", modeDesc)
 }

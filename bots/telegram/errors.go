@@ -226,7 +226,6 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	case tb.ErrSameMessageContent:
 		// No error, message may not be modified following an edit
 		return true
-	
 
 	case tb.ErrChatNotFound:
 		log.Info().Msgf("Chat not found (chat=%s), likely deleted - removing from database", chat.Id)
