@@ -107,7 +107,7 @@ func (user *User) ToggleLaunchMute(id string, toggleTo bool) bool {
 	if toggleTo == user.HasMutedLaunch(id) {
 		log.Warn().Msgf("New mute status equals current mute status! Id=%s, user=%s, state=%v",
 			id, user.Id, toggleTo)
-		return true
+		return false
 	}
 
 	// If launch is being muted, just append it to the field of muted launches

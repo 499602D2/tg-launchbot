@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"launchbot/sendables"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -35,6 +36,7 @@ var (
 	ErrNoRightsToSendPhoto    = NewError(400, "Bad Request: not enough rights to send photos to the chat")
 	ErrNoRightsToSendStickers = NewError(400, "Bad Request: not enough rights to send stickers to the chat")
 	ErrNotFoundToDelete       = NewError(400, "Bad Request: message to delete not found")
+	ErrNotFoundToEdit         = NewError(400, "Bad Request: message to edit not found")
 	ErrNotFoundToForward      = NewError(400, "Bad Request: message to forward not found")
 	ErrNotFoundToReply        = NewError(400, "Bad Request: reply message not found")
 	ErrQueryTooOld            = NewError(400, "Bad Request: query is too old and response timeout expired or query ID is invalid")
@@ -171,6 +173,14 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	// Custom errors that are not present in Telebot, for whatever reason
 	tbGroupDeleterErr := tb.NewError(403, "telegram: Forbidden: the group chat was deleted")
 	tbGroupDeleterErr2 := tb.NewError(403, "Forbidden: the group chat was deleted")
+	tbNoRightsToSendText := tb.NewError(400, "telegram: Bad Request: not enough rights to send text messages to the chat")
+	tbNoRightsToSendText2 := tb.NewError(400, "Bad Request: not enough rights to send text messages to the chat")
+
+	// Check for specific error messages in string form
+	if err != nil && strings.Contains(err.Error(), "message to edit not found") {
+		log.Warn().Msg("Message not found to edit - it may have been deleted or is too old")
+		return true
+	}
 
 	switch err {
 	// General errors
@@ -210,9 +220,11 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	case tb.ErrSameMessageContent:
 		// No error, message may not be modified following an edit
 		return true
+	
 
 	case tb.ErrChatNotFound:
-		warnUnhandled(err, false)
+		log.Info().Msgf("Chat not found (chat=%s), likely deleted - removing from database", chat.Id)
+		tg.Db.RemoveUser(chat)
 
 	case tb.ErrEmptyChatID:
 		warnUnhandled(err, false)
@@ -275,12 +287,20 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 		tg.Db.RemoveUser(chat)
 
 	case tbGroupDeleterErr:
-		log.Warn().Msgf("Caught custom error tbGroupDeleterErr, deleting chat...")
+		log.Warn().Msgf("Caught custom error tbGroupDeleterErr, deleting chat=%s", chat.Id)
 		tg.Db.RemoveUser(chat)
 
 	case tbGroupDeleterErr2:
-		log.Warn().Msgf("Caught custom error tbGroupDeleterErr2, deleting chat...")
+		log.Warn().Msgf("Caught custom error tbGroupDeleterErr2, deleting chat=%s", chat.Id)
 		tg.Db.RemoveUser(chat)
+
+	case tbNoRightsToSendText:
+		log.Info().Msgf("No rights to send text messages to chat=%s (bot may have been removed or permissions changed), skipping", chat.Id)
+		return false
+
+	case tbNoRightsToSendText2:
+		log.Info().Msgf("No rights to send text messages to chat=%s (bot may have been removed or permissions changed), skipping", chat.Id)
+		return false
 
 	default:
 		// If none of the earlier switch-cases caught the error, default here

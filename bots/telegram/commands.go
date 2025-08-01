@@ -697,6 +697,13 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 			return nil
 		}
 
+		// Validate that the message has reply markup and inline keyboard
+		if msg.ReplyMarkup == nil || msg.ReplyMarkup.InlineKeyboard == nil || len(msg.ReplyMarkup.InlineKeyboard) == 0 {
+			log.Error().Msg("Message has no valid inline keyboard for mute callback")
+			cbResponseText = "⚠️ Unable to update button. Please try again."
+			return tg.respondToCallback(ctx, cbResponseText, false)
+		}
+
 		// Set the existing mute button to the new one (always at zeroth index, regardless of expansion status)
 		msg.ReplyMarkup.InlineKeyboard[0] = []tb.InlineButton{muteBtn}
 
@@ -716,7 +723,16 @@ func (tg *Bot) muteCallback(ctx tb.Context) error {
 			cbResponseText = "🔊 Launch unmuted! You will now receive notifications for this launch."
 		}
 	} else {
-		cbResponseText = "⚠️ Request failed! This issue has been noted."
+		// Check if it failed because state was already the same
+		if toggleTo == chat.HasMutedLaunch(data[0+migrationIdx]) {
+			if toggleTo {
+				cbResponseText = "🔇 Launch is already muted."
+			} else {
+				cbResponseText = "🔊 Launch is already unmuted."
+			}
+		} else {
+			cbResponseText = "⚠️ Request failed! This issue has been noted."
+		}
 	}
 
 	// Respond to callback

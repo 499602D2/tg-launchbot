@@ -103,19 +103,19 @@ func (tg *Bot) Initialize(token string) {
 	tg.Bot.Handle("/send", tg.fauxNotification)
 
 	// Handle callbacks by button-type
-	tg.Bot.Handle(&tb.InlineButton{Unique: "next"}, tg.nextHandler)
-	tg.Bot.Handle(&tb.InlineButton{Unique: "schedule"}, tg.scheduleHandler)
-	tg.Bot.Handle(&tb.InlineButton{Unique: "stats"}, tg.statsHandler)
-	tg.Bot.Handle(&tb.InlineButton{Unique: "settings"}, tg.settingsCallback)
-	tg.Bot.Handle(&tb.InlineButton{Unique: "countryCodeView"}, tg.settingsCountryCodeView)
-	tg.Bot.Handle(&tb.InlineButton{Unique: "notificationToggle"}, tg.notificationToggleCallback)
-	tg.Bot.Handle(&tb.InlineButton{Unique: "muteToggle"}, tg.muteCallback)
-	tg.Bot.Handle(&tb.InlineButton{Unique: "keywords"}, tg.keywordsCallback)
-	tg.Bot.Handle(&tb.InlineButton{Unique: "expand"}, tg.expandMessageContent)
-	tg.Bot.Handle(&tb.InlineButton{Unique: "admin"}, tg.adminCommand)
+	tg.Bot.Handle(&tb.InlineButton{Unique: "next"}, tg.wrapCallbackHandler(tg.nextHandler))
+	tg.Bot.Handle(&tb.InlineButton{Unique: "schedule"}, tg.wrapCallbackHandler(tg.scheduleHandler))
+	tg.Bot.Handle(&tb.InlineButton{Unique: "stats"}, tg.wrapCallbackHandler(tg.statsHandler))
+	tg.Bot.Handle(&tb.InlineButton{Unique: "settings"}, tg.wrapCallbackHandler(tg.settingsCallback))
+	tg.Bot.Handle(&tb.InlineButton{Unique: "countryCodeView"}, tg.wrapCallbackHandler(tg.settingsCountryCodeView))
+	tg.Bot.Handle(&tb.InlineButton{Unique: "notificationToggle"}, tg.wrapCallbackHandler(tg.notificationToggleCallback))
+	tg.Bot.Handle(&tb.InlineButton{Unique: "muteToggle"}, tg.wrapCallbackHandler(tg.muteCallback))
+	tg.Bot.Handle(&tb.InlineButton{Unique: "keywords"}, tg.wrapCallbackHandler(tg.keywordsCallback))
+	tg.Bot.Handle(&tb.InlineButton{Unique: "expand"}, tg.wrapCallbackHandler(tg.expandMessageContent))
+	tg.Bot.Handle(&tb.InlineButton{Unique: "admin"}, tg.wrapCallbackHandler(tg.adminCommand))
 
 	// A generic, catch-all callback handler to help with migrations/deprecations
-	tg.Bot.Handle(tb.OnCallback, tg.genericCallbackHandler)
+	tg.Bot.Handle(tb.OnCallback, tg.wrapCallbackHandler(tg.genericCallbackHandler))
 
 	// Handle incoming locations for time-zone setup messages
 	tg.Bot.Handle(tb.OnLocation, tg.locationReplyHandler)
@@ -307,6 +307,22 @@ func (tg *Bot) genericCallbackHandler(ctx tb.Context) error {
 		chat.Id, cbData)
 
 	return tg.respondToCallback(ctx, tg.Template.Messages.Migrated(), true)
+}
+
+// wrapCallbackHandler wraps a callback handler with panic recovery
+func (tg *Bot) wrapCallbackHandler(handler func(tb.Context) error) func(tb.Context) error {
+	return func(ctx tb.Context) error {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error().Msgf("Panic in callback handler: %v", r)
+				// Try to respond to the callback to acknowledge it
+				if ctx != nil && ctx.Callback() != nil {
+					_ = tg.respondToCallback(ctx, "⚠️ An error occurred. Please try again.", false)
+				}
+			}
+		}()
+		return handler(ctx)
+	}
 }
 
 // Responds to a callback with text, show alert if configured. Always returns a nil.
@@ -503,7 +519,12 @@ func (tg *Bot) LoadChatFromUser(user *users.User) *tb.Chat {
 	chat, err := tg.Bot.ChatByID(id)
 
 	if err != nil {
-		log.Error().Err(err).Msgf("Loading user=%s failed", user.Id)
+		// Check if this is a "chat not found" error
+		if strings.Contains(err.Error(), "chat not found") {
+			log.Warn().Err(err).Msgf("Chat not found when loading user=%s - chat may have been deleted", user.Id)
+		} else {
+			log.Error().Err(err).Msgf("Loading user=%s failed", user.Id)
+		}
 		return nil
 	}
 
@@ -553,5 +574,7 @@ func (tg *Bot) loadChatType(user *users.User) {
 	if tbChat != nil {
 		user.Type = TelegramChatToUserType(tbChat)
 		log.Debug().Msgf("Loaded user-type=%s for chat=%s", user.Type, user.Id)
+	} else {
+		log.Debug().Msgf("Failed to load chat type for user=%s - continuing without type", user.Id)
 	}
 }
