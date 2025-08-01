@@ -11,6 +11,7 @@ LaunchBot uses the LaunchLibrary2 API to fetch launch information on scheduled i
 Other features include...
 - user-configurable notifications on a per-provider and per-country basis
 - user-configurable notification times from 4 different options
+- keyword filtering to block or allow launches based on keywords
 - notifications of launches being postponed
 - muteable launches
 - direct links to launch webcasts
@@ -215,7 +216,17 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 
 	- ✅ General improvements
 
-	## 3.2 and onwards
+	## 3.2 / Keyword filtering improvements (January 2025)
+
+	- ✅ Simplified keyword filtering system with blocked/allowed keywords
+
+	- ✅ Keywords now always override provider subscriptions
+
+	- ✅ Support for adding multiple keywords at once (comma-separated)
+
+	- ✅ Removed complex filter modes in favor of simple allowlist/blocklist
+
+	## 3.3 and onwards
 
 	- [ ] Inline queries (should be trivial to do)
 

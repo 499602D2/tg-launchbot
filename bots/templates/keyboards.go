@@ -548,37 +548,21 @@ func (command *CommandKeyboard) Admin() (tb.SendOptions, [][]tb.InlineButton) {
 }
 
 func (keywords *KeywordsKeyboard) Main(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
-	// Get current filter mode label
-	filterModeLabel := map[string]string{
-		"exclude": "📛 Mode: Keywords filter",
-		"keywords_filter": "📛 Mode: Keywords filter",
-		"include": "✅ Mode: Include only",
-		"hybrid":  "🔀 Mode: Keywords add",
-		"keywords_add": "🔀 Mode: Keywords add",
-		"":        "📛 Mode: Keywords filter", // Default
-	}[chat.FilterMode]
-
-	filterModeBtn := tb.InlineButton{
+	allowedBtn := tb.InlineButton{
 		Unique: "keywords",
-		Text:   filterModeLabel,
-		Data:   "mode/toggle",
+		Text:   "✅ Allowed keywords",
+		Data:   "allowed/view",
 	}
 
-	mutedBtn := tb.InlineButton{
+	blockedBtn := tb.InlineButton{
 		Unique: "keywords",
-		Text:   "🚫 Muted keywords",
-		Data:   "muted/view",
-	}
-
-	subscribedBtn := tb.InlineButton{
-		Unique: "keywords",
-		Text:   "✅ Subscribed keywords",
-		Data:   "subscribed/view",
+		Text:   "🚫 Blocked keywords",
+		Data:   "blocked/view",
 	}
 
 	helpBtn := tb.InlineButton{
 		Unique: "keywords",
-		Text:   "❓ Help & examples",
+		Text:   "❔ Help & examples",
 		Data:   "help",
 	}
 
@@ -588,7 +572,7 @@ func (keywords *KeywordsKeyboard) Main(chat *users.User) (tb.SendOptions, [][]tb
 		Data:   "main",
 	}
 
-	kb := [][]tb.InlineButton{{filterModeBtn}, {mutedBtn}, {subscribedBtn}, {helpBtn}, {retBtn}}
+	kb := [][]tb.InlineButton{{allowedBtn}, {blockedBtn}, {helpBtn}, {retBtn}}
 
 	sendOptions := tb.SendOptions{
 		ParseMode:             "MarkdownV2",
@@ -600,17 +584,17 @@ func (keywords *KeywordsKeyboard) Main(chat *users.User) (tb.SendOptions, [][]tb
 	return sendOptions, kb
 }
 
-func (keywords *KeywordsKeyboard) ViewMuted(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
+func (keywords *KeywordsKeyboard) ViewBlocked(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
 	addBtn := tb.InlineButton{
 		Unique: "keywords",
-		Text:   "➕ Add muted keyword",
-		Data:   "muted/add",
+		Text:   "🪄 Add blocked keyword",
+		Data:   "blocked/add",
 	}
 
 	clearBtn := tb.InlineButton{
 		Unique: "keywords",
 		Text:   "🗑️ Clear all",
-		Data:   "muted/clear",
+		Data:   "blocked/clear",
 	}
 
 	retBtn := tb.InlineButton{
@@ -622,12 +606,12 @@ func (keywords *KeywordsKeyboard) ViewMuted(chat *users.User) (tb.SendOptions, [
 	kb := [][]tb.InlineButton{{addBtn}}
 
 	// Add remove buttons for each keyword
-	if chat.MutedKeywords != "" {
-		for _, keyword := range strings.Split(chat.MutedKeywords, ",") {
+	if chat.BlockedKeywords != "" {
+		for _, keyword := range strings.Split(chat.BlockedKeywords, ",") {
 			kb = append(kb, []tb.InlineButton{{
 				Unique: "keywords",
 				Text:   fmt.Sprintf("❌ %s", keyword),
-				Data:   fmt.Sprintf("muted/remove/%s", keyword),
+				Data:   fmt.Sprintf("blocked/remove/%s", keyword),
 			}})
 		}
 		kb = append(kb, []tb.InlineButton{clearBtn})
@@ -645,17 +629,17 @@ func (keywords *KeywordsKeyboard) ViewMuted(chat *users.User) (tb.SendOptions, [
 	return sendOptions, kb
 }
 
-func (keywords *KeywordsKeyboard) ViewSubscribed(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
+func (keywords *KeywordsKeyboard) ViewAllowed(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
 	addBtn := tb.InlineButton{
 		Unique: "keywords",
-		Text:   "➕ Add subscribed keyword",
-		Data:   "subscribed/add",
+		Text:   "🪄 Add allowed keyword",
+		Data:   "allowed/add",
 	}
 
 	clearBtn := tb.InlineButton{
 		Unique: "keywords",
 		Text:   "🗑️ Clear all",
-		Data:   "subscribed/clear",
+		Data:   "allowed/clear",
 	}
 
 	retBtn := tb.InlineButton{
@@ -667,12 +651,12 @@ func (keywords *KeywordsKeyboard) ViewSubscribed(chat *users.User) (tb.SendOptio
 	kb := [][]tb.InlineButton{{addBtn}}
 
 	// Add remove buttons for each keyword
-	if chat.SubscribedKeywords != "" {
-		for _, keyword := range strings.Split(chat.SubscribedKeywords, ",") {
+	if chat.AllowedKeywords != "" {
+		for _, keyword := range strings.Split(chat.AllowedKeywords, ",") {
 			kb = append(kb, []tb.InlineButton{{
 				Unique: "keywords",
 				Text:   fmt.Sprintf("❌ %s", keyword),
-				Data:   fmt.Sprintf("subscribed/remove/%s", keyword),
+				Data:   fmt.Sprintf("allowed/remove/%s", keyword),
 			}})
 		}
 		kb = append(kb, []tb.InlineButton{clearBtn})

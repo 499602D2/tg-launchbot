@@ -114,8 +114,7 @@ func (db *Database) Open(dbFolder string) bool {
 		log.Fatal().Err(err).Msg("Running auto-migration failed")
 	}
 
-	// Run filter mode migration
-	db.migrateFilterModes()
+	// Migration code removed - filter modes no longer exist
 
 	// Set size
 	db.Path = relDbPath
@@ -296,38 +295,3 @@ func (db *Database) GetWeeklyActiveUserCount() int64 {
 	return db.Conn.Where("updated_at > ?", trailingWeek).Find(&[]users.User{}).RowsAffected
 }
 
-// Migrate filter modes to new simplified system
-func (db *Database) migrateFilterModes() {
-	// Count users with hybrid mode for logging
-	var hybridCount int64
-	db.Conn.Model(&users.User{}).Where("filter_mode = ?", "hybrid").Count(&hybridCount)
-	
-	if hybridCount > 0 {
-		log.Info().Msgf("Migrating %d users from hybrid filter mode to keywords_add mode", hybridCount)
-		
-		// Update all users with hybrid mode to keywords_add
-		result := db.Conn.Model(&users.User{}).Where("filter_mode = ?", "hybrid").Update("filter_mode", "keywords_add")
-		
-		if result.Error != nil {
-			log.Error().Err(result.Error).Msg("Failed to migrate hybrid filter modes")
-		} else {
-			log.Info().Msgf("Successfully migrated %d users to keywords_add mode", result.RowsAffected)
-		}
-	}
-	
-	// Also update any "exclude" mode to "keywords_filter" for consistency
-	var excludeCount int64
-	db.Conn.Model(&users.User{}).Where("filter_mode = ?", "exclude").Count(&excludeCount)
-	
-	if excludeCount > 0 {
-		log.Info().Msgf("Migrating %d users from exclude filter mode to keywords_filter mode", excludeCount)
-		
-		result := db.Conn.Model(&users.User{}).Where("filter_mode = ?", "exclude").Update("filter_mode", "keywords_filter")
-		
-		if result.Error != nil {
-			log.Error().Err(result.Error).Msg("Failed to migrate exclude filter modes")
-		} else {
-			log.Info().Msgf("Successfully migrated %d users to keywords_filter mode", result.RowsAffected)
-		}
-	}
-}
