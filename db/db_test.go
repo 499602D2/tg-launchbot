@@ -61,6 +61,10 @@ func TestChatMethods(t *testing.T) {
 	dbFolder := "/test"
 	db.Open(dbFolder)
 
+	// Initialize cache so RemoveUser doesn't panic
+	db.Cache = &Cache{Users: &users.UserCache{}}
+	db.Cache.Database = &db
+
 	// Add a whole bunch of users, then remove them
 	for i := 0; i < 10; i++ {
 		chat := users.User{

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -35,6 +36,28 @@ func MoveNET(cache *db.Cache, fakeOrigNet int64, fakeNewNet int64, fakeNotifStat
 	return &freshLaunch
 }
 
+// Initializes the cache and database with data from the LL2 dev endpoint
+func initDevDatabase(cache *db.Cache) error {
+	client := resty.New()
+	client.SetTimeout(time.Duration(30 * time.Second))
+	update, err := apiCall(client, true)
+	if err != nil {
+		return err
+	}
+
+	launches, _, err := parseLaunchUpdate(cache, update)
+	if err != nil {
+		return err
+	}
+
+	if err := cache.Database.Update(launches, true, true); err != nil {
+		return err
+	}
+
+	cache.UpdateWithNew(launches)
+	return nil
+}
+
 // Tests if the postpone detection works
 func TestPostponeFunctions(t *testing.T) {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC822Z})
@@ -52,8 +75,10 @@ func TestPostponeFunctions(t *testing.T) {
 	database.Open("../data")
 	cache.Database = database
 
-	// Populate cache
-	cache.Populate()
+	// Populate the database and cache from the dev API endpoint
+	if err := initDevDatabase(cache); err != nil {
+		t.Fatalf("failed to initialize test database: %v", err)
+	}
 
 	/////////////////////////////////////////////////////////////////////////////
 	// Test a postpone out of the [24h...12h] window into the pre-24h window
