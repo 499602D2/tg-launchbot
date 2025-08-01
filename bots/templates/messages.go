@@ -185,7 +185,7 @@ func (keywords *KeywordsMessage) ViewAllowed(chat *users.User) string {
 
 // Keywords.Help
 func (keywords *KeywordsMessage) Help() string {
-	return "❓ *LaunchBot* | *Keyword Filtering Help*\n\n" +
+	return "❔ *LaunchBot* | *Keyword Filtering Help*\n\n" +
 		"*How it works:*\n" +
 		"• *Blocked keywords:* Always exclude matching launches\n" +
 		"• *Allowed keywords:* Always include matching launches\n" +
@@ -196,7 +196,7 @@ func (keywords *KeywordsMessage) Help() string {
 		"*Tips:*\n" +
 		"• Keywords are case-insensitive\n" +
 		"• Partial matches work (\"Star\" matches \"Starship\" and \"Starlink\")\n" +
-		"• Keywords can match launch name, vehicle, or mission description\n" +
+		"• Keywords can match launch name or vehicle name\n" +
 		"• You can add multiple keywords at once by separating them with commas"
 }
 
