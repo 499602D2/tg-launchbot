@@ -925,66 +925,30 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 		tg.editCbMessage(cb, message, sendOptions)
 		return tg.respondToCallback(ctx, "🔍 Loaded keyword filtering", false)
 
-	case "mode":
-		if callbackData[1] == "toggle" {
-			// Toggle filter mode
-			// Map legacy modes to new modes
-			currentMode := chat.FilterMode
-			if currentMode == "exclude" {
-				currentMode = "keywords_filter"
-			} else if currentMode == "hybrid" {
-				currentMode = "keywords_add"
-			}
-			
-			// Define available modes
-			modes := []string{"keywords_filter", "keywords_add", "include"}
-			currentIdx := 0
-			for i, mode := range modes {
-				if currentMode == mode {
-					currentIdx = i
-					break
-				}
-			}
-			// Cycle to next mode
-			newMode := modes[(currentIdx+1)%len(modes)]
-			chat.FilterMode = newMode
-			tg.Db.SaveUser(chat)
 
-			// Update the message
-			message := tg.Template.Messages.Settings.Keywords.ModeChanged(newMode)
-			message = utils.PrepareInputForMarkdown(message, "text")
-
-			// Reload the keyboard with new mode
-			sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.Main(chat)
-
-			tg.editCbMessage(cb, message, sendOptions)
-			return tg.respondToCallback(ctx, "✅ Filter mode changed", true)
-		}
-
-	case "muted":
+	case "blocked":
 		switch callbackData[1] {
 		case "view":
-			message := tg.Template.Messages.Settings.Keywords.ViewMuted(chat)
+			message := tg.Template.Messages.Settings.Keywords.ViewBlocked(chat)
 			message = utils.PrepareInputForMarkdown(message, "text")
 
-			sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewMuted(chat)
+			sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewBlocked(chat)
 
 			tg.editCbMessage(cb, message, sendOptions)
-			return tg.respondToCallback(ctx, "🚫 Loaded muted keywords", false)
+			return tg.respondToCallback(ctx, "🚫 Loaded blocked keywords", false)
 
 		case "remove":
 			if len(callbackData) > 2 {
 				keyword := callbackData[2]
-				if chat.RemoveMutedKeyword(keyword) {
+				if chat.RemoveBlockedKeyword(keyword) {
 					tg.Db.SaveUser(chat)
 
-					// Combine success message with full keyword view
-					message := tg.Template.Messages.Settings.Keywords.Removed(keyword, "muted")
-					fullMessage := message + "\n\n" + tg.Template.Messages.Settings.Keywords.ViewMuted(chat)
+					// Update the keyword view
+					fullMessage := tg.Template.Messages.Settings.Keywords.ViewBlocked(chat)
 					fullMessage = utils.PrepareInputForMarkdown(fullMessage, "text")
 
 					// Reload the keyword list
-					sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewMuted(chat)
+					sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewBlocked(chat)
 
 					tg.editCbMessage(cb, fullMessage, sendOptions)
 					return tg.respondToCallback(ctx, "✅ Keyword removed", true)
@@ -992,22 +956,21 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 			}
 
 		case "clear":
-			chat.MutedKeywords = ""
+			chat.BlockedKeywords = ""
 			tg.Db.SaveUser(chat)
 
-			// Combine success message with full keyword view
-			message := tg.Template.Messages.Settings.Keywords.Cleared("muted")
-			fullMessage := message + "\n\n" + tg.Template.Messages.Settings.Keywords.ViewMuted(chat)
+			// Update the keyword view
+			fullMessage := tg.Template.Messages.Settings.Keywords.ViewBlocked(chat)
 			fullMessage = utils.PrepareInputForMarkdown(fullMessage, "text")
 
-			sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewMuted(chat)
+			sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewBlocked(chat)
 
 			tg.editCbMessage(cb, fullMessage, sendOptions)
-			return tg.respondToCallback(ctx, "✅ All muted keywords cleared", true)
+			return tg.respondToCallback(ctx, "✅ All blocked keywords cleared", true)
 
 		case "add":
 			// Send prompt with ForceReply
-			message := tg.Template.Messages.Settings.Keywords.AddPrompt("muted")
+			message := tg.Template.Messages.Settings.Keywords.AddPrompt("blocked")
 			message = utils.PrepareInputForMarkdown(message, "text")
 
 			// Create ForceReply markup
@@ -1038,30 +1001,29 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 			return tg.respondToCallback(ctx, "📝 Please enter a keyword", false)
 		}
 
-	case "subscribed":
+	case "allowed":
 		switch callbackData[1] {
 		case "view":
-			message := tg.Template.Messages.Settings.Keywords.ViewSubscribed(chat)
+			message := tg.Template.Messages.Settings.Keywords.ViewAllowed(chat)
 			message = utils.PrepareInputForMarkdown(message, "text")
 
-			sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewSubscribed(chat)
+			sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewAllowed(chat)
 
 			tg.editCbMessage(cb, message, sendOptions)
-			return tg.respondToCallback(ctx, "✅ Loaded subscribed keywords", false)
+			return tg.respondToCallback(ctx, "✅ Loaded allowed keywords", false)
 
 		case "remove":
 			if len(callbackData) > 2 {
 				keyword := callbackData[2]
-				if chat.RemoveSubscribedKeyword(keyword) {
+				if chat.RemoveAllowedKeyword(keyword) {
 					tg.Db.SaveUser(chat)
 
-					// Combine success message with full keyword view
-					message := tg.Template.Messages.Settings.Keywords.Removed(keyword, "subscribed")
-					fullMessage := message + "\n\n" + tg.Template.Messages.Settings.Keywords.ViewSubscribed(chat)
+					// Update the keyword view
+					fullMessage := tg.Template.Messages.Settings.Keywords.ViewAllowed(chat)
 					fullMessage = utils.PrepareInputForMarkdown(fullMessage, "text")
 
 					// Reload the keyword list
-					sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewSubscribed(chat)
+					sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewAllowed(chat)
 
 					tg.editCbMessage(cb, fullMessage, sendOptions)
 					return tg.respondToCallback(ctx, "✅ Keyword removed", true)
@@ -1069,22 +1031,21 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 			}
 
 		case "clear":
-			chat.SubscribedKeywords = ""
+			chat.AllowedKeywords = ""
 			tg.Db.SaveUser(chat)
 
-			// Combine success message with full keyword view
-			message := tg.Template.Messages.Settings.Keywords.Cleared("subscribed")
-			fullMessage := message + "\n\n" + tg.Template.Messages.Settings.Keywords.ViewSubscribed(chat)
+			// Update the keyword view
+			fullMessage := tg.Template.Messages.Settings.Keywords.ViewAllowed(chat)
 			fullMessage = utils.PrepareInputForMarkdown(fullMessage, "text")
 
-			sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewSubscribed(chat)
+			sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewAllowed(chat)
 
 			tg.editCbMessage(cb, fullMessage, sendOptions)
-			return tg.respondToCallback(ctx, "✅ All subscribed keywords cleared", true)
+			return tg.respondToCallback(ctx, "✅ All allowed keywords cleared", true)
 
 		case "add":
 			// Send prompt with ForceReply
-			message := tg.Template.Messages.Settings.Keywords.AddPrompt("subscribed")
+			message := tg.Template.Messages.Settings.Keywords.AddPrompt("allowed")
 			message = utils.PrepareInputForMarkdown(message, "text")
 
 			// Create ForceReply markup
@@ -1327,7 +1288,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 
 	// Check if it's a keyword input prompt
 	replyText := ctx.Message().ReplyTo.Text
-	if !strings.Contains(replyText, "Please send the keyword you want to") {
+	if !strings.Contains(replyText, "Please send the keyword") {
 		return nil
 	}
 
@@ -1342,94 +1303,195 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 	// Load chat
 	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
-	// Extract the keyword from user's message
-	keyword := strings.TrimSpace(ctx.Text())
+	// Extract the keywords from user's message (support comma-separated)
+	input := strings.TrimSpace(ctx.Text())
 	
-	// Validate keyword
-	if keyword == "" {
-		tg.Enqueue(sendables.TextOnlySendable("⚠️ Keyword cannot be empty. Please try again.", chat), true)
+	// Validate input
+	if input == "" {
+		tg.Enqueue(sendables.TextOnlySendable("⚠️ Keywords cannot be empty. Please try again.", chat), true)
 		return nil
 	}
-
-	if len(keyword) > 50 {
-		tg.Enqueue(sendables.TextOnlySendable("⚠️ Keyword is too long (max 50 characters). Please try again.", chat), true)
-		return nil
-	}
-
-	// Determine if it's for muted or subscribed keywords based on the prompt
-	var success bool
+	
+	// Split by comma to support multiple keywords
+	keywords := strings.Split(input, ",")
+	var addedKeywords []string
+	var skippedKeywords []string
 	var message string
 	
-	if strings.Contains(replyText, "mute") {
-		// Add to muted keywords
-		if chat.HasMutedKeyword(keyword) {
-			message = tg.Template.Messages.Settings.Keywords.AlreadyExists(keyword, "muted")
-		} else {
-			success = chat.AddMutedKeyword(keyword)
-			if success {
-				tg.Db.SaveUser(chat)
-				message = tg.Template.Messages.Settings.Keywords.Added(keyword, "muted")
+	// Check total number of existing keywords to enforce limits
+	const maxKeywordsPerType = 50
+	const maxTotalLength = 500
+	
+	// Determine if it's for blocked or allowed keywords based on the prompt
+	if strings.Contains(replyText, "block") {
+		// Count existing keywords
+		existingCount := 0
+		existingLength := len(chat.BlockedKeywords)
+		if chat.BlockedKeywords != "" {
+			existingCount = len(strings.Split(chat.BlockedKeywords, ","))
+		}
+		
+		// Add to blocked keywords
+		for _, kw := range keywords {
+			keyword := strings.TrimSpace(kw)
+			if keyword == "" {
+				continue
+			}
+			
+			// Check if we've hit the keyword count limit
+			if existingCount + len(addedKeywords) >= maxKeywordsPerType {
+				skippedKeywords = append(skippedKeywords, keyword+" (limit reached: max "+fmt.Sprintf("%d", maxKeywordsPerType)+" keywords)")
+				continue
+			}
+			
+			// Check individual keyword length
+			if len(keyword) > 50 {
+				skippedKeywords = append(skippedKeywords, keyword+" (too long)")
+				continue
+			}
+			
+			// Check total length limit
+			potentialNewLength := existingLength + len(keyword) + 1 // +1 for comma
+			if existingLength > 0 && potentialNewLength > maxTotalLength {
+				skippedKeywords = append(skippedKeywords, keyword+" (total length limit reached)")
+				continue
+			}
+			
+			if chat.HasBlockedKeyword(keyword) {
+				skippedKeywords = append(skippedKeywords, keyword+" (already exists)")
+			} else if chat.AddBlockedKeyword(keyword) {
+				addedKeywords = append(addedKeywords, keyword)
+				existingCount++
+				existingLength = len(chat.BlockedKeywords)
 			}
 		}
-	} else if strings.Contains(replyText, "subscribe to") {
-		// Add to subscribed keywords  
-		if chat.HasSubscribedKeyword(keyword) {
-			message = tg.Template.Messages.Settings.Keywords.AlreadyExists(keyword, "subscribed")
-		} else {
-			success = chat.AddSubscribedKeyword(keyword)
-			if success {
-				tg.Db.SaveUser(chat)
-				message = tg.Template.Messages.Settings.Keywords.Added(keyword, "subscribed")
+		
+		if len(addedKeywords) > 0 {
+			tg.Db.SaveUser(chat)
+			if len(addedKeywords) == 1 {
+				message = tg.Template.Messages.Settings.Keywords.Added(addedKeywords[0], "blocked")
+			} else {
+				message = fmt.Sprintf("✅ Successfully blocked %d keywords: %s", len(addedKeywords), strings.Join(addedKeywords, ", "))
 			}
+		}
+		
+		if len(skippedKeywords) > 0 {
+			if message != "" {
+				message += "\n"
+			}
+			message += fmt.Sprintf("⚠️ Skipped %d keywords: %s", len(skippedKeywords), strings.Join(skippedKeywords, ", "))
+		}
+		
+		if message == "" {
+			message = "⚠️ No keywords were added."
+		}
+	} else if strings.Contains(replyText, "allow") {
+		// Count existing keywords
+		existingCount := 0
+		existingLength := len(chat.AllowedKeywords)
+		if chat.AllowedKeywords != "" {
+			existingCount = len(strings.Split(chat.AllowedKeywords, ","))
+		}
+		
+		// Add to allowed keywords  
+		for _, kw := range keywords {
+			keyword := strings.TrimSpace(kw)
+			if keyword == "" {
+				continue
+			}
+			
+			// Check if we've hit the keyword count limit
+			if existingCount + len(addedKeywords) >= maxKeywordsPerType {
+				skippedKeywords = append(skippedKeywords, keyword+" (limit reached: max "+fmt.Sprintf("%d", maxKeywordsPerType)+" keywords)")
+				continue
+			}
+			
+			// Check individual keyword length
+			if len(keyword) > 50 {
+				skippedKeywords = append(skippedKeywords, keyword+" (too long)")
+				continue
+			}
+			
+			// Check total length limit
+			potentialNewLength := existingLength + len(keyword) + 1 // +1 for comma
+			if existingLength > 0 && potentialNewLength > maxTotalLength {
+				skippedKeywords = append(skippedKeywords, keyword+" (total length limit reached)")
+				continue
+			}
+			
+			if chat.HasAllowedKeyword(keyword) {
+				skippedKeywords = append(skippedKeywords, keyword+" (already exists)")
+			} else if chat.AddAllowedKeyword(keyword) {
+				addedKeywords = append(addedKeywords, keyword)
+				existingCount++
+				existingLength = len(chat.AllowedKeywords)
+			}
+		}
+		
+		if len(addedKeywords) > 0 {
+			tg.Db.SaveUser(chat)
+			if len(addedKeywords) == 1 {
+				message = tg.Template.Messages.Settings.Keywords.Added(addedKeywords[0], "allowed")
+			} else {
+				message = fmt.Sprintf("✅ Successfully allowed %d keywords: %s", len(addedKeywords), strings.Join(addedKeywords, ", "))
+			}
+		}
+		
+		if len(skippedKeywords) > 0 {
+			if message != "" {
+				message += "\n"
+			}
+			message += fmt.Sprintf("⚠️ Skipped %d keywords: %s", len(skippedKeywords), strings.Join(skippedKeywords, ", "))
+		}
+		
+		if message == "" {
+			message = "⚠️ No keywords were added."
 		}
 	} else {
 		// Unknown prompt type
 		return nil
 	}
 
-	// Send response with the full keyword view instead of just a message
-	if strings.Contains(replyText, "mute") {
-		// Show the full muted keywords view with the success/error message
-		fullMessage := message + "\n\n" + tg.Template.Messages.Settings.Keywords.ViewMuted(chat)
-		fullMessage = utils.PrepareInputForMarkdown(fullMessage, "text")
-		
-		sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewMuted(chat)
-		
-		msg := sendables.Message{
-			TextContent: fullMessage,
-			SendOptions: sendOptions,
-		}
-		
-		sendable := sendables.Sendable{
-			Type:    sendables.Command,
-			Message: &msg,
-		}
-		sendable.AddRecipient(chat, false)
-		tg.Enqueue(&sendable, true)
+	// Delete the user's input message immediately to keep chat clean
+	_ = tg.Bot.Delete(ctx.Message())
+	
+	// Try to edit the original prompt message to show the updated view
+	// This gives a similar experience to callback handling
+	var fullMessage string
+	var sendOptions tb.SendOptions
+	
+	if strings.Contains(replyText, "block") {
+		fullMessage = tg.Template.Messages.Settings.Keywords.ViewBlocked(chat)
+		sendOptions, _ = tg.Template.Keyboard.Settings.Keywords.ViewBlocked(chat)
 	} else {
-		// Show the full subscribed keywords view with the success/error message
-		fullMessage := message + "\n\n" + tg.Template.Messages.Settings.Keywords.ViewSubscribed(chat)
-		fullMessage = utils.PrepareInputForMarkdown(fullMessage, "text")
-		
-		sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewSubscribed(chat)
-		
-		msg := sendables.Message{
-			TextContent: fullMessage,
-			SendOptions: sendOptions,
-		}
-		
-		sendable := sendables.Sendable{
-			Type:    sendables.Command,
-			Message: &msg,
-		}
-		sendable.AddRecipient(chat, false)
-		tg.Enqueue(&sendable, true)
+		fullMessage = tg.Template.Messages.Settings.Keywords.ViewAllowed(chat)
+		sendOptions, _ = tg.Template.Keyboard.Settings.Keywords.ViewAllowed(chat)
 	}
-
-	// Try to delete the original prompt message
+	
+	fullMessage = utils.PrepareInputForMarkdown(fullMessage, "text")
+	
+	// Try to edit the prompt message
 	if ctx.Message().ReplyTo != nil {
-		_ = tg.Bot.Delete(ctx.Message().ReplyTo)
+		_, err := tg.Bot.Edit(ctx.Message().ReplyTo, fullMessage, &sendOptions)
+		if err != nil {
+			// If editing fails, delete the prompt and send new message
+			_ = tg.Bot.Delete(ctx.Message().ReplyTo)
+			
+			msg := sendables.Message{
+				TextContent: fullMessage,
+				SendOptions: sendOptions,
+			}
+			sendable := sendables.Sendable{
+				Type:    sendables.Command,
+				Message: &msg,
+			}
+			sendable.AddRecipient(chat, false)
+			tg.Enqueue(&sendable, true)
+		}
 	}
+	
+	// Don't show any additional notification message - the UI update is enough feedback
+	// This matches the behavior when keywords are removed via callback (which shows a popup)
 
 	return nil
 }
