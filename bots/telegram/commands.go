@@ -406,7 +406,7 @@ func (tg *Bot) statsHandler(ctx tb.Context) error {
 	// Reload some statistics
 	tg.Stats.DbSize = tg.Db.Size
 	tg.Stats.Subscribers = tg.Db.Subscribers
-	tg.Stats.WeeklyActiveUsers = tg.Db.WeeklyActiveUsers
+	tg.Stats.MonthlyActiveUsers = tg.Db.MonthlyActiveUsers
 
 	// Get text content
 	textContent := tg.Stats.String()

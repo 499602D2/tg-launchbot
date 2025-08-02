@@ -30,7 +30,7 @@ type Statistics struct {
 	NextNotification  time.Time
 	StartedAt         time.Time
 	Subscribers       int64  `gorm:"-:all"`
-	WeeklyActiveUsers int64  `gorm:"-:all"`
+	MonthlyActiveUsers int64  `gorm:"-:all"`
 	DbSize            int64  `gorm:"-:all"`
 	RunningVersion    string `gorm:"-:all"`
 }
@@ -72,7 +72,7 @@ func (stats *Statistics) String() string {
 			"Notifications delivered: %s\n"+
 			"Commands parsed: %s\n"+
 			"Active subscribers: %s\n"+
-			"Weekly active users: %s\n\n"+
+			"Monthly active users: %s\n\n"+
 
 			"🛰️ *Database information*\n"+
 			"Updated %s ago\n"+
@@ -87,7 +87,7 @@ func (stats *Statistics) String() string {
 		// General statistics
 		humanize.Comma(int64(stats.Notifications)),
 		humanize.Comma(int64(stats.Commands+stats.Callbacks+stats.V2Commands)),
-		humanize.Comma(stats.Subscribers), humanize.Comma(stats.WeeklyActiveUsers),
+		humanize.Comma(stats.Subscribers), humanize.Comma(stats.MonthlyActiveUsers),
 
 		// API update information
 		dbLastUpdated, nextNotification, humanize.Bytes(uint64(stats.DbSize)),
