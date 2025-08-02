@@ -25,7 +25,7 @@ type Database struct {
 	Path              string    // Path on disk
 	Owner             int64     // Telegram admin ID
 	Subscribers       int64
-	WeeklyActiveUsers int64
+	MonthlyActiveUsers int64
 	Mutex             sync.Mutex
 }
 
@@ -238,7 +238,7 @@ func (db *Database) LoadStatisticsFromDisk(platform string) *stats.Statistics {
 	case nil:
 		// No errors: load subscriber count, return loaded stats
 		db.Subscribers = db.GetSubscriberCount()
-		db.WeeklyActiveUsers = db.GetWeeklyActiveUserCount()
+		db.MonthlyActiveUsers = db.GetMonthlyActiveUserCount()
 		return &stats
 	case gorm.ErrRecordNotFound:
 		// Record doesn't exist: insert as new
@@ -278,23 +278,27 @@ func (db *Database) SaveStatsToDisk(statistics *stats.Statistics) {
 
 	// On save, get subscriber/active user count (so it's refreshed occasionally)
 	db.Subscribers = db.GetSubscriberCount()
-	db.WeeklyActiveUsers = db.GetWeeklyActiveUserCount()
+	db.MonthlyActiveUsers = db.GetMonthlyActiveUserCount()
 }
 
 // Load how many users have subscribed to any notifications
 func (db *Database) GetSubscriberCount() int64 {
 	// Select all chats with any notifications enabled, AND at least one notification time enabled
-	return db.Conn.Where(
+	var count int64
+	db.Conn.Model(&users.User{}).Where(
 		"(subscribed_all = ? OR subscribed_to != ?) AND NOT "+
-			"(enabled24h == ? AND enabled12h == ? AND enabled1h == ? AND enabled5min == ?)",
-		1, "", 0, 0, 0, 0).Find(&[]users.User{}).RowsAffected
+			"(enabled24h = ? AND enabled12h = ? AND enabled1h = ? AND enabled5min = ?)",
+		1, "", 0, 0, 0, 0).Count(&count)
+	return count
 }
 
-// Load active user count, as in users who have used the bot during the last week
-func (db *Database) GetWeeklyActiveUserCount() int64 {
-	// Time 7 days ago
-	trailingWeek := time.Now().Add(-1 * time.Duration(24*7) * time.Hour)
+// Load active user count, as in users who have used the bot during the last month
+func (db *Database) GetMonthlyActiveUserCount() int64 {
+	// Time 30 days ago
+	trailingMonth := time.Now().Add(-1 * time.Duration(24*30) * time.Hour)
 
-	return db.Conn.Where("updated_at > ?", trailingWeek).Find(&[]users.User{}).RowsAffected
+	var count int64
+	db.Conn.Model(&users.User{}).Where("updated_at > ?", trailingMonth).Count(&count)
+	return count
 }
 
