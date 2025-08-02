@@ -99,11 +99,8 @@ func (tg *Bot) NotificationPostProcessing(sendable *sendables.Sendable, sentIds 
 			}
 		}
 
-		// Create a sendable for removing mass-notifications
-		deletionSendable := sendables.SendableForMessageRemoval(sendable, removalIdPairs)
-
-		// Set recipients, as in users that will have a previous notification removed
-		deletionSendable.Recipients = removalRecipients
+		// Create a sendable for batch removal of mass-notifications
+		deletionSendable := sendables.SendableForBatchMessageRemoval(sendable, removalIdPairs, removalRecipients)
 
 		// Enqueue the sendable for removing the old notifications
 		tg.Enqueue(deletionSendable, false)
@@ -188,29 +185,36 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan Messa
 		}
 	}
 
-	// If this was a deletion, we can return early
+	// If this was a deletion, handle it differently
 	if sendable.Type == sendables.Delete {
-		// Wait for all workers to finish before calculating processing time
-		log.Debug().Msgf("Waiting for all deletion processes to finish...")
-		for i := 0; i < len(sendable.Recipients); i++ {
-			<-results
+		if sendable.IsBatch {
+			// Use batch deletion API
+			tg.processBatchDeletion(sendable, results, processStartTime)
+			return
+		} else {
+			// Regular deletion: use workers for individual deletions
+			// Wait for all workers to finish before calculating processing time
+			log.Debug().Msgf("Waiting for all deletion processes to finish...")
+			for i := 0; i < len(sendable.Recipients); i++ {
+				<-results
+			}
+
+			log.Debug().Msgf("Deletions done!")
+
+			// Close results channel
+			close(results)
+
+			timeSpent := time.Since(processStartTime)
+
+			log.Info().Msgf("Processed %d message removals in %s",
+				len(sendable.MessageIDs), durafmt.Parse(timeSpent).LimitFirstN(2))
+
+			log.Info().Msgf("Average deletion-rate %.1f msg/sec",
+				float64(len(sendable.MessageIDs))/timeSpent.Seconds())
+
+			log.Info().Msgf("Returning from ProcessSendable...")
+			return
 		}
-
-		log.Debug().Msgf("Deletions done!")
-
-		// Close results channel
-		close(results)
-
-		timeSpent := time.Since(processStartTime)
-
-		log.Info().Msgf("Processed %d message removals in %s",
-			len(sendable.MessageIDs), durafmt.Parse(timeSpent).LimitFirstN(2))
-
-		log.Info().Msgf("Average deletion-rate %.1f msg/sec",
-			float64(len(sendable.MessageIDs))/timeSpent.Seconds())
-
-		log.Info().Msgf("Returning from ProcessSendable...")
-		return
 	}
 
 	// Notification sending done: mark as finished
@@ -309,6 +313,81 @@ func (tg *Bot) DeleteNotificationMessage(sendable *sendables.Sendable, user *use
 		tg.handleError(nil, messageToBeDeleted, err, int64(chatId))
 		log.Error().Err(err).Msgf("Deleting message %s:%s failed", user.Id, strMessageId)
 	}
+}
+
+// Process batch deletion of messages using Telegram's DeleteMany API
+func (tg *Bot) processBatchDeletion(sendable *sendables.Sendable, results chan string, processStartTime time.Time) {
+	// Collect all messages to delete
+	var messages []tb.Editable
+	
+	for _, user := range sendable.Recipients {
+		strMessageId, ok := sendable.MessageIDs[user.Id]
+		if !ok {
+			continue
+		}
+		
+		// Convert chat ID to integer
+		chatId, err := strconv.ParseInt(user.Id, 10, 64)
+		if err != nil {
+			log.Error().Err(err).Msgf("Failed to parse chat ID %s", user.Id)
+			continue
+		}
+		
+		// Convert message ID to integer
+		messageId, err := strconv.Atoi(strMessageId)
+		if err != nil {
+			log.Error().Err(err).Msgf("Failed to parse message ID %s", strMessageId)
+			continue
+		}
+		
+		// Create message and add to slice
+		msg := &tb.Message{
+			ID:   messageId,
+			Chat: &tb.Chat{ID: chatId},
+		}
+		messages = append(messages, msg)
+	}
+	
+	// Process in batches of 100
+	const batchSize = 100
+	totalMessages := len(messages)
+	
+	if totalMessages == 0 {
+		log.Debug().Msg("No messages to delete")
+		close(results)
+		return
+	}
+	
+	totalBatches := (totalMessages + batchSize - 1) / batchSize
+	log.Info().Msgf("Deleting %d messages in %d batch(es) using batch API", totalMessages, totalBatches)
+	
+	// Take tokens for all batches
+	tg.Spam.GlobalLimiter(totalBatches)
+	
+	// Delete messages in batches
+	for i := 0; i < len(messages); i += batchSize {
+		end := min(i+batchSize, len(messages))
+		
+		batch := messages[i:end]
+		batchNum := i/batchSize + 1
+		
+		// Delete the batch
+		err := tg.Bot.DeleteMany(batch)
+		if err != nil {
+			log.Error().Err(err).Msgf("Failed to delete batch %d/%d", batchNum, totalBatches)
+		} else {
+			log.Debug().Msgf("Successfully deleted batch %d/%d (%d messages)", batchNum, totalBatches, len(batch))
+		}
+	}
+	
+	close(results)
+	
+	timeSpent := time.Since(processStartTime)
+	log.Info().Msgf("Processed %d message removals in %s using batch API",
+		totalMessages, durafmt.Parse(timeSpent).LimitFirstN(2))
+	
+	log.Info().Msgf("Average deletion-rate %.1f msg/sec",
+		float64(totalMessages)/timeSpent.Seconds())
 }
 
 // Send a notification
@@ -411,7 +490,7 @@ func (tg *Bot) NotificationWorker(id int, jobChannel chan MessageJob) {
 			tg.Quit.WaitGroup.Done()
 
 		default:
-			log.Warn().Msgf("Invalide sendable type in NotificationWorker: %s", job.Sendable.Type)
+			log.Warn().Msgf("Invalid sendable type in NotificationWorker: %s", job.Sendable.Type)
 			tg.Quit.WaitGroup.Done()
 		}
 
