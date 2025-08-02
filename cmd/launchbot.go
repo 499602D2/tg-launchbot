@@ -21,8 +21,7 @@ import (
 
 // Injected at build-time
 var GitSHA = "0000000000"
-
-const version = "3.3.0"
+var Version = "dev"
 
 // Listens for incoming interrupt signals
 func signalListener(session *config.Session) {
@@ -125,12 +124,12 @@ func main() {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC822Z})
 	}
 
-	log.Info().Msgf("🤖 LaunchBot %s started", version)
+	log.Info().Msgf("🤖 LaunchBot %s started", Version)
 
 	// Create session
 	session := &config.Session{
 		Started:        time.Now(),
-		Version:        fmt.Sprintf("%s (%s)", version, GitSHA[0:7]),
+		Version:        fmt.Sprintf("%s (%s)", Version, GitSHA[0:7]),
 		Github:         "github.com/499602D2/tg-launchbot",
 		UseDevEndpoint: useDevEndpoint,
 	}
@@ -166,9 +165,9 @@ func main() {
 		log.Warn().Msg("API updates disabled")
 	}
 
-	// Dump statistics to disk once every 30 minutes
+	// Dump statistics to disk once every 10 minutes
 	scheduler := gocron.NewScheduler(time.UTC)
-	_, err := scheduler.Every(30).Minutes().Do(session.Db.SaveStatsToDisk, session.Telegram.Stats)
+	_, err := scheduler.Every(10).Minutes().Do(session.Db.SaveStatsToDisk, session.Telegram.Stats)
 
 	if err != nil {
 		log.Fatal().Err(err).Msg("Starting statistics gocron job failed")
