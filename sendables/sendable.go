@@ -18,6 +18,7 @@ type Sendable struct {
 	Platform         string            // tg, dg
 	Type             Type              // sendables.Type (Notification, Command, Delete)
 	IsHighPriority   bool              // High-priority flag (anything that's not a notification)
+	IsBatch          bool              // If true, use batch deletion API for Delete type
 	NotificationType string            // "24h", "12h", "1h", "5min", "postpone"
 	LaunchId         string            // Launch ID associated with this sendable
 	Message          *Message          // Message (may be nil)
@@ -178,6 +179,22 @@ func SendableForMessageRemoval(senderSendable *Sendable, msgIdMap map[string]str
 		LaunchId:   senderSendable.LaunchId,
 		Platform:   senderSendable.Platform,
 		Tokens:     1,
+	}
+
+	return &sendable
+}
+
+// Create a sendable for batch message removal. Uses the batch deletion API
+// to remove multiple messages in fewer API calls.
+func SendableForBatchMessageRemoval(senderSendable *Sendable, msgIdMap map[string]string, recipients []*users.User) *Sendable {
+	sendable := Sendable{
+		Type:       Delete,
+		IsBatch:    true,
+		MessageIDs: msgIdMap,
+		Recipients: recipients,
+		LaunchId:   senderSendable.LaunchId,
+		Platform:   senderSendable.Platform,
+		Tokens:     1, // One token per batch API call
 	}
 
 	return &sendable
