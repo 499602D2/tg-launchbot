@@ -361,30 +361,54 @@ func (tg *Bot) processBatchDeletion(sendable *sendables.Sendable, results chan s
 	totalBatches := (totalMessages + batchSize - 1) / batchSize
 	log.Info().Msgf("Deleting %d messages in %d batch(es) using batch API", totalMessages, totalBatches)
 	
-	// Take tokens for all batches
-	tg.Spam.GlobalLimiter(totalBatches)
+	// Create worker pool for batch deletions
+	const batchWorkers = 4
+	batchJobs := make(chan []tb.Editable, totalBatches)
+	batchResults := make(chan error, totalBatches)
 	
-	// Delete messages in batches
-	for i := 0; i < len(messages); i += batchSize {
-		end := min(i+batchSize, len(messages))
-		
-		batch := messages[i:end]
-		batchNum := i/batchSize + 1
-		
-		// Delete the batch
-		err := tg.Bot.DeleteMany(batch)
-		if err != nil {
-			log.Error().Err(err).Msgf("Failed to delete batch %d/%d", batchNum, totalBatches)
-		} else {
-			log.Debug().Msgf("Successfully deleted batch %d/%d (%d messages)", batchNum, totalBatches, len(batch))
+	// Start batch deletion workers
+	for w := 1; w <= batchWorkers; w++ {
+		go func(workerID int) {
+			for batch := range batchJobs {
+				// Take token for this batch
+				tg.Spam.GlobalLimiter(1)
+				
+				// Delete the batch
+				err := tg.Bot.DeleteMany(batch)
+				if err != nil {
+					log.Error().Err(err).Msgf("[BatchWorker=%d] Failed to delete batch of %d messages", workerID, len(batch))
+				} else {
+					log.Debug().Msgf("[BatchWorker=%d] Successfully deleted batch of %d messages", workerID, len(batch))
+				}
+				batchResults <- err
+			}
+		}(w)
+	}
+	
+	// Submit batch jobs
+	go func() {
+		for i := 0; i < len(messages); i += batchSize {
+			end := min(i+batchSize, len(messages))
+			batch := messages[i:end]
+			batchJobs <- batch
+		}
+		close(batchJobs)
+	}()
+	
+	// Wait for all batches to complete
+	successCount := 0
+	for range totalBatches {
+		if err := <-batchResults; err == nil {
+			successCount++
 		}
 	}
 	
 	close(results)
+	close(batchResults)
 	
 	timeSpent := time.Since(processStartTime)
-	log.Info().Msgf("Processed %d message removals in %s using batch API",
-		totalMessages, durafmt.Parse(timeSpent).LimitFirstN(2))
+	log.Info().Msgf("Processed %d message removals in %s using batch API (%d/%d batches successful)",
+		totalMessages, durafmt.Parse(timeSpent).LimitFirstN(2), successCount, totalBatches)
 	
 	log.Info().Msgf("Average deletion-rate %.1f msg/sec",
 		float64(totalMessages)/timeSpent.Seconds())
