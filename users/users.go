@@ -268,7 +268,6 @@ func (user *User) HasAllowedKeyword(keyword string) bool {
 	return false
 }
 
-
 // Return a bool indicating if user has any notification subscription times enabled
 func (user *User) AnyNotificationTimesEnabled() bool {
 	// Beautiful and concise at only 105 characters 8)
@@ -339,25 +338,24 @@ func (user *User) ShouldReceiveLaunch(launchId string, providerId int, launchNam
 		log.Debug().Str("user", user.Id).Str("launch_id", launchId).Msg("Launch explicitly muted")
 		return false
 	}
-	
+
 	// Build search text for keyword matching (launch name + vehicle name)
 	searchText := strings.ToLower(launchName + " " + vehicleName)
-	
+
 	// Check blocked keywords first (always exclude)
 	if user.matchesBlockedKeywords(searchText) {
 		log.Debug().Str("user", user.Id).Str("launch_id", launchId).Str("launch_name", launchName).Msg("Launch blocked by keyword filter")
 		return false
 	}
-	
+
 	// Check allowed keywords (always include if matched)
 	if user.matchesAllowedKeywords(searchText) {
 		log.Debug().Str("user", user.Id).Str("launch_id", launchId).Str("launch_name", launchName).Msg("Launch allowed by keyword filter")
 		return true
 	}
-	
+
 	// Otherwise, use normal provider subscription logic
 	subscribed := user.GetNotificationStatusById(providerId)
-	log.Debug().Str("user", user.Id).Str("launch_id", launchId).Str("launch_name", launchName).Bool("subscribed", subscribed).Msg("Launch filtered by provider subscription")
 	return subscribed
 }
 
@@ -366,7 +364,7 @@ func (user *User) matchesBlockedKeywords(searchText string) bool {
 	if user.BlockedKeywords == "" {
 		return false
 	}
-	
+
 	for _, keyword := range strings.Split(user.BlockedKeywords, ",") {
 		keyword = strings.TrimSpace(keyword)
 		if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {
@@ -382,7 +380,7 @@ func (user *User) matchesAllowedKeywords(searchText string) bool {
 	if user.AllowedKeywords == "" {
 		return false // No keywords means no keyword-based inclusion
 	}
-	
+
 	for _, keyword := range strings.Split(user.AllowedKeywords, ",") {
 		keyword = strings.TrimSpace(keyword)
 		if keyword != "" && strings.Contains(searchText, strings.ToLower(keyword)) {

@@ -148,7 +148,6 @@ func (launch *Launch) NotificationRecipients(db *Database, notificationType stri
 	for _, user := range usersWithNotificationEnabled {
 		// Check if user should receive this launch notification
 		if !user.ShouldReceiveLaunch(launch.Id, launch.LaunchProvider.Id, launch.Name, launch.Rocket.Config.Name, launch.Mission.Name) {
-			log.Debug().Msgf("➙ User=%s filtered out launch=%s", user.Id, launch.Name)
 			continue
 		}
 
