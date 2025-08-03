@@ -11,6 +11,14 @@ import (
 	tb "gopkg.in/telebot.v3"
 )
 
+// Custom errors that are not present in Telebot
+var (
+	ErrGroupDeleted        = tb.NewError(403, "the group chat was deleted")
+	ErrGroupDeleted2       = tb.NewError(403, "the group chat was deleted")
+	ErrNoRightsToSendText  = tb.NewError(400, "not enough rights to send text messages to the chat")
+	ErrNoRightsToSendText2 = tb.NewError(400, "not enough rights to send text messages to the chat")
+)
+
 /*
 // Bad request errors
 var (
@@ -170,22 +178,17 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 		return false
 	}
 
-	// Custom errors that are not present in Telebot, for whatever reason
-	tbGroupDeleterErr := tb.NewError(403, "telegram: Forbidden: the group chat was deleted")
-	tbGroupDeleterErr2 := tb.NewError(403, "Forbidden: the group chat was deleted")
-	tbNoRightsToSendText := tb.NewError(400, "telegram: Bad Request: not enough rights to send text messages to the chat")
-	tbNoRightsToSendText2 := tb.NewError(400, "Bad Request: not enough rights to send text messages to the chat")
-
 	// Check for specific error messages in string form
 	if err != nil && strings.Contains(err.Error(), "message to edit not found") {
 		log.Warn().Msg("Message not found to edit - it may have been deleted or is too old")
 		return true
 	}
 
-	// Check for specific error messages in string form
-	if err != nil && strings.Contains(err.Error(), "message to edit not found") {
-		log.Warn().Msg("Message not found to edit - it may have been deleted or is too old")
-		return true
+	// Check for group deleted error via string matching (for errors that don't match our custom errors)
+	if err != nil && strings.Contains(err.Error(), "Forbidden: the group chat was deleted") {
+		log.Info().Msgf("Group chat was deleted (chat=%s), removing from database...", chat.Id)
+		tg.Db.RemoveUser(chat)
+		return false
 	}
 
 	switch err {
@@ -216,7 +219,7 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 		warnUnhandled(err, false)
 
 	case tb.ErrQueryTooOld:
-		// Nothing we can de about too old queries
+		// Nothing we can do about too old queries
 		return true
 
 	case tb.ErrMessageNotModified:
@@ -230,6 +233,7 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	case tb.ErrChatNotFound:
 		log.Info().Msgf("Chat not found (chat=%s), likely deleted - removing from database", chat.Id)
 		tg.Db.RemoveUser(chat)
+		return false
 
 	case tb.ErrEmptyChatID:
 		warnUnhandled(err, false)
@@ -245,16 +249,14 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 
 	case tb.ErrNoRightsToSend:
 		log.Debug().Msgf("No rights to send messages to chat=%s (ignoring)", chat.Id)
-
-	case tb.ErrNoRightsToDelete:
-		log.Debug().Msgf("No rights to delete message in chat=%s (ignoring)", chat.Id)
-
-	case tb.ErrNotFoundToDelete:
-		// Not really an error, as a user may have manually deleted a mesage
 		return false
 
 	case tb.ErrNoRightsToDelete:
-		log.Error().Err(err).Msg("No rights to remove message in chat")
+		log.Debug().Msgf("No rights to delete message in chat=%s (ignoring)", chat.Id)
+		return false
+
+	case tb.ErrNotFoundToDelete:
+		// Not really an error, as a user may have manually deleted a mesage
 		return false
 
 	case tb.ErrTooLongMarkup:
@@ -274,36 +276,43 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	case tb.ErrBlockedByUser:
 		log.Debug().Msgf("Bot was blocked by user=%s, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
+		return false
 
 	case tb.ErrKickedFromGroup:
 		log.Debug().Msgf("Bot was kicked from group=%s, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
+		return false
 
 	case tb.ErrKickedFromSuperGroup:
 		log.Debug().Msgf("Bot was kicked from supergroup=%s, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
+		return false
 
 	case tb.ErrNotStartedByUser:
 		log.Debug().Msgf("Bot was never started by user=%s, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
+		return false
 
 	case tb.ErrUserIsDeactivated:
 		log.Debug().Msgf("User=%s has been deactivated, removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
+		return false
 
-	case tbGroupDeleterErr:
-		log.Warn().Msgf("Caught custom error tbGroupDeleterErr, deleting chat=%s", chat.Id)
+	case ErrGroupDeleted:
+		log.Info().Msgf("Group chat was deleted (chat=%s), removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
+		return false
 
-	case tbGroupDeleterErr2:
-		log.Warn().Msgf("Caught custom error tbGroupDeleterErr2, deleting chat=%s", chat.Id)
+	case ErrGroupDeleted2:
+		log.Info().Msgf("Group chat was deleted (chat=%s), removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
+		return false
 
-	case tbNoRightsToSendText:
+	case ErrNoRightsToSendText:
 		log.Info().Msgf("No rights to send text messages to chat=%s (bot may have been removed or permissions changed), skipping", chat.Id)
 		return false
 
-	case tbNoRightsToSendText2:
+	case ErrNoRightsToSendText2:
 		log.Info().Msgf("No rights to send text messages to chat=%s (bot may have been removed or permissions changed), skipping", chat.Id)
 		return false
 
