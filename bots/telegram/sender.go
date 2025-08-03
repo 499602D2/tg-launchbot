@@ -130,6 +130,13 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan Messa
 	// Create the results channel
 	results := make(chan string, len(sendable.Recipients))
 
+	// Check for batch deletion early to avoid creating worker jobs
+	if sendable.Type == sendables.Delete && sendable.IsBatch {
+		// Use batch deletion API - this handles everything internally
+		tg.processBatchDeletion(sendable, results, processStartTime)
+		return
+	}
+
 	if sendable.Type == sendables.Notification {
 		// Flip switch to indicate that we are sending notifications
 		tg.Spam.NotificationSendUnderway = true
@@ -187,34 +194,28 @@ func (tg *Bot) ProcessSendable(sendable *sendables.Sendable, workPool chan Messa
 
 	// If this was a deletion, handle it differently
 	if sendable.Type == sendables.Delete {
-		if sendable.IsBatch {
-			// Use batch deletion API
-			tg.processBatchDeletion(sendable, results, processStartTime)
-			return
-		} else {
-			// Regular deletion: use workers for individual deletions
-			// Wait for all workers to finish before calculating processing time
-			log.Debug().Msgf("Waiting for all deletion processes to finish...")
-			for i := 0; i < len(sendable.Recipients); i++ {
-				<-results
-			}
-
-			log.Debug().Msgf("Deletions done!")
-
-			// Close results channel
-			close(results)
-
-			timeSpent := time.Since(processStartTime)
-
-			log.Info().Msgf("Processed %d message removals in %s",
-				len(sendable.MessageIDs), durafmt.Parse(timeSpent).LimitFirstN(2))
-
-			log.Info().Msgf("Average deletion-rate %.1f msg/sec",
-				float64(len(sendable.MessageIDs))/timeSpent.Seconds())
-
-			log.Info().Msgf("Returning from ProcessSendable...")
-			return
+		// Regular deletion: use workers for individual deletions
+		// Wait for all workers to finish before calculating processing time
+		log.Debug().Msgf("Waiting for all deletion processes to finish...")
+		for i := 0; i < len(sendable.Recipients); i++ {
+			<-results
 		}
+
+		log.Debug().Msgf("Deletions done!")
+
+		// Close results channel
+		close(results)
+
+		timeSpent := time.Since(processStartTime)
+
+		log.Info().Msgf("Processed %d message removals in %s",
+			len(sendable.MessageIDs), durafmt.Parse(timeSpent).LimitFirstN(2))
+
+		log.Info().Msgf("Average deletion-rate %.1f msg/sec",
+			float64(len(sendable.MessageIDs))/timeSpent.Seconds())
+
+		log.Info().Msgf("Returning from ProcessSendable...")
+		return
 	}
 
 	// Notification sending done: mark as finished
@@ -503,11 +504,15 @@ func (tg *Bot) NotificationWorker(id int, jobChannel chan MessageJob) {
 					id, job.Recipient.Id, job.Id, job.Recipient.Type)
 			}
 
-			job.Results <- idPair
+			if job.Results != nil {
+				job.Results <- idPair
+			}
 
 		case sendables.Delete:
 			tg.DeleteNotificationMessage(job.Sendable, job.Recipient)
-			job.Results <- ""
+			if job.Results != nil {
+				job.Results <- ""
+			}
 
 		case sendables.Command:
 			tg.SendCommand(job.Sendable.Message, job.Recipient)
