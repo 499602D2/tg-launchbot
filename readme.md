@@ -1,5 +1,5 @@
 # LaunchBot – a rocket launch information and notifications bot for Telegram 🚀
-LaunchBot keeps you up to date with what's going up, around the clock, since 2019. Over a million launch notifications delivered to thousands of chats and groups!
+LaunchBot keeps you up to date with what's going up, around the clock, since 2019. Over four million launch notifications delivered to thousands of chats and groups!
 
 Reachable as [@rocketrybot](https://t.me/rocketrybot) on Telegram.
 
@@ -11,7 +11,7 @@ LaunchBot uses the LaunchLibrary2 API to fetch launch information on scheduled i
 Other features include...
 - user-configurable notifications on a per-provider and per-country basis
 - user-configurable notification times from 4 different options
-- keyword filtering to block or allow launches based on keywords
+- keyword filtering to block or allow launches based on custom keywords
 - notifications of launches being postponed
 - muteable launches
 - direct links to launch webcasts
@@ -23,7 +23,7 @@ Other features include...
 
 LaunchBot has not been tested on Windows. However, it should run on any Linux distribution, alongside with macOS. Other Unix-like OSs are untested, but should work as long as they have a recent version of Go installed. LaunchBot has been tested on 32-bit ARM, so all Raspberry Pis should work.
 
-1. Clone the repository and install all dependencies with `go get all`
+1. Clone the repository and install all dependencies with `go mod download`
 
 2. Move into the main directory with `cd cmd`
 
@@ -208,7 +208,7 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 
 	- ✅ Add some group-specific settings, e.g. command permissions
 
-	## 3.1 / threaded sender (June 2022 ->)
+	## 3.1 / threaded sender (June 2022)
 
 	- ✅ Implements a threaded sender, achieving much higher send-rates
 	
@@ -216,17 +216,21 @@ The above only applies on a per-bot-instance basis. The creator of the bot choos
 
 	- ✅ General improvements
 
-	## 3.2 / Keyword filtering improvements (January 2025)
+    ## 3.2 / Channel support (August 2022)
 
-	- ✅ Simplified keyword filtering system with blocked/allowed keywords
+    - ✅ Support for Telegram channels
 
-	- ✅ Keywords now always override provider subscriptions
+    - ✅ Support for Falcon Heavy side boosters and Starship
 
-	- ✅ Support for adding multiple keywords at once (comma-separated)
+	## 3.3 / keyword filtering system (August 2025)
 
-	- ✅ Removed complex filter modes in favor of simple allowlist/blocklist
+	- ✅ Keyword-based allow-/blocklists for more granular filtering
+	
+    - ✅ Telegram batch delete API
 
-	## 3.3 and onwards
+    - ✅ Go 1.19 -> 1.24, dependency bump
+
+	## Future
 
 	- [ ] Inline queries (should be trivial to do)
 
