@@ -187,7 +187,7 @@ func main() {
 	if session.Telegram.Owner != 0 {
 		// If owner is configured, notify of startup
 		startSendable := sendables.TextOnlySendable(
-			"🤖 LaunchBot started",
+			fmt.Sprintf("🤖 LaunchBot %s started (%s)", Version, GitSHA),
 			session.Db.LoadUser(fmt.Sprint(session.Telegram.Owner), "tg"),
 		)
 
