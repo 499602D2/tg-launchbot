@@ -10,6 +10,7 @@ import (
 	"launchbot/utils"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/bradfitz/latlong"
 	"github.com/dustin/go-humanize"
@@ -106,6 +107,212 @@ func (tg *Bot) adminReply(ctx tb.Context) error {
 		true,
 	)
 
+	return nil
+}
+
+// Admin-only command to broadcast messages to all active subscribers
+func (tg *Bot) broadcastHandler(ctx tb.Context) error {
+	// Owner-only function
+	if !tg.senderIsOwner(ctx) {
+		log.Error().Msgf("/broadcast called by non-owner (%d in %d)", ctx.Sender().ID, ctx.Chat().ID)
+		return nil
+	}
+
+	// Split command arguments
+	inputDataSplit := strings.Split(ctx.Text(), " ")
+
+	// If no mode specified, send instructions
+	if len(inputDataSplit) < 2 {
+		instructions := "📡 *LaunchBot Broadcast*\n\n" +
+			"Send a message to all active users (private chats only).\n\n" +
+			"*Usage:* /broadcast MODE message...\n\n" +
+			"*Modes:*\n" +
+			"• DRAFT - Preview the message (sent only to you)\n" +
+			"• SEND - Broadcast to all active users in private chats\n\n" +
+			"*Example:*\n" +
+			"`/broadcast DRAFT Hello everyone!`\n" +
+			"`/broadcast SEND 🚀 New features available!`\n\n" +
+			"*Note:* Groups and channels are excluded from broadcasts.\n" +
+			"*Formatting:* Bold, italic, and other text formatting from your Telegram client will be preserved."
+
+		tg.Enqueue(sendables.TextOnlySendable(
+			utils.PrepareInputForMarkdown(instructions, "text"),
+			tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")),
+			true,
+		)
+		return nil
+	}
+
+	// Get mode and message
+	mode := strings.ToUpper(inputDataSplit[1])
+
+	// Validate mode
+	if mode != "DRAFT" && mode != "SEND" {
+		tg.Enqueue(sendables.TextOnlySendable(
+			utils.PrepareInputForMarkdown("⚠️ Invalid mode. Use DRAFT or SEND.", "text"),
+			tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")),
+			true,
+		)
+		return nil
+	}
+
+	// Check if message is provided
+	if len(inputDataSplit) < 3 {
+		tg.Enqueue(sendables.TextOnlySendable(
+			utils.PrepareInputForMarkdown("⚠️ No message provided. Usage: /broadcast MODE message...", "text"),
+			tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")),
+			true,
+		)
+		return nil
+	}
+
+	// Extract the message (everything after mode)
+	message := strings.Join(inputDataSplit[2:], " ")
+	
+	// Check for formatting entities
+	hasFormattingEntities := false
+	if ctx.Message() != nil && ctx.Message().Entities != nil {
+		for _, entity := range ctx.Message().Entities {
+			// Check if this is a formatting entity
+			if entity.Type == tb.EntityBold || entity.Type == tb.EntityItalic || 
+			   entity.Type == tb.EntityCode || entity.Type == tb.EntityCodeBlock {
+				hasFormattingEntities = true
+				break
+			}
+		}
+	}
+	
+	// Prepare the message text
+	var broadcastText string
+	
+	// Check if we have formatting entities to reconstruct
+	if hasFormattingEntities && ctx.Message() != nil {
+		// Reconstruct markdown from message entities if present
+		// Calculate the UTF-16 offset for the message content (after "/broadcast MODE ")
+		cmdPrefix := fmt.Sprintf("/broadcast %s ", inputDataSplit[1])
+		prefixUTF16Len := len(utf16.Encode([]rune(cmdPrefix)))
+		
+		// Adjust entity offsets relative to the message content
+		adjustedEntities := make([]tb.MessageEntity, 0, len(ctx.Message().Entities))
+		for _, entity := range ctx.Message().Entities {
+			// Skip entities that are before our message content or are not formatting
+			if entity.Offset < prefixUTF16Len {
+				continue
+			}
+			if entity.Type != tb.EntityBold && entity.Type != tb.EntityItalic && 
+			   entity.Type != tb.EntityCode && entity.Type != tb.EntityCodeBlock {
+				continue
+			}
+			// Adjust offset and add to list
+			adjustedEntity := entity
+			adjustedEntity.Offset -= prefixUTF16Len
+			adjustedEntities = append(adjustedEntities, adjustedEntity)
+		}
+		
+		// Reconstruct markdown from entities
+		reconstructedMessage := utils.ReconstructMarkdownFromEntities(message, adjustedEntities)
+		log.Debug().Msgf("Reconstructed message with markdown: %s", reconstructedMessage)
+		
+		// Escape the message using markdown mode to preserve formatting
+		broadcastText = utils.PrepareInputForMarkdown(reconstructedMessage, "markdown")
+	} else {
+		// No formatting entities, just escape the plain text
+		broadcastText = utils.PrepareInputForMarkdown(message, "text")
+	}
+
+	if mode == "DRAFT" {
+		// Send preview only to owner
+		previewHeader := utils.PrepareInputForMarkdown("📝 *DRAFT Preview*\n\n", "text")
+		previewText := previewHeader + broadcastText
+
+		// Create sendable with markdown support
+		msg := sendables.Message{
+			TextContent: previewText,
+			SendOptions: tb.SendOptions{
+				ParseMode: "MarkdownV2",
+				DisableWebPagePreview: true,
+			},
+		}
+		sendable := sendables.Sendable{
+			Type:    sendables.Command,
+			Message: &msg,
+		}
+		sendable.AddRecipient(tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg"), false)
+		tg.Enqueue(&sendable, true)
+
+		log.Info().Msg("Broadcast draft sent to owner")
+		return nil
+	}
+
+	// SEND mode - broadcast to private chats only
+	subscribers := tg.Db.GetAllActiveSubscribers("tg", true)
+
+	if len(subscribers) == 0 {
+		tg.Enqueue(sendables.TextOnlySendable(
+			utils.PrepareInputForMarkdown("⚠️ No active private chat subscribers found.", "text"),
+			tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")),
+			true,
+		)
+		return nil
+	}
+
+	// Create a sendable for each subscriber (including owner)
+	successCount := 0
+	ownerIncluded := false
+	
+	for _, subscriber := range subscribers {
+		// Check if this subscriber is the owner
+		if subscriber.Id == fmt.Sprint(tg.Owner) {
+			ownerIncluded = true
+		}
+
+		// Create markdown sendable for each user
+		msg := sendables.Message{
+			TextContent: broadcastText,
+			SendOptions: tb.SendOptions{
+				ParseMode: "MarkdownV2",
+				DisableWebPagePreview: true,
+			},
+		}
+		sendable := sendables.Sendable{
+			Type:    sendables.Command,
+			Message: &msg,
+		}
+		sendable.AddRecipient(subscriber, false)
+
+		// Add to command queue (high priority) to ensure proper markdown handling
+		tg.Enqueue(&sendable, true)
+		successCount++
+	}
+	
+	// If owner wasn't in the subscriber list, add them manually
+	if !ownerIncluded {
+		ownerUser := tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")
+		msg := sendables.Message{
+			TextContent: broadcastText,
+			SendOptions: tb.SendOptions{
+				ParseMode: "MarkdownV2",
+				DisableWebPagePreview: true,
+			},
+		}
+		sendable := sendables.Sendable{
+			Type:    sendables.Command,
+			Message: &msg,
+		}
+		sendable.AddRecipient(ownerUser, false)
+		tg.Enqueue(&sendable, true)
+		successCount++
+	}
+
+	// Send status message to owner after the broadcast
+	statusText := fmt.Sprintf("\n\n✅ *Broadcast queued for %d users (private chats)*", successCount)
+	tg.Enqueue(sendables.TextOnlySendable(
+		utils.PrepareInputForMarkdown(statusText, "text"),
+		tg.Cache.FindUser(fmt.Sprint(tg.Owner), "tg")),
+		true,
+	)
+
+	log.Info().Msgf("Broadcast queued for %d private chat users (including owner)", successCount)
 	return nil
 }
 
@@ -888,7 +1095,7 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 			sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.Main(chat)
 
 			tg.editCbMessage(cb, message, sendOptions)
-			return tg.respondToCallback(ctx, "🔍 Loaded keyword filtering", false)
+			return tg.respondToCallback(ctx, "🔍 Keyword filters loaded", false)
 		}
 	}
 
@@ -925,7 +1132,6 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 		tg.editCbMessage(cb, message, sendOptions)
 		return tg.respondToCallback(ctx, "🔍 Loaded keyword filtering", false)
 
-
 	case "blocked":
 		switch callbackData[1] {
 		case "view":
@@ -935,7 +1141,7 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 			sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewBlocked(chat)
 
 			tg.editCbMessage(cb, message, sendOptions)
-			return tg.respondToCallback(ctx, "🚫 Loaded blocked keywords", false)
+			return tg.respondToCallback(ctx, "🚫 Blocked keywords loaded", false)
 
 		case "remove":
 			if len(callbackData) > 2 {
@@ -968,7 +1174,7 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 			sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewBlocked(chat)
 
 			tg.editCbMessage(cb, fullMessage, sendOptions)
-			return tg.respondToCallback(ctx, "✅ All blocked keywords cleared", true)
+			return tg.respondToCallback(ctx, "✅ All blocked keywords removed", true)
 
 		case "add":
 			// Send prompt with ForceReply
@@ -1012,7 +1218,7 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 			sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewAllowed(chat)
 
 			tg.editCbMessage(cb, message, sendOptions)
-			return tg.respondToCallback(ctx, "✅ Loaded allowed keywords", false)
+			return tg.respondToCallback(ctx, "✅ Allowed keywords loaded", false)
 
 		case "remove":
 			if len(callbackData) > 2 {
@@ -1045,7 +1251,7 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 			sendOptions, _ := tg.Template.Keyboard.Settings.Keywords.ViewAllowed(chat)
 
 			tg.editCbMessage(cb, fullMessage, sendOptions)
-			return tg.respondToCallback(ctx, "✅ All allowed keywords cleared", true)
+			return tg.respondToCallback(ctx, "✅ All allowed keywords removed", true)
 
 		case "add":
 			// Send prompt with ForceReply
@@ -1101,7 +1307,7 @@ func (tg *Bot) keywordsCallback(ctx tb.Context) error {
 		}
 
 		tg.editCbMessage(cb, message, sendOptions)
-		return tg.respondToCallback(ctx, "❓ Loaded help", false)
+		return tg.respondToCallback(ctx, "❓ Help loaded", false)
 	}
 
 	return nil
@@ -1309,23 +1515,23 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 
 	// Extract the keywords from user's message (support comma-separated)
 	input := strings.TrimSpace(ctx.Text())
-	
+
 	// Validate input
 	if input == "" {
 		tg.Enqueue(sendables.TextOnlySendable("⚠️ Keywords cannot be empty. Please try again.", chat), true)
 		return nil
 	}
-	
+
 	// Split by comma to support multiple keywords
 	keywords := strings.Split(input, ",")
 	var addedKeywords []string
 	var skippedKeywords []string
 	var message string
-	
+
 	// Check total number of existing keywords to enforce limits
 	const maxKeywordsPerType = 50
 	const maxTotalLength = 500
-	
+
 	// Determine if it's for blocked or allowed keywords based on the prompt
 	if strings.Contains(replyText, "block") {
 		// Count existing keywords
@@ -1334,28 +1540,28 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 		if chat.BlockedKeywords != "" {
 			existingCount = len(strings.Split(chat.BlockedKeywords, ","))
 		}
-		
+
 		// Add to blocked keywords
 		for _, kw := range keywords {
 			keyword := strings.TrimSpace(kw)
 			if keyword == "" {
 				continue
 			}
-			
+
 			// Check if we've hit the keyword count limit
-			if existingCount + len(addedKeywords) >= maxKeywordsPerType {
+			if existingCount+len(addedKeywords) >= maxKeywordsPerType {
 				log.Debug().Str("user", chat.Id).Str("keyword", keyword).Int("limit", maxKeywordsPerType).Msg("Keyword rejected: count limit reached")
 				skippedKeywords = append(skippedKeywords, keyword+" (limit reached: max "+fmt.Sprintf("%d", maxKeywordsPerType)+" keywords)")
 				continue
 			}
-			
+
 			// Check individual keyword length
 			if len(keyword) > 50 {
 				log.Debug().Str("user", chat.Id).Str("keyword", keyword).Int("length", len(keyword)).Msg("Keyword rejected: too long")
 				skippedKeywords = append(skippedKeywords, keyword+" (too long)")
 				continue
 			}
-			
+
 			// Check total length limit
 			potentialNewLength := existingLength + len(keyword) + 1 // +1 for comma
 			if existingLength > 0 && potentialNewLength > maxTotalLength {
@@ -1363,7 +1569,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 				skippedKeywords = append(skippedKeywords, keyword+" (total length limit reached)")
 				continue
 			}
-			
+
 			if chat.HasBlockedKeyword(keyword) {
 				skippedKeywords = append(skippedKeywords, keyword+" (already exists)")
 			} else if chat.AddBlockedKeyword(keyword) {
@@ -1372,7 +1578,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 				existingLength = len(chat.BlockedKeywords)
 			}
 		}
-		
+
 		if len(addedKeywords) > 0 {
 			tg.Db.SaveUser(chat)
 			log.Info().Str("user", chat.Id).Strs("keywords", addedKeywords).Msg("User added blocked keywords")
@@ -1382,7 +1588,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 				message = fmt.Sprintf("✅ Successfully blocked %d keywords: %s", len(addedKeywords), strings.Join(addedKeywords, ", "))
 			}
 		}
-		
+
 		if len(skippedKeywords) > 0 {
 			log.Debug().Str("user", chat.Id).Strs("skipped", skippedKeywords).Msg("Some keywords were skipped")
 			if message != "" {
@@ -1390,7 +1596,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 			}
 			message += fmt.Sprintf("⚠️ Skipped %d keywords: %s", len(skippedKeywords), strings.Join(skippedKeywords, ", "))
 		}
-		
+
 		if message == "" {
 			message = "⚠️ No keywords were added."
 		}
@@ -1401,28 +1607,28 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 		if chat.AllowedKeywords != "" {
 			existingCount = len(strings.Split(chat.AllowedKeywords, ","))
 		}
-		
-		// Add to allowed keywords  
+
+		// Add to allowed keywords
 		for _, kw := range keywords {
 			keyword := strings.TrimSpace(kw)
 			if keyword == "" {
 				continue
 			}
-			
+
 			// Check if we've hit the keyword count limit
-			if existingCount + len(addedKeywords) >= maxKeywordsPerType {
+			if existingCount+len(addedKeywords) >= maxKeywordsPerType {
 				log.Debug().Str("user", chat.Id).Str("keyword", keyword).Int("limit", maxKeywordsPerType).Msg("Keyword rejected: count limit reached")
 				skippedKeywords = append(skippedKeywords, keyword+" (limit reached: max "+fmt.Sprintf("%d", maxKeywordsPerType)+" keywords)")
 				continue
 			}
-			
+
 			// Check individual keyword length
 			if len(keyword) > 50 {
 				log.Debug().Str("user", chat.Id).Str("keyword", keyword).Int("length", len(keyword)).Msg("Keyword rejected: too long")
 				skippedKeywords = append(skippedKeywords, keyword+" (too long)")
 				continue
 			}
-			
+
 			// Check total length limit
 			potentialNewLength := existingLength + len(keyword) + 1 // +1 for comma
 			if existingLength > 0 && potentialNewLength > maxTotalLength {
@@ -1430,7 +1636,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 				skippedKeywords = append(skippedKeywords, keyword+" (total length limit reached)")
 				continue
 			}
-			
+
 			if chat.HasAllowedKeyword(keyword) {
 				skippedKeywords = append(skippedKeywords, keyword+" (already exists)")
 			} else if chat.AddAllowedKeyword(keyword) {
@@ -1439,7 +1645,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 				existingLength = len(chat.AllowedKeywords)
 			}
 		}
-		
+
 		if len(addedKeywords) > 0 {
 			tg.Db.SaveUser(chat)
 			if len(addedKeywords) == 1 {
@@ -1448,7 +1654,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 				message = fmt.Sprintf("✅ Successfully allowed %d keywords: %s", len(addedKeywords), strings.Join(addedKeywords, ", "))
 			}
 		}
-		
+
 		if len(skippedKeywords) > 0 {
 			log.Debug().Str("user", chat.Id).Strs("skipped", skippedKeywords).Msg("Some keywords were skipped")
 			if message != "" {
@@ -1456,7 +1662,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 			}
 			message += fmt.Sprintf("⚠️ Skipped %d keywords: %s", len(skippedKeywords), strings.Join(skippedKeywords, ", "))
 		}
-		
+
 		if message == "" {
 			message = "⚠️ No keywords were added."
 		}
@@ -1467,12 +1673,12 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 
 	// Delete the user's input message immediately to keep chat clean
 	_ = tg.Bot.Delete(ctx.Message())
-	
+
 	// Try to edit the original prompt message to show the updated view
 	// This gives a similar experience to callback handling
 	var fullMessage string
 	var sendOptions tb.SendOptions
-	
+
 	if strings.Contains(replyText, "block") {
 		fullMessage = tg.Template.Messages.Settings.Keywords.ViewBlocked(chat)
 		sendOptions, _ = tg.Template.Keyboard.Settings.Keywords.ViewBlocked(chat)
@@ -1480,16 +1686,16 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 		fullMessage = tg.Template.Messages.Settings.Keywords.ViewAllowed(chat)
 		sendOptions, _ = tg.Template.Keyboard.Settings.Keywords.ViewAllowed(chat)
 	}
-	
+
 	fullMessage = utils.PrepareInputForMarkdown(fullMessage, "text")
-	
+
 	// Try to edit the prompt message
 	if ctx.Message().ReplyTo != nil {
 		_, err := tg.Bot.Edit(ctx.Message().ReplyTo, fullMessage, &sendOptions)
 		if err != nil {
 			// If editing fails, delete the prompt and send new message
 			_ = tg.Bot.Delete(ctx.Message().ReplyTo)
-			
+
 			msg := sendables.Message{
 				TextContent: fullMessage,
 				SendOptions: sendOptions,
@@ -1502,7 +1708,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 			tg.Enqueue(&sendable, true)
 		}
 	}
-	
+
 	// Don't show any additional notification message - the UI update is enough feedback
 	// This matches the behavior when keywords are removed via callback (which shows a popup)
 

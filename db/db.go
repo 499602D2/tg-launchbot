@@ -302,3 +302,33 @@ func (db *Database) GetMonthlyActiveUserCount() int64 {
 	return count
 }
 
+// Get all active subscribers for broadcasting
+func (db *Database) GetAllActiveSubscribers(platform string, privateOnly bool) []*users.User {
+	var subscribers []*users.User
+	
+	// Build the query
+	query := db.Conn.Model(&users.User{}).Where(
+		"platform = ? AND (subscribed_all = ? OR subscribed_to != ?) AND NOT "+
+			"(enabled24h = ? AND enabled12h = ? AND enabled1h = ? AND enabled5min = ?)",
+		platform, 1, "", 0, 0, 0, 0)
+	
+	// Add private chat filter if requested
+	if privateOnly {
+		query = query.Where("type = ?", users.Private)
+	}
+	
+	result := query.Find(&subscribers)
+	
+	if result.Error != nil {
+		log.Error().Err(result.Error).Msg("Error loading active subscribers")
+		return []*users.User{}
+	}
+	
+	chatType := "all"
+	if privateOnly {
+		chatType = "private"
+	}
+	log.Info().Msgf("Found %d active %s subscribers for broadcast", len(subscribers), chatType)
+	return subscribers
+}
+

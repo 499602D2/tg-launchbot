@@ -150,54 +150,73 @@ func (service *ServiceMessage) InteractionNotAllowed() string {
 
 // Keywords.Main
 func (keywords *KeywordsMessage) Main(chat *users.User) string {
-	return "🔍 *LaunchBot* | *Keyword Filtering*\n" +
-		"Control which launches you receive notifications for using keywords.\n\n" +
-		"*Allowed keywords:* Launches matching these keywords will be included, regardless of your subscriptions.\n" +
-		"*Blocked keywords:* Launches matching these keywords will be excluded, regardless of your subscriptions.\n\n" +
-		"Use the buttons below to manage your keywords."
+	return "🔍 *LaunchBot* | *Keyword Filtering*\n\n" +
+		"Fine-tune your launch notifications with smart keyword filters!\n\n" +
+		"✅ *Allowed Keywords*\n" +
+		"Get notified about specific launches even if you're not subscribed to their providers\n\n" +
+		"🚫 *Blocked Keywords*\n" +
+		"Hide launches you're not interested in, even from subscribed providers\n\n" +
+		"💡 Keywords match against launch names and rocket/vehicle names"
 }
 
 // Keywords.ViewBlocked
 func (keywords *KeywordsMessage) ViewBlocked(chat *users.User) string {
-	base := "🚫 *LaunchBot* | *Blocked Keywords*\n"
+	base := "🚫 *LaunchBot* | *Blocked Keywords*\n\n"
 
 	if chat.BlockedKeywords == "" {
-		return base + "You haven't blocked any keywords yet.\n\n" +
-			"Add keywords to exclude launches containing those words. For example, blocking \"Starlink\" will stop notifications for all Starlink launches."
+		return base + "No blocked keywords yet! 🎯\n\n" +
+			"Block keywords to skip launches you're not interested in.\n\n" +
+			"*Examples:*\n" +
+			"• Block `Starlink` → Skip all Starlink satellite launches\n" +
+			"• Block `test` → Skip test flights and demonstrations\n" +
+			"• Block `military` → Skip defense-related launches"
 	}
 
 	blockedList := strings.Split(chat.BlockedKeywords, ",")
-	return base + fmt.Sprintf("You have blocked %d keyword(s). Tap on a keyword to remove it, or add new ones.", len(blockedList))
+	return base + fmt.Sprintf("*Currently blocking %d keyword%s*\n\n" +
+		"These launches will be hidden from your notifications.\n\n" +
+		"Tap any keyword below to unblock it:",
+		len(blockedList), func() string { if len(blockedList) == 1 { return "" } else { return "s" } }())
 }
 
 // Keywords.ViewAllowed
 func (keywords *KeywordsMessage) ViewAllowed(chat *users.User) string {
-	base := "✅ *LaunchBot* | *Allowed Keywords*\n"
+	base := "✅ *LaunchBot* | *Allowed Keywords*\n\n"
 
 	if chat.AllowedKeywords == "" {
-		return base + "You haven't allowed any keywords yet.\n\n" +
-			"Add keywords to receive notifications for launches containing those words, regardless of your subscriptions. For example, allowing \"Falcon\" will notify you of all Falcon rocket launches."
+		return base + "No allowed keywords yet! 🚀\n\n" +
+			"Add keywords to get notifications for specific launches, even from providers you don't follow.\n\n" +
+			"*Examples:*\n" +
+			"• Allow `Falcon` → Get all Falcon rocket launches\n" +
+			"• Allow `Mars` → Get all Mars-related missions\n" +
+			"• Allow `crew` → Get all crewed space flights"
 	}
 
 	allowedList := strings.Split(chat.AllowedKeywords, ",")
-	return base + fmt.Sprintf("You have allowed %d keyword(s). Tap on a keyword to remove it, or add new ones.", len(allowedList))
+	return base + fmt.Sprintf("*Currently following %d keyword%s*\n\n" +
+		"You'll be notified about these launches regardless of your provider subscriptions.\n\n" +
+		"Tap any keyword below to remove it:",
+		len(allowedList), func() string { if len(allowedList) == 1 { return "" } else { return "s" } }())
 }
 
 // Keywords.Help
 func (keywords *KeywordsMessage) Help() string {
-	return "❔ *LaunchBot* | *Keyword Filtering Help*\n\n" +
-		"*How it works:*\n" +
-		"• *Blocked keywords:* Always exclude matching launches\n" +
-		"• *Allowed keywords:* Always include matching launches\n" +
-		"• Keywords override your launch provider subscriptions\n\n" +
-		"*Examples:*\n" +
-		"• Block \"Starlink\" to skip all Starlink launches\n" +
-		"• Allow \"Starship\" to get all Starship launches\n\n" +
-		"*Tips:*\n" +
-		"• Keywords are case-insensitive\n" +
-		"• Partial matches work (\"Star\" matches \"Starship\" and \"Starlink\")\n" +
-		"• Keywords can match launch name or vehicle name\n" +
-		"• You can add multiple keywords at once by separating them with commas"
+	return "❔ *LaunchBot* | *How Keyword Filtering Works*\n\n" +
+		"🎯 *Quick Overview*\n" +
+		"Keywords let you customize your notifications beyond provider subscriptions:\n\n" +
+		"• ✅ *Allowed* = Always notify (overrides unsubscribed providers)\n" +
+		"• 🚫 *Blocked* = Never notify (overrides subscribed providers)\n\n" +
+		"📝 *Real Examples*\n" +
+		"• Block `Starlink` → No more Starlink satellite notifications\n" +
+		"• Allow `Moon` → Get all lunar missions from any provider\n" +
+		"• Block `test` → Skip test flights and demos\n" +
+		"• Allow `astronaut` → Never miss a crewed launch\n\n" +
+		"💡 *Pro Tips*\n" +
+		"• Case doesn't matter (`falcon` = `Falcon` = `FALCON`)\n" +
+		"• Partial matches work (`Star` catches both Starship & Starlink)\n" +
+		"• Add multiple at once: `Mars, Moon, asteroid`\n" +
+		"• Max 50 keywords per type, 500 chars total\n" +
+		"• Matches launch names AND rocket/vehicle names"
 }
 
 // Keywords.AddPrompt
@@ -207,11 +226,19 @@ func (keywords *KeywordsMessage) AddPrompt(keywordType string) string {
 		"allowed": "allow",
 	}[keywordType]
 
-	return fmt.Sprintf("Please send the keyword(s) you want to %s.\n\n"+
-		"Examples:\n"+
-		"• Single: `Starlink`\n"+
-		"• Multiple: `Starlink, OneWeb, Kuiper`\n\n"+
-		"Send /cancel to cancel.", action)
+	example := map[string]string{
+		"blocked": "Starlink, test, classified",
+		"allowed": "Mars, crew, Artemis",
+	}[keywordType]
+
+	return fmt.Sprintf("📝 *Add Keywords to %s*\n\n"+
+		"Send me the keyword(s) you want to %s.\n\n"+
+		"*Format:*\n"+
+		"• Single keyword: `Falcon`\n"+
+		"• Multiple keywords: `%s`\n\n"+
+		"💡 Keywords are case-insensitive and support partial matching\n\n"+
+		"Type /cancel if you change your mind.",
+		strings.Title(action), action, example)
 }
 
 // Keywords.Added
