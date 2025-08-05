@@ -54,7 +54,7 @@ func (settings *SettingsKeyboard) Main(isGroup bool) (tb.SendOptions, [][]tb.Inl
 
 	keywordBtn := tb.InlineButton{
 		Unique: "settings",
-		Text:   "🔍 Filter by keywords",
+		Text:   "🔍 Keyword Filters",
 		Data:   "keywords/main",
 	}
 
@@ -550,19 +550,19 @@ func (command *CommandKeyboard) Admin() (tb.SendOptions, [][]tb.InlineButton) {
 func (keywords *KeywordsKeyboard) Main(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
 	allowedBtn := tb.InlineButton{
 		Unique: "keywords",
-		Text:   "✅ Allowed keywords",
+		Text:   "✅ Allowed Keywords",
 		Data:   "allowed/view",
 	}
 
 	blockedBtn := tb.InlineButton{
 		Unique: "keywords",
-		Text:   "🚫 Blocked keywords",
+		Text:   "🚫 Blocked Keywords",
 		Data:   "blocked/view",
 	}
 
 	helpBtn := tb.InlineButton{
 		Unique: "keywords",
-		Text:   "❔ Help & examples",
+		Text:   "❔ How It Works",
 		Data:   "help",
 	}
 
@@ -587,13 +587,13 @@ func (keywords *KeywordsKeyboard) Main(chat *users.User) (tb.SendOptions, [][]tb
 func (keywords *KeywordsKeyboard) ViewBlocked(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
 	addBtn := tb.InlineButton{
 		Unique: "keywords",
-		Text:   "🪄 Add blocked keyword",
+		Text:   "➕ Add Blocked Keyword",
 		Data:   "blocked/add",
 	}
 
 	clearBtn := tb.InlineButton{
 		Unique: "keywords",
-		Text:   "🗑️ Clear all",
+		Text:   "🗑️ Clear All Blocked",
 		Data:   "blocked/clear",
 	}
 
@@ -632,13 +632,13 @@ func (keywords *KeywordsKeyboard) ViewBlocked(chat *users.User) (tb.SendOptions,
 func (keywords *KeywordsKeyboard) ViewAllowed(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
 	addBtn := tb.InlineButton{
 		Unique: "keywords",
-		Text:   "🪄 Add allowed keyword",
+		Text:   "➕ Add Allowed Keyword",
 		Data:   "allowed/add",
 	}
 
 	clearBtn := tb.InlineButton{
 		Unique: "keywords",
-		Text:   "🗑️ Clear all",
+		Text:   "🗑️ Clear All Allowed",
 		Data:   "allowed/clear",
 	}
 
