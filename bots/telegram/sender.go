@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -318,101 +319,176 @@ func (tg *Bot) DeleteNotificationMessage(sendable *sendables.Sendable, user *use
 
 // Process batch deletion of messages using Telegram's DeleteMany API
 func (tg *Bot) processBatchDeletion(sendable *sendables.Sendable, results chan string, processStartTime time.Time) {
-	// Collect all messages to delete
-	var messages []tb.Editable
-	
+	// Group messages to delete by chat ID (Telegram batch deletion is chat-scoped)
+	byChat := make(map[int64][]tb.Editable)
+
+	totalMessages := 0
 	for _, user := range sendable.Recipients {
 		strMessageId, ok := sendable.MessageIDs[user.Id]
 		if !ok {
 			continue
 		}
-		
-		// Convert chat ID to integer
+
 		chatId, err := strconv.ParseInt(user.Id, 10, 64)
 		if err != nil {
 			log.Error().Err(err).Msgf("Failed to parse chat ID %s", user.Id)
 			continue
 		}
-		
-		// Convert message ID to integer
+
 		messageId, err := strconv.Atoi(strMessageId)
 		if err != nil {
 			log.Error().Err(err).Msgf("Failed to parse message ID %s", strMessageId)
 			continue
 		}
-		
-		// Create message and add to slice
-		msg := &tb.Message{
-			ID:   messageId,
-			Chat: &tb.Chat{ID: chatId},
-		}
-		messages = append(messages, msg)
+
+		msg := &tb.Message{ID: messageId, Chat: &tb.Chat{ID: chatId}}
+		byChat[chatId] = append(byChat[chatId], msg)
+		totalMessages++
 	}
-	
-	// Process in batches of 100
-	const batchSize = 100
-	totalMessages := len(messages)
-	
+
 	if totalMessages == 0 {
 		log.Debug().Msg("No messages to delete")
 		close(results)
 		return
 	}
-	
-	totalBatches := (totalMessages + batchSize - 1) / batchSize
+
+	// Build chat-scoped batches of up to 100 items each
+	const batchSize = 100
+	batches := make([][]tb.Editable, 0)
+	for _, msgs := range byChat {
+		for i := 0; i < len(msgs); i += batchSize {
+			end := i + batchSize
+			if end > len(msgs) {
+				end = len(msgs)
+			}
+			batches = append(batches, msgs[i:end])
+		}
+	}
+
+	totalBatches := len(batches)
 	log.Info().Msgf("Deleting %d messages in %d batch(es) using batch API", totalMessages, totalBatches)
-	
+
 	// Create worker pool for batch deletions
 	const batchWorkers = 4
 	batchJobs := make(chan []tb.Editable, totalBatches)
 	batchResults := make(chan error, totalBatches)
-	
+	var totalRetried int64
+	var totalRetrySucceeded int64
+
 	// Start batch deletion workers
 	for w := 1; w <= batchWorkers; w++ {
 		go func(workerID int) {
 			for batch := range batchJobs {
-				// Take token for this batch
+				// Token per batch
 				tg.Spam.GlobalLimiter(1)
-				
-				// Delete the batch
-				err := tg.Bot.DeleteMany(batch)
-				if err != nil {
-					log.Error().Err(err).Msgf("[BatchWorker=%d] Failed to delete batch of %d messages", workerID, len(batch))
+
+				// Prefer DeleteMany; on error, fall back to individual deletes
+				if err := tg.Bot.DeleteMany(batch); err != nil {
+					log.Warn().Err(err).Msgf("[BatchWorker=%d] DeleteMany failed, falling back to singles (%d msgs)", workerID, len(batch))
+
+					var firstErr error
+					failed := make([]tb.Editable, 0, len(batch))
+					for _, m := range batch {
+						if derr := tg.Bot.Delete(m); derr != nil {
+							// Record the first error for reporting
+							if firstErr == nil {
+								firstErr = derr
+							}
+							// Best-effort logging for individual failures
+							log.Debug().Err(derr).Msgf("[BatchWorker=%d] Single delete failed", workerID)
+							failed = append(failed, m)
+						}
+					}
+
+					// One retry loop for failed IDs (no persistence)
+					if len(failed) > 0 {
+						// brief delay before retrying
+						time.Sleep(250 * time.Millisecond)
+						atomic.AddInt64(&totalRetried, int64(len(failed)))
+
+						// Try DeleteMany on the failed set (same chat)
+						if len(failed) > 1 {
+							if rerr := tg.Bot.DeleteMany(failed); rerr != nil {
+								// Fall back to individual deletes again
+								firstErr = nil
+								succ := 0
+								for _, m := range failed {
+									if derr := tg.Bot.Delete(m); derr != nil {
+										if firstErr == nil {
+											firstErr = derr
+										}
+									} else {
+										succ++
+									}
+								}
+								if succ > 0 {
+									atomic.AddInt64(&totalRetrySucceeded, int64(succ))
+									log.Debug().Msgf("[BatchWorker=%d] Retry singles succeeded for %d/%d messages", workerID, succ, len(failed))
+								}
+							} else {
+								// Retry succeeded for all failed
+								firstErr = nil
+								atomic.AddInt64(&totalRetrySucceeded, int64(len(failed)))
+								log.Debug().Msgf("[BatchWorker=%d] Retry DeleteMany succeeded for %d/%d messages", workerID, len(failed), len(failed))
+							}
+						} else {
+							// Single failed item; try once more
+							if derr := tg.Bot.Delete(failed[0]); derr != nil {
+								firstErr = derr
+							} else {
+								firstErr = nil
+								atomic.AddInt64(&totalRetrySucceeded, 1)
+								log.Debug().Msgf("[BatchWorker=%d] Retry single delete succeeded", workerID)
+							}
+						}
+					}
+
+					if firstErr != nil {
+						batchResults <- firstErr
+					} else {
+						log.Debug().Msgf("[BatchWorker=%d] Successfully deleted batch of %d messages (fallback)", workerID, len(batch))
+						batchResults <- nil
+					}
 				} else {
 					log.Debug().Msgf("[BatchWorker=%d] Successfully deleted batch of %d messages", workerID, len(batch))
+					batchResults <- nil
 				}
-				batchResults <- err
 			}
 		}(w)
 	}
-	
-	// Submit batch jobs
+
+	// Submit all batches
 	go func() {
-		for i := 0; i < len(messages); i += batchSize {
-			end := min(i+batchSize, len(messages))
-			batch := messages[i:end]
-			batchJobs <- batch
+		for _, b := range batches {
+			batchJobs <- b
 		}
 		close(batchJobs)
 	}()
-	
+
 	// Wait for all batches to complete
 	successCount := 0
-	for range totalBatches {
+	for i := 0; i < totalBatches; i++ {
 		if err := <-batchResults; err == nil {
 			successCount++
 		}
 	}
-	
+
+	// Debug summary for retry stats
+	if totalRetried > 0 {
+		log.Debug().Msgf("Batch deletion retries: attempted=%d, succeeded=%d, failed=%d",
+			totalRetried, totalRetrySucceeded, totalRetried-totalRetrySucceeded)
+	}
+
+	// Close channels
 	close(results)
 	close(batchResults)
-	
+
 	timeSpent := time.Since(processStartTime)
-	log.Info().Msgf("Processed %d message removals in %s using batch API (%d/%d batches successful)",
-		totalMessages, durafmt.Parse(timeSpent).LimitFirstN(2), successCount, totalBatches)
-	
-	log.Info().Msgf("Average deletion-rate %.1f msg/sec",
-		float64(totalMessages)/timeSpent.Seconds())
+	log.Info().Msgf(
+		"Processed %d message removals in %s using batch API (%d/%d batches successful)",
+		totalMessages, durafmt.Parse(timeSpent).LimitFirstN(2), successCount, totalBatches,
+	)
+	log.Info().Msgf("Average deletion-rate %.1f msg/sec", float64(totalMessages)/timeSpent.Seconds())
 }
 
 // Send a notification
