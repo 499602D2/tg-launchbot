@@ -1498,7 +1498,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 
 	// Check if it's a keyword input prompt
 	replyText := ctx.Message().ReplyTo.Text
-	if !strings.Contains(replyText, "Please send the keyword") {
+	if !strings.Contains(replyText, "Send me the keyword") {
 		return nil
 	}
 
