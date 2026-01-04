@@ -73,10 +73,19 @@ func (tg *Bot) Initialize(token string) {
 
 	var err error
 
+	// Configure HTTP transport with higher connection limits.
+	// Go's default MaxIdleConnsPerHost is 2, which causes API calls (Edit, Respond)
+	// to block when long polling holds connections open.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConnsPerHost = 10
+
 	tg.Bot, err = tb.NewBot(tb.Settings{
 		Token:  token,
 		Poller: &tb.LongPoller{Timeout: time.Second * 60},
-		Client: &http.Client{Timeout: time.Second * 60},
+		Client: &http.Client{
+			Timeout:   time.Second * 60,
+			Transport: transport,
+		},
 	})
 
 	if err != nil {
