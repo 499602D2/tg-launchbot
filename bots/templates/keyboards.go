@@ -27,6 +27,7 @@ type SettingsKeyboard struct {
 	TimeZone     TimeZoneKeyboard
 	Subscription SubscriptionKeyboard
 	Keywords     KeywordsKeyboard
+	Topic        TopicKeyboard
 }
 
 // Extend Settings{} with time-zone settings
@@ -39,6 +40,10 @@ type SubscriptionKeyboard struct {
 
 // Extend Settings{} with keyword filter settings
 type KeywordsKeyboard struct {
+}
+
+// Extend Settings{} with topic settings
+type TopicKeyboard struct {
 }
 
 // Command templates
@@ -109,13 +114,23 @@ func (settings *SettingsKeyboard) Group(chat *users.User) (tb.SendOptions, [][]t
 		Data:   fmt.Sprintf("cmd/all/%s", utils.ToggleBoolStateAsString[chat.AnyoneCanSendCommands]),
 	}
 
+	topicLabel := "📍 Set notification topic"
+	if chat.TopicId != 0 {
+		topicLabel = fmt.Sprintf("📍 Topic: %d (change)", chat.TopicId)
+	}
+	topicBtn := tb.InlineButton{
+		Unique: "settings",
+		Text:   topicLabel,
+		Data:   "topic/main",
+	}
+
 	retBtn := tb.InlineButton{
 		Unique: "settings",
 		Text:   "⬅️ Back to settings",
 		Data:   "main",
 	}
 
-	kb := [][]tb.InlineButton{{toggleAllCmdAccessBtn}, {retBtn}}
+	kb := [][]tb.InlineButton{{toggleAllCmdAccessBtn}, {topicBtn}, {retBtn}}
 
 	sendOptions := tb.SendOptions{
 		ParseMode:             "MarkdownV2",
@@ -662,6 +677,42 @@ func (keywords *KeywordsKeyboard) ViewAllowed(chat *users.User) (tb.SendOptions,
 		kb = append(kb, []tb.InlineButton{clearBtn})
 	}
 
+	kb = append(kb, []tb.InlineButton{retBtn})
+
+	sendOptions := tb.SendOptions{
+		ParseMode:             "MarkdownV2",
+		DisableWebPagePreview: true,
+		ReplyMarkup:           &tb.ReplyMarkup{InlineKeyboard: kb},
+		Protected:             true,
+	}
+
+	return sendOptions, kb
+}
+
+func (topic *TopicKeyboard) Main(chat *users.User) (tb.SendOptions, [][]tb.InlineButton) {
+	setBtn := tb.InlineButton{
+		Unique: "settings",
+		Text:   "📝 Set topic ID",
+		Data:   "topic/setprompt",
+	}
+
+	var kb [][]tb.InlineButton
+	if chat.TopicId != 0 {
+		clearBtn := tb.InlineButton{
+			Unique: "settings",
+			Text:   "❌ Clear (use general)",
+			Data:   "topic/clear",
+		}
+		kb = [][]tb.InlineButton{{setBtn}, {clearBtn}}
+	} else {
+		kb = [][]tb.InlineButton{{setBtn}}
+	}
+
+	retBtn := tb.InlineButton{
+		Unique: "settings",
+		Text:   "⬅️ Back to group settings",
+		Data:   "group/main",
+	}
 	kb = append(kb, []tb.InlineButton{retBtn})
 
 	sendOptions := tb.SendOptions{
