@@ -123,6 +123,7 @@ func (tg *Bot) Initialize(token string) {
 	tg.Bot.Handle(&tb.InlineButton{Unique: "keywords"}, tg.wrapCallbackHandler(tg.keywordsCallback))
 	tg.Bot.Handle(&tb.InlineButton{Unique: "expand"}, tg.wrapCallbackHandler(tg.expandMessageContent))
 	tg.Bot.Handle(&tb.InlineButton{Unique: "admin"}, tg.wrapCallbackHandler(tg.adminCommand))
+	tg.Bot.Handle(&tb.InlineButton{Unique: "testNotifConfirm"}, tg.wrapCallbackHandler(tg.testNotifConfirmCallback))
 
 	// A generic, catch-all callback handler to help with migrations/deprecations
 	tg.Bot.Handle(tb.OnCallback, tg.wrapCallbackHandler(tg.genericCallbackHandler))

@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -521,8 +522,15 @@ func (tg *Bot) SendNotification(sendable *sendables.Sendable, user *users.User, 
 		text = sendables.SetChannelNotificationFooter(text, tg.Username)
 	}
 
+	// Create a local copy of send options to avoid mutating shared state
+	// (multiple workers process the same sendable concurrently)
+	opts := sendable.Message.SendOptions
+	if user.TopicId != 0 {
+		opts.ThreadID = int(user.TopicId)
+	}
+
 	// Send message
-	sent, err := tg.Bot.Send(tb.ChatID(id), text, &sendable.Message.SendOptions)
+	sent, err := tg.Bot.Send(tb.ChatID(id), text, &opts)
 
 	if err != nil {
 		var floodErr tb.FloodError
@@ -534,6 +542,27 @@ func (tg *Bot) SendNotification(sendable *sendables.Sendable, user *users.User, 
 
 			if sendable.Tokens < 6 {
 				sendable.Tokens++
+			}
+		}
+
+		// Check for topic-related errors
+		if user.TopicId != 0 {
+			errStr := err.Error()
+			if strings.Contains(errStr, "thread not found") ||
+				strings.Contains(errStr, "TOPIC_DELETED") ||
+				strings.Contains(errStr, "TOPIC_CLOSED") ||
+				strings.Contains(errStr, "message thread not found") {
+				log.Warn().Str("user", user.Id).Int64("topic", user.TopicId).
+					Msg("Topic no longer exists, clearing and retrying")
+				user.TopicId = 0
+				go tg.Db.SaveUser(user)
+				return tg.SendNotification(sendable, user, retryCount+1)
+			}
+
+			// Log potential topic errors for future detection
+			if strings.Contains(errStr, "topic") || strings.Contains(errStr, "thread") {
+				log.Warn().Str("user", user.Id).Str("error", errStr).
+					Msg("Unhandled topic-related error - may need to add to detection logic")
 			}
 		}
 

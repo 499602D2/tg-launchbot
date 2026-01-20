@@ -19,11 +19,13 @@ type SettingsMessage struct {
 	TimeZone     TimeZoneMessage
 	Subscription SubscriptionMessage
 	Keywords     KeywordsMessage
+	Topic        TopicMessage
 }
 
 type TimeZoneMessage struct{}
 type SubscriptionMessage struct{}
 type KeywordsMessage struct{}
+type TopicMessage struct{}
 type CommandMessage struct{}
 type ServiceMessage struct{}
 
@@ -284,4 +286,29 @@ func (keywords *KeywordsMessage) NotFound(keyword, keywordType string) string {
 // Keywords.Cleared
 func (keywords *KeywordsMessage) Cleared(keywordType string) string {
 	return fmt.Sprintf("✅ All %s keywords have been cleared.", keywordType)
+}
+
+// Topic.Main
+func (topic *TopicMessage) Main(topicId int64) string {
+	status := "Not configured (using general topic)"
+	if topicId != 0 {
+		status = fmt.Sprintf("Topic ID: %d", topicId)
+	}
+
+	return fmt.Sprintf("📍 *LaunchBot* | *Topic Settings*\n\n"+
+		"*Current:* %s\n\n"+
+		"*How to find your topic ID:*\n"+
+		"1. Open your forum group in Telegram\n"+
+		"2. Open the topic you want notifications in\n"+
+		"3. The topic ID is in the URL or message link\n\n"+
+		"_Set to 0 or clear to use the general topic._", status)
+}
+
+// Topic.SetPrompt
+func (topic *TopicMessage) SetPrompt() string {
+	return "📍 *Set Notification Topic*\n\n" +
+		"Reply with either:\n" +
+		"• A topic link (right-click topic → Copy Link)\n" +
+		"• The topic ID number\n\n" +
+		"_Send 0 to use the general topic._"
 }

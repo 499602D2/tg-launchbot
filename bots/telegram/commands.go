@@ -18,6 +18,20 @@ import (
 	tb "gopkg.in/telebot.v3"
 )
 
+// enqueueCommand creates and enqueues a command sendable, preserving the
+// original message's ThreadID so responses stay in the same forum topic.
+func (tg *Bot) enqueueCommand(msg *sendables.Message, chat *users.User, ctx tb.Context) {
+	if ctx.Message() != nil {
+		msg.SendOptions.ThreadID = ctx.Message().ThreadID
+	}
+	sendable := sendables.Sendable{
+		Type:    sendables.Command,
+		Message: msg,
+	}
+	sendable.AddRecipient(chat, false)
+	tg.Enqueue(&sendable, true)
+}
+
 // Admin-only command to e.g. dump logs and database remotely
 func (tg *Bot) adminCommand(ctx tb.Context) error {
 	// Owner-only function
@@ -352,23 +366,17 @@ func (tg *Bot) unpermissionedStart(ctx tb.Context) error {
 	// Load send-options
 	sendOptions, _ := tg.Template.Keyboard.Command.Start()
 
-	// Wrap into a sendable
-	sendable := sendables.Sendable{
-		Type: sendables.Command,
-		Message: &sendables.Message{
-			TextContent: textContent,
-			SendOptions: sendOptions,
-		},
+	// Construct message
+	msg := sendables.Message{
+		TextContent: textContent,
+		SendOptions: sendOptions,
 	}
 
 	// Disable notification for channels
-	sendable.Message.SendOptions.DisableNotification = isChannel(ctx.Chat())
-
-	// Add the user
-	sendable.AddRecipient(chat, false)
+	msg.SendOptions.DisableNotification = isChannel(ctx.Chat())
 
 	// Add to queue as a high-priority message
-	tg.Enqueue(&sendable, true)
+	tg.enqueueCommand(&msg, chat, ctx)
 
 	// Check if chat is new
 	if chat.Stats.SentCommands == 0 || chat.Stats.SentCommands == 1 {
@@ -484,15 +492,8 @@ func (tg *Bot) scheduleHandler(ctx tb.Context) error {
 		// Disable notification for channels
 		msg.SendOptions.DisableNotification = isChannel(ctx.Chat())
 
-		// Wrap into a sendable
-		sendable := sendables.Sendable{
-			Type:    sendables.Command,
-			Message: &msg,
-		}
-
 		// Add to send queue as high-priority
-		sendable.AddRecipient(chat, false)
-		tg.Enqueue(&sendable, true)
+		tg.enqueueCommand(&msg, chat, ctx)
 	} else {
 		tg.editCbMessage(ctx.Callback(), scheduleMsg, sendOptions)
 		return tg.respondToCallback(ctx, "🔄 Schedule loaded", false)
@@ -556,15 +557,8 @@ func (tg *Bot) nextHandler(ctx tb.Context) error {
 		// Check if we need to send it silently
 		msg.SendOptions.DisableNotification = isChannel(ctx.Chat())
 
-		// Wrap into a sendable
-		sendable := sendables.Sendable{
-			Type:    sendables.Command,
-			Message: &msg,
-		}
-
 		// Add to send queue as high-priority
-		sendable.AddRecipient(chat, false)
-		tg.Enqueue(&sendable, true)
+		tg.enqueueCommand(&msg, chat, ctx)
 
 		return nil
 	}
@@ -623,21 +617,16 @@ func (tg *Bot) statsHandler(ctx tb.Context) error {
 
 	// If a command, throw the message into the queue
 	if interaction.IsCommand {
-		// Wrap into a sendable
-		sendable := sendables.Sendable{
-			Type: sendables.Command,
-			Message: &sendables.Message{
-				TextContent: textContent,
-				SendOptions: sendOptions,
-			},
+		msg := sendables.Message{
+			TextContent: textContent,
+			SendOptions: sendOptions,
 		}
 
 		// Disable notification for channels
-		sendable.Message.SendOptions.DisableNotification = isChannel(ctx.Chat())
+		msg.SendOptions.DisableNotification = isChannel(ctx.Chat())
 
 		// Add to send queue as high-priority
-		sendable.AddRecipient(chat, false)
-		tg.Enqueue(&sendable, true)
+		tg.enqueueCommand(&msg, chat, ctx)
 		return nil
 	}
 
@@ -678,16 +667,8 @@ func (tg *Bot) settingsHandler(ctx tb.Context) error {
 		},
 	}
 
-	// Wrap into a sendable
-	sendable := sendables.Sendable{
-		Type:    sendables.Command,
-		Message: &msg,
-	}
-
-	sendable.AddRecipient(chat, false)
-
 	// Add to send queue as high-priority
-	tg.Enqueue(&sendable, true)
+	tg.enqueueCommand(&msg, chat, ctx)
 
 	return nil
 }
@@ -1084,6 +1065,52 @@ func (tg *Bot) settingsCallback(ctx tb.Context) error {
 		// Capture the message ID of this setup message
 		tg.editCbMessage(cb, text, sendOptions)
 		return tg.respondToCallback(ctx, "👷 Loaded group settings", false)
+
+	case "topic":
+		if !isGroup(ctx.Chat()) {
+			return tg.respondToCallback(ctx, "Topics are only available in groups", true)
+		}
+
+		switch callbackData[1] {
+		case "main":
+			message := tg.Template.Messages.Settings.Topic.Main(chat.TopicId)
+			message = utils.PrepareInputForMarkdown(message, "text")
+			sendOptions, _ := tg.Template.Keyboard.Settings.Topic.Main(chat)
+			tg.editCbMessage(cb, message, sendOptions)
+			return tg.respondToCallback(ctx, "📍 Topic settings loaded", false)
+
+		case "clear":
+			chat.TopicId = 0
+			tg.Db.SaveUser(chat)
+
+			text := tg.Template.Messages.Settings.Group()
+			text = utils.PrepareInputForMarkdown(text, "text")
+			sendOptions, _ := tg.Template.Keyboard.Settings.Group(chat)
+			tg.editCbMessage(cb, text, sendOptions)
+			return tg.respondToCallback(ctx, "Topic cleared", true)
+
+		case "setprompt":
+			message := tg.Template.Messages.Settings.Topic.SetPrompt()
+			message = utils.PrepareInputForMarkdown(message, "text")
+
+			forceReply := &tb.ReplyMarkup{
+				ForceReply: true,
+				Selective:  true,
+			}
+
+			msg := sendables.Message{
+				TextContent: message,
+				SendOptions: tb.SendOptions{
+					ParseMode:   "MarkdownV2",
+					ReplyMarkup: forceReply,
+				},
+			}
+
+			tg.enqueueCommand(&msg, chat, ctx)
+
+			_ = tg.Bot.Delete(cb.Message)
+			return tg.respondToCallback(ctx, "Enter topic ID", false)
+		}
 
 	case "keywords":
 		// Keyword filter settings
@@ -1496,8 +1523,84 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 		return nil
 	}
 
-	// Check if it's a keyword input prompt
 	replyText := ctx.Message().ReplyTo.Text
+
+	// Check if replying to topic setup prompt
+	if strings.Contains(replyText, "Set Notification Topic") {
+		if isGroup(ctx.Chat()) {
+			senderIsAdmin, err := tg.senderIsAdmin(ctx)
+			if err != nil || !senderIsAdmin {
+				return nil
+			}
+		}
+
+		chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
+		input := strings.TrimSpace(ctx.Text())
+
+		var topicId int64
+		var err error
+
+		// Check if input is a t.me link (e.g., https://t.me/c/3634986057/1)
+		if strings.Contains(input, "t.me/c/") {
+			// Extract topic ID from link: t.me/c/{chat_id}/{topic_id}[/{message_id}]
+			parts := strings.Split(input, "/")
+			// Find the part after "c" - format is [..., "c", chat_id, topic_id, ...]
+			for i, part := range parts {
+				if part == "c" && i+2 < len(parts) {
+					topicId, err = strconv.ParseInt(parts[i+2], 10, 64)
+					break
+				}
+			}
+			if err != nil || topicId == 0 {
+				tg.Enqueue(sendables.TextOnlySendable(
+					utils.PrepareInputForMarkdown("Could not parse topic ID from link. Please try copying the link again.", "text"),
+					chat), true)
+				return nil
+			}
+		} else {
+			// Try parsing as plain number
+			topicId, err = strconv.ParseInt(input, 10, 64)
+			if err != nil {
+				tg.Enqueue(sendables.TextOnlySendable(
+					utils.PrepareInputForMarkdown("Invalid input. Please send a topic link or number.", "text"),
+					chat), true)
+				return nil
+			}
+
+			// Validate non-negative (0 means disabled, positive means specific topic)
+			if topicId < 0 {
+				tg.Enqueue(sendables.TextOnlySendable(
+					utils.PrepareInputForMarkdown("Invalid topic ID. Please enter a positive number or 0.", "text"),
+					chat), true)
+				return nil
+			}
+		}
+
+		chat.TopicId = topicId
+		tg.Db.SaveUser(chat)
+
+		_ = tg.Bot.Delete(ctx.Message())
+
+		message := tg.Template.Messages.Settings.Topic.Main(chat.TopicId)
+		message = utils.PrepareInputForMarkdown(message, "text")
+		sendOptions, _ := tg.Template.Keyboard.Settings.Topic.Main(chat)
+
+		if ctx.Message().ReplyTo != nil {
+			_, err := tg.Bot.Edit(ctx.Message().ReplyTo, message, &sendOptions)
+			if err != nil {
+				_ = tg.Bot.Delete(ctx.Message().ReplyTo)
+				msg := sendables.Message{TextContent: message, SendOptions: sendOptions}
+				sendable := sendables.Sendable{Type: sendables.Command, Message: &msg}
+				sendable.AddRecipient(chat, false)
+				tg.Enqueue(&sendable, true)
+			}
+		}
+
+		log.Info().Str("chat", chat.Id).Int64("topic_id", topicId).Msg("User set topic ID")
+		return nil
+	}
+
+	// Check if it's a keyword input prompt
 	if !strings.Contains(replyText, "Send me the keyword") {
 		return nil
 	}
@@ -1715,7 +1818,7 @@ func (tg *Bot) textMessageHandler(ctx tb.Context) error {
 	return nil
 }
 
-// Test notification sends
+// Test notification - shows confirmation before sending
 func (tg *Bot) fauxNotification(ctx tb.Context) error {
 	// Owner-only function
 	if ctx.Message().Sender.ID != tg.Owner {
@@ -1723,24 +1826,88 @@ func (tg *Bot) fauxNotification(ctx tb.Context) error {
 		return nil
 	}
 
-	// Load user from cache
-	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Message().Sender.ID), "tg")
+	// Load current chat from cache (send to this chat, not admin's private chat)
+	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Chat().ID), "tg")
 
-	// Create message, get notification type
-	testId := ctx.Data()
+	// Get launch ID from command or use first cached launch
+	testId := strings.TrimSpace(ctx.Data())
+
+	var launch *db.Launch
+	var err error
 
 	if len(testId) == 0 {
-		sendable := sendables.TextOnlySendable("No launch ID entered", chat)
-		tg.Enqueue(sendable, true)
-		return nil
+		// Use first cached launch
+		if len(tg.Cache.Launches) == 0 {
+			tg.Enqueue(sendables.TextOnlySendable(
+				utils.PrepareInputForMarkdown("No launches in cache", "text"), chat), true)
+			return nil
+		}
+		launch = tg.Cache.Launches[0]
+	} else {
+		launch, err = tg.Cache.FindLaunchById(testId)
+		if err != nil {
+			tg.Enqueue(sendables.TextOnlySendable(
+				utils.PrepareInputForMarkdown(fmt.Sprintf("Launch not found: %s", testId), "text"), chat), true)
+			return nil
+		}
 	}
 
-	launch, err := tg.Cache.FindLaunchById(testId)
+	// Show confirmation message
+	text := fmt.Sprintf("🧪 *Test Notification*\n\n"+
+		"*Launch:* %s\n"+
+		"*ID:* `%s`\n\n"+
+		"Send a test 1h notification to this chat?",
+		launch.Name, launch.Id)
+	text = utils.PrepareInputForMarkdown(text, "text")
 
+	confirmBtn := tb.InlineButton{
+		Unique: "testNotifConfirm",
+		Text:   "✅ Send test notification",
+		Data:   launch.Id,
+	}
+	cancelBtn := tb.InlineButton{
+		Unique: "testNotifConfirm",
+		Text:   "❌ Cancel",
+		Data:   "cancel",
+	}
+
+	kb := [][]tb.InlineButton{{confirmBtn}, {cancelBtn}}
+
+	msg := sendables.Message{
+		TextContent: text,
+		SendOptions: tb.SendOptions{
+			ParseMode:   "MarkdownV2",
+			ReplyMarkup: &tb.ReplyMarkup{InlineKeyboard: kb},
+		},
+	}
+
+	tg.enqueueCommand(&msg, chat, ctx)
+	return nil
+}
+
+// Handle test notification confirmation callback
+func (tg *Bot) testNotifConfirmCallback(ctx tb.Context) error {
+	// Owner-only function
+	if ctx.Callback().Sender.ID != tg.Owner {
+		return tg.respondToCallback(ctx, "Owner only", true)
+	}
+
+	launchId := ctx.Callback().Data
+
+	// Handle cancel
+	if launchId == "cancel" {
+		_ = tg.Bot.Delete(ctx.Callback().Message)
+		return tg.respondToCallback(ctx, "Cancelled", false)
+	}
+
+	// Find launch
+	launch, err := tg.Cache.FindLaunchById(launchId)
 	if err != nil {
-		log.Error().Err(err).Msgf("Could not find launch by id=%s", testId)
-		return nil
+		return tg.respondToCallback(ctx, "Launch not found in cache", true)
 	}
+
+	// Send to current chat (not the admin's private chat)
+	chat := tg.Cache.FindUser(fmt.Sprint(ctx.Callback().Message.Chat.ID), "tg")
 
 	notifType := "1h"
 
@@ -1767,17 +1934,13 @@ func (tg *Bot) fauxNotification(ctx tb.Context) error {
 		Message:          &msg,
 	}
 
-	// Flip to use actual recipients (here be dragons)
-	useRealRecipients := false
-
-	if useRealRecipients {
-		sendable.Recipients = launch.NotificationRecipients(tg.Db, notifType, "tg")
-	} else {
-		sendable.AddRecipient(chat, false)
-	}
+	sendable.AddRecipient(chat, false)
 
 	// Add to send queue as a normal notification
 	tg.Enqueue(&sendable, false)
 
-	return nil
+	// Delete confirmation message
+	_ = tg.Bot.Delete(ctx.Callback().Message)
+
+	return tg.respondToCallback(ctx, "Test notification sent!", false)
 }

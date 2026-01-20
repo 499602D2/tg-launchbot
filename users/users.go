@@ -24,6 +24,7 @@ type User struct {
 	Enabled5min           bool     `gorm:"index:enabled;index:disabled;default:1"`
 	EnabledPostpone       bool     `gorm:"index:enabled;index:disabled;default:1"`
 	AnyoneCanSendCommands bool     // Group setting to enable non-admins to call commands
+	TopicId               int64   // Optional: forum topic ID for notifications (0 = disabled)
 	SubscribedAll         bool     `gorm:"index:enabled;index:disabled"`
 	SubscribedTo          string   // List of comma-separated LSP IDs
 	UnsubscribedFrom      string   // List of comma-separated LSP IDs
