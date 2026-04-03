@@ -1,6 +1,6 @@
 module launchbot
 
-go 1.24
+go 1.25.0
 
 require (
 	github.com/rs/zerolog v1.34.0
@@ -19,9 +19,9 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/image v0.29.0 // indirect
+	golang.org/x/image v0.38.0 // indirect
 	golang.org/x/net v0.42.0 // indirect
-	golang.org/x/text v0.27.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
 	gonum.org/v1/gonum v0.12.0 // indirect
 	gopkg.in/neurosnap/sentences.v1 v1.0.7 // indirect
 )
