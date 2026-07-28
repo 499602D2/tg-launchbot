@@ -188,7 +188,7 @@ func (tg *Bot) handleError(ctx tb.Context, sent *tb.Message, err error, id int64
 	if err != nil && strings.Contains(err.Error(), "Forbidden: the group chat was deleted") {
 		log.Info().Msgf("Group chat was deleted (chat=%s), removing from database...", chat.Id)
 		tg.Db.RemoveUser(chat)
-		return false
+		return true
 	}
 
 	switch err {
